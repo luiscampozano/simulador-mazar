@@ -73,6 +73,63 @@ def r10(v):
     return int(round(v / 10.0) * 10)
 
 
+# ---------------------------------------------------------------- Física de Paute (Celec Sur)
+# Cuánto baja Mazar por cada MW que genera el complejo Paute no es un número fijo: Molino y
+# Sopladora también usan el agua que llega a Amaluza entre las dos presas. Por eso se calcula
+# con datos reales: energía diaria de Mazar, Molino y Sopladora, caudal de entrada y variación
+# de la cota de los últimos días completos.
+CELEC_ORDS = "https://generacioncsr.celec.gob.ec:8443/ords/csr/"
+ENERGIA_PAUTE = ("sardommaz/mazEnerDia", "sardommol/molEnerDia", "sardomsop/sopEnerDia")
+
+
+def _celec_items(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (simulador-mazar)"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r).get("items", [])
+
+
+def _celec_puntos(mrid, dia):
+    ini = datetime(dia.year, dia.month, dia.day, 1, tzinfo=timezone(timedelta(hours=-5))).astimezone(timezone.utc)
+    fin = ini + timedelta(hours=23)
+    url = (f"{CELEC_ORDS}sardomcsr/pointValues?mrid={mrid}&fechaInicio={ini:%Y-%m-%dT%H:%M:%S.000Z}"
+           f"&fechaFin={fin:%Y-%m-%dT%H:%M:%S.000Z}&fecha={dia:%d/%m/%Y}%2001:00:00")
+    return sorted((i["loctimestamp"], float(i["valueedit"])) for i in _celec_items(url) if i.get("valueedit") is not None)
+
+
+def fisica_paute(hoy_local, dias_k=10, dias_p=7):
+    """Devuelve k (MW por m³/s que sale de Mazar), Paute medio de los últimos días y el detalle."""
+    area = lambda c: 3.758 + 0.2177 * (c - 2115)   # hm³ por metro de cota
+    filas = []
+    for n in range(dias_k, 0, -1):
+        d = hoy_local - timedelta(days=n)
+        cota_fin = _celec_puntos(30031, d)
+        cota_ini = _celec_puntos(30031, d - timedelta(days=1))
+        caudal = _celec_puntos(30538, d)
+        horas = []
+        energia = 0.0
+        for ep in ENERGIA_PAUTE:
+            vals = [float(i["valueedit"]) for i in _celec_items(f"{CELEC_ORDS}{ep}?fecha={d:%d/%m/%Y}%2000:00:00")
+                    if i.get("valueedit") is not None]
+            horas.append(len(vals))
+            energia += sum(vals)
+        if len(cota_fin) < 20 or len(cota_ini) < 20 or len(caudal) < 20 or min(horas) < 20:
+            continue  # día incompleto
+        c0, c1 = cota_ini[-1][1], cota_fin[-1][1]
+        q = sum(v for _, v in caudal) / len(caudal)
+        p = energia / 24.0
+        salida = q - (c1 - c0) * area((c0 + c1) / 2) * 1e6 / 86400   # m³/s que salieron de Mazar
+        filas.append({"dia": d.isoformat(), "paute_mw": round(p), "caudal": round(q, 1),
+                      "cota": round(c1, 2), "variacion": round(c1 - c0, 2), "salida": round(salida, 1)})
+    if len(filas) < 5:
+        raise ValueError(f"solo {len(filas)} días completos en Celec")
+    k = sum(f["paute_mw"] for f in filas) / max(1.0, sum(f["salida"] for f in filas))
+    ult = filas[-dias_p:]
+    p7 = sum(f["paute_mw"] for f in ult) / len(ult)
+    return {"k_mw_por_m3s": round(min(20.0, max(7.0, k)), 2), "paute_prom_mw": round(p7),
+            "dias_k": len(filas), "dias_p": len(ult), "desde": filas[0]["dia"], "hasta": filas[-1]["dia"],
+            "detalle": filas}
+
+
 # ---------------------------------------------------------------- Celec Sur
 def celec_dia(mrid, dia):
     ini = datetime(dia.year, dia.month, dia.day, 1, tzinfo=EC).astimezone(timezone.utc)
@@ -380,11 +437,35 @@ def main():
         fuentes["openmeteo"] = {"ok": False, "error": str(e)[:200], "intento": ahora.isoformat(timespec='minutes')}
         log(f"Open-Meteo falló: {e}")
 
-    # --- Demanda base: lo que se sirvió + lo que se dejó de servir por cortes − efecto del calor
-    if D is not None:
+    # --- Física de Paute: agua por MW y generación real de la última semana (Celec Sur)
+    fis = None
+    try:
+        fis = fisica_paute(ahora.date())
+        fisica = {k: v for k, v in fis.items()}
+        fisica["actualizado"] = ahora.isoformat(timespec="minutes")
+        datos["fisica"] = fisica
+        fuentes["celec_energia"] = {"ok": True}
+        log(f"Física Paute: {fis['k_mw_por_m3s']} MW por m³/s ({fis['dias_k']} días), "
+            f"Paute promedio {fis['paute_prom_mw']} MW ({fis['dias_p']} días)")
+    except Exception as e:
+        fuentes["celec_energia"] = {"ok": False, "error": str(e)[:200], "intento": ahora.isoformat(timespec='minutes')}
+        log(f"Física Paute falló: {e}")
+    k = (datos.get("fisica") or {}).get("k_mw_por_m3s", 9.0)
+
+    # --- Demanda: equivalente a la última semana, para que un fin de semana no distorsione la proyección.
+    #     Con lo medido hoy (Coca Codo, otras hidro, térmica, Colombia), Paute debe generar lo mismo que
+    #     su promedio real de los últimos 7 días.
+    if fis is not None:
+        ccs0 = min(5 * hoy["qCoca"], 1200)
+        dem = fis["paute_prom_mw"] + ccs0 + hoy["other"] + hoy["therm"] + hoy["imp"]
+        hoy["dBase"] = int(clamp(r10(dem + hoy["cut"] - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
+        notas["demanda"] = (f"Equivale a la última semana: Paute generó en promedio {fis['paute_prom_mw']} MW del "
+                            f"{fis['detalle'][-fis['dias_p']]['dia']} al {fis['hasta']} (Celec Sur)."
+                            + (f" Demanda atendida en las últimas 24 h: {D:.0f} MW (Cenace)." if D is not None else ""))
+    elif D is not None:
         hoy["dBase"] = int(clamp(r10(D + hoy["cut"] - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
         notas["demanda"] = (f"Demanda atendida en las últimas 24 h: {D:.0f} MW medios (Cenace). Sin cortes ni calor "
-                            f"extra sería ~{hoy['dBase']} MW. Récord instantáneo de 2026: 5.634 MW.")
+                            f"extra sería ~{hoy['dBase']} MW.")
 
     # --- Control: ritmo que estima el modelo frente a la variación real de las últimas 24 h
     if cota_t is not None:
@@ -393,13 +474,17 @@ def main():
         demanda = hoy["dBase"] + 50 * (hoy["tCosta"] - 32) - hoy["cut"]
         ccs = min(5 * hoy["qCoca"], 1200)
         paute = clamp(demanda - ccs - hoy["other"] - hoy["therm"] - hoy["imp"], 0, 1757)
-        ritmo = (paute / 9 - hoy["qMazar"]) * 86400 / 1e6 / A
+        ritmo = (paute / k - hoy["qMazar"]) * 86400 / 1e6 / A
         txt = (f"Con los valores de \"Hoy\", Paute debe aportar ≈ {paute:.0f} MW y Mazar "
                f"{'baja' if ritmo >= 0 else 'sube'} ≈ {abs(ritmo):.2f} m/día.")
         if cota_24 is not None:
             real = cota_24 - cota_t
             txt += (f" En las últimas 24 h lo real fue {'una bajada' if real >= 0 else 'una subida'} de {abs(real):.2f} m: "
                     "un solo día depende mucho de cuánto se hizo operar a Paute.")
+        if fis is not None:
+            tot = sum(f["variacion"] for f in fis["detalle"])
+            txt += (f" Del {fis['desde']} al {fis['hasta']} Mazar varió {tot:+.2f} m en total; el factor de "
+                    f"{k:.1f} MW por m³/s se calcula con esos mismos días.")
         notas["calibracion"] = txt
         log(f"Control: modelo {ritmo:+.2f} m/día de bajada, Paute requerido {paute:.0f} MW")
 
