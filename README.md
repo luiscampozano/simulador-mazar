@@ -6,27 +6,30 @@ Página: https://luiscampozano.github.io/simulador-mazar/
 
 ## Archivos
 
-- `index.html`: la página y el modelo. No hace falta tocarla para las actualizaciones.
-- `datos.json`: los datos del día. Es lo único que cambia en cada actualización:
-  - `fecha` y `etiqueta`: fecha y hora de la última lectura.
-  - `cota`: cota de Mazar en msnm.
-  - `historico`: lista de `["AAAA-MM-DD", cota]`, un punto por día.
-  - `hoy`: valores iniciales de los controles (caudales en m³/s, MW, °C).
-  - `notas`: textos bajo los controles y la calibración.
-  - `robot`: última lectura automática, caudal promedio de 24 h y variación de cota en 24 h.
-- `scripts/robot_cota.py`: script del robot.
+- `index.html`: la página y el modelo.
+- `datos.json`: los datos del día. Es lo único que cambia en cada actualización.
+  - `cota`, `fecha`, `etiqueta`, `historico`: nivel de Mazar.
+  - `hoy`: valores iniciales de los controles.
+  - `notas`: textos bajo cada control.
+  - `manual`: lo que fija Claude a partir de noticias (cortes a empresas y, si hace falta, un escenario de lluvia o temperatura con fecha de vencimiento `_hasta`). El robot siempre lo respeta.
+  - `robot`: estado de cada fuente y registro de la última ejecución.
+- `serie_cenace.json`: memoria del robot con los datos de Cenace por media hora de los últimos 3 días.
+- `scripts/robot.py`: el robot.
 - `.github/workflows/robot-cota.yml`: horario del robot y publicación de la página.
 
 ## Quién actualiza qué
 
-| Quién | Cuándo | Qué actualiza |
+| Variable | Fuente | Quién |
 |---|---|---|
-| Robot (GitHub Actions) | Cada 2 horas | Cota de Mazar, caudal de entrada promedio de 24 h, punto del día en el histórico. Fuente: servicio de datos del panel de Celec Sur. |
-| Tarea de Claude, mañana | 09:45 (Ecuador) | Actualización completa: caudal del Coca, importación desde Colombia, cortes, temperatura, pronóstico y recalibración del modelo con la caída de 24 h. |
-| Tarea de Claude, noche | 21:45 (Ecuador) | Importación, cortes, temperatura, pronóstico, caudal del Coca y notas. No recalibra. |
+| Cota de Mazar y caudal de entrada | Servicio de datos del panel de Celec Sur | Robot, cada 2 h |
+| Térmica, importación desde Colombia, demanda, Coca Codo | Página "Información Operativa" de Cenace (cada media hora) | Robot, cada 2 h |
+| Temperatura en Guayaquil, lluvia en las cuencas del Paute y del Coca | Open-Meteo | Robot, cada 2 h |
+| Otras hidroeléctricas | Calculada para que el modelo reproduzca la variación real de la cota en 24 h | Robot, cada 2 h |
+| Cortes a empresas | Noticias y anuncios oficiales | Claude, 09:45 y 21:45 |
+| Revisión general y correcciones | Todas las anteriores | Claude, 09:45 y 21:45 |
+
+Escenario de lluvia automático (lluvia acumulada de 7 días, Open-Meteo): menos de 15 mm previstos = seco; más de 70 mm previstos y más de 40 mm en la semana anterior = lluvia sostenida; en otro caso = pulso de lluvia.
 
 Cada cambio en `main` vuelve a publicar la página automáticamente.
-
-Fuentes: Celec Sur (panel hidrológico), Cenace (producción en tiempo real), Inamhi (pronósticos) y prensa nacional.
 
 El modelo usa promedios diarios y una curva cota–volumen aproximada; ver la sección "Cómo calcula el modelo" en la página.

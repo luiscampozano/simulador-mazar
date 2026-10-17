@@ -1,4 +1,4 @@
-name: Robot cota Mazar y publicación
+name: Robot del simulador y publicación
 
 on:
   schedule:
@@ -26,20 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Leer cota de Celec Sur
+      - name: Leer Celec Sur, Cenace y Open-Meteo
         if: github.event_name != 'push'
-        run: python3 scripts/robot_cota.py
+        run: python3 scripts/robot.py
 
       - name: Guardar cambios
         if: github.event_name != 'push'
         run: |
-          if git diff --quiet datos.json; then
+          git add datos.json serie_cenace.json
+          if git diff --cached --quiet; then
             echo "Sin cambios"
           else
-            git config user.name "robot-cota"
+            git config user.name "robot-simulador"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             COTA=$(python3 -c "import json;print(json.load(open('datos.json'))['cota'])")
-            git commit -am "Robot: cota ${COTA} msnm"
+            git commit -m "Robot: cota ${COTA} msnm y datos de Cenace/Open-Meteo"
             if git pull --rebase origin main; then
               git push
             else

@@ -40,6 +40,9 @@ h3{font-size:15px;font-weight:700;font-stretch:95%}
 .eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 p{margin:0}
 .lede{color:var(--muted);max-width:68ch}
+.fuentes{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.fuentes b{font-weight:600}
+.fuentes .ok{color:var(--ok)} .fuentes .ko{color:var(--crit)}
 .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 
 /* lectura principal */
@@ -115,6 +118,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
 <div class="wrap">
   <header style="display:grid;gap:8px">
     <span class="eyebrow" id="asof">Ecuador · Sistema Nacional Interconectado · datos al viernes 16 oct 2026, 09:00</span>
+    <span class="fuentes" id="fuentesTxt" hidden></span>
     <h1>¿Cuántos días le quedan a Mazar antes de la cota crítica de 2.115 msnm?</h1>
     <p class="lede">Mueve las variables y el modelo recalcula, día por día, cuánta agua debe sacar el complejo Paute (Mazar, Molino y Sopladora) para cubrir lo que el resto del sistema no alcanza a generar. Los valores iniciales reproducen la caída real más reciente de Mazar.</p>
   </header>
@@ -168,7 +172,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
             <option value="inamhi">Inamhi: lluvias 16–18 oct, luego estiaje</option>
             <option value="nino">Lluvioso: El Niño activa la cuenca</option>
           </select>
-          <p class="src">Advertencia N.º 80 del Inamhi hasta el 18 oct. Ojo: la lluvia intensa se espera en el lado occidental de Azuay y Cañar, que no drena hacia Mazar.</p>
+          <p class="src" id="srcWPaute">Advertencia N.º 80 del Inamhi hasta el 18 oct. Ojo: la lluvia intensa se espera en el lado occidental de Azuay y Cañar, que no drena hacia Mazar.</p>
         </div>
         <div class="ctrl">
           <div class="top"><label for="qCoca">Caudal del río Coca (Coca Codo Sinclair)</label><output id="oqCoca"></output></div>
@@ -182,7 +186,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
             <option value="inamhi">Inamhi: aumento gradual desde el 15 oct</option>
             <option value="nino">Lluvioso: vuelve a niveles de septiembre</option>
           </select>
-          <p class="src">Inamhi prevé más lluvias en la Amazonía desde el jueves 15 por humedad de la cuenca amazónica.</p>
+          <p class="src" id="srcWCoca">Inamhi prevé más lluvias en la Amazonía desde el jueves 15 por humedad de la cuenca amazónica.</p>
         </div>
       </div>
 
@@ -190,18 +194,18 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         <h3><i style="background:var(--crit)"></i>Demanda nacional</h3>
         <div class="ctrl">
           <div class="top"><label for="dBase">Demanda media sin cortes</label><output id="odBase"></output></div>
-          <input type="range" id="dBase" min="3800" max="5000" step="10">
-          <p class="src">Ecuador consume 100–110 GWh/día (4.170–4.580 MW medios). Récord instantáneo de 2026: 5.634 MW.</p>
+          <input type="range" id="dBase" min="3500" max="5200" step="10">
+          <p class="src" id="srcDem">Ecuador consume 100–110 GWh/día (4.170–4.580 MW medios). Récord instantáneo de 2026: 5.634 MW.</p>
         </div>
         <div class="ctrl">
           <div class="top"><label for="tCosta">Temperatura máxima en la Costa (Guayaquil)</label><output id="otCosta"></output></div>
           <input type="range" id="tCosta" min="28" max="36" step="0.5">
-          <p class="src">Inamhi: 32–33 °C en Guayaquil esta semana; Costa entre 24,5 y 34 °C hoy. El modelo suma 50 MW por cada °C sobre 32 °C (supuesto por aire acondicionado).</p>
+          <p class="src" id="srcTemp">Inamhi: 32–33 °C en Guayaquil esta semana; Costa entre 24,5 y 34 °C hoy. El modelo suma 50 MW por cada °C sobre 32 °C (supuesto por aire acondicionado).</p>
         </div>
         <div class="ctrl">
           <div class="top"><label for="cut">Ahorro por cortes a empresas</label><output id="ocut"></output></div>
           <input type="range" id="cut" min="0" max="700" step="10">
-          <p class="src">~9.080 empresas de alto y medio voltaje desconectadas por turnos. Ahorro real medido: ~300 MW; meta del Gobierno: 550 MW.</p>
+          <p class="src" id="srcCut">~9.080 empresas de alto y medio voltaje desconectadas por turnos. Ahorro real medido: ~300 MW; meta del Gobierno: 550 MW.</p>
         </div>
       </div>
 
@@ -215,12 +219,12 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         <div class="ctrl">
           <div class="top"><label for="therm">Generación térmica y barcazas</label><output id="otherm"></output></div>
           <input type="range" id="therm" min="700" max="1700" step="10">
-          <p class="src">El 14 oct la térmica fue el 30,9 % de la producción (~1.280 MW). Incluye ~200 MW de dos barcazas sin contrato renovado.</p>
+          <p class="src" id="srcTherm">El 14 oct la térmica fue el 30,9 % de la producción (~1.280 MW). Incluye ~200 MW de dos barcazas sin contrato renovado.</p>
         </div>
         <div class="ctrl">
           <div class="top"><label for="other">Otras hidroeléctricas</label><output id="oother"></output></div>
-          <input type="range" id="other" min="700" max="1600" step="10">
-          <p class="src">Agoyán, San Francisco, Minas San Francisco, Delsitanisagua, Toachi Pilatón y menores. Se ajusta con el pronóstico de lluvia.</p>
+          <input type="range" id="other" min="500" max="2200" step="10">
+          <p class="src" id="srcOther">Agoyán, San Francisco, Minas San Francisco, Delsitanisagua, Toachi Pilatón y menores. Se ajusta con el pronóstico de lluvia.</p>
         </div>
       </div>
     </div>
@@ -379,10 +383,25 @@ function buildPresets(){
 function applyTexts(){
   el("asof").textContent = "Ecuador · Sistema Nacional Interconectado · "+DATA.etiqueta;
   const n = DATA.notas||{};
-  if(n.mazar) el("srcMazar").textContent = n.mazar;
-  if(n.coca) el("srcCoca").textContent = n.coca;
-  if(n.importacion) el("srcImp").textContent = n.importacion;
-  if(n.calibracion) el("calibTxt").textContent = n.calibracion;
+  const destino = {mazar:"srcMazar", coca:"srcCoca", importacion:"srcImp", calibracion:"calibTxt", termica:"srcTherm",
+    demanda:"srcDem", temperatura:"srcTemp", cortes:"srcCut", otras:"srcOther", lluviaPaute:"srcWPaute", lluviaCoca:"srcWCoca"};
+  Object.entries(destino).forEach(([k,id])=>{ if(n[k] && el(id)) el(id).textContent = n[k]; });
+  const rb = DATA.robot && DATA.robot.fuentes;
+  if(rb){
+    const nombres = {celec:"Celec Sur", cenace:"Cenace", openmeteo:"Open-Meteo"};
+    const box = el("fuentesTxt"); box.textContent = "";
+    const t = document.createElement("span");
+    const hora = DATA.robot.ultima_ejecucion ? new Date(DATA.robot.ultima_ejecucion) : null;
+    t.textContent = "Actualización automática" + (hora ? " · última: " + dlabel(hora) + " " + String(hora.getHours()).padStart(2,"0") + ":" + String(hora.getMinutes()).padStart(2,"0") : "");
+    box.appendChild(t);
+    Object.entries(nombres).forEach(([k,nom])=>{
+      if(!rb[k]) return;
+      const s = document.createElement("span");
+      s.innerHTML = '<b class="'+(rb[k].ok?'ok':'ko')+'">'+(rb[k].ok?'●':'○')+'</b> '+nom+(rb[k].ok?'':' (sin datos nuevos)');
+      box.appendChild(s);
+    });
+    box.hidden = false;
+  }
   el("volTxt").textContent = fmt(volOf(COTA_HOY-COTA_CRIT));
 }
 const fmt = (n,d=0)=> n.toLocaleString("es-EC",{minimumFractionDigits:d,maximumFractionDigits:d});
