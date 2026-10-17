@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cuenta regresiva Mazar</title>
+<meta name="description" content="Simulador de cuántos días faltan para que el embalse Mazar llegue a su cota crítica de 2.115 msnm.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: panel de instrumentos de una sala de control hidroeléctrica — lectura principal arriba, controles agrupados por origen, gráfico de cota como regla de nivel */
+:root{
+  --bg:#eef2f1; --panel:#ffffff; --ink:#132322; --muted:#5a6b69; --line:#d3dcda;
+  --water:#0f6e74; --water-soft:#cfe6e5; --crit:#c2362b; --warn:#c98a12; --ok:#2e7d4f;
+  --col:#3b5bc4; --therm:#8a5a3c;
+  --f-display:"Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1615; --panel:#13201f; --ink:#e3ecea; --muted:#93a5a2; --line:#273836;
+  --water:#4fb8bd; --water-soft:#163a3b; --crit:#ff6b5e; --warn:#e8b04a; --ok:#5cc28a;
+  --col:#8aa2ff; --therm:#d4a07c; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0c1615; --panel:#13201f; --ink:#e3ecea; --muted:#93a5a2; --line:#273836;
+  --water:#4fb8bd; --water-soft:#163a3b; --crit:#ff6b5e; --warn:#e8b04a; --ok:#5cc28a;
+  --col:#8aa2ff; --therm:#d4a07c; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,6vw,46px);font-stretch:85%;font-weight:800;letter-spacing:-.01em;line-height:1.05}
+h2{font-size:20px;font-stretch:90%;font-weight:700}
+h3{font-size:15px;font-weight:700;font-stretch:95%}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.lede{color:var(--muted);max-width:68ch}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* lectura principal */
+.hero{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:stretch}
+.readout{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:grid;gap:10px;position:relative;overflow:hidden}
+.readout .big{font-family:var(--f-display);font-weight:800;font-stretch:75%;font-size:clamp(64px,16vw,120px);line-height:.9;letter-spacing:-.02em}
+.readout .big small{font-size:.3em;font-stretch:100%;font-weight:600;margin-left:6px;letter-spacing:0}
+.status{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;border:1px solid currentColor;width:max-content;max-width:100%}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.st-crit{color:var(--crit)} .st-warn{color:var(--warn)} .st-ok{color:var(--ok)}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-top:1px solid var(--line);padding-top:12px}
+.kpi .v{font-family:var(--f-mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12px;color:var(--muted);line-height:1.3}
+
+/* regla de nivel */
+.gauge{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:8px}
+.gauge svg{width:100%;height:auto;display:block}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px;min-width:0}
+.chartbox{overflow-x:auto}
+.chartbox svg{width:100%;min-width:560px;height:auto;display:block}
+
+.presets{display:flex;flex-wrap:wrap;gap:8px}
+.presets button{font:500 13px var(--f-body);color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+.presets button:hover{border-color:var(--water)}
+.presets button[aria-pressed="true"]{background:var(--water);border-color:var(--water);color:var(--panel)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+.groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.group{display:grid;gap:14px;align-content:start;min-width:0}
+.group > h3{display:flex;align-items:center;gap:8px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+.group > h3 i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.ctrl{display:grid;gap:4px}
+.ctrl .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ctrl label{font-weight:600;font-size:14px}
+.ctrl output{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:14px;white-space:nowrap}
+.ctrl .src{font-size:12px;color:var(--muted);line-height:1.35}
+input[type=range]{width:100%;accent-color:var(--water)}
+select{font:14px var(--f-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 8px;width:100%}
+
+/* balance */
+.bal{display:grid;gap:8px}
+.barrow{display:grid;grid-template-columns:88px minmax(0,1fr);gap:10px;align-items:center;font-size:13px}
+.bar{display:flex;height:30px;border-radius:6px;overflow:hidden;background:var(--water-soft)}
+.bar span{display:flex;align-items:center;justify-content:center;color:#fff;font:500 11px var(--f-mono);white-space:nowrap;overflow:hidden;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}
+.facts p{font-size:14px;max-width:62ch}
+.facts b{font-weight:600}
+.note{font-size:13px;color:var(--muted);max-width:75ch}
+.sources{font-size:13px;columns:2;column-gap:24px}
+.sources li{margin-bottom:4px;break-inside:avoid}
+.sources a{color:var(--water)}
+table{border-collapse:collapse;font-size:13px;width:100%}
+td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
+.tbl{overflow-x:auto}
+
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr}
+  .groups{grid-template-columns:1fr}
+  .facts{grid-template-columns:1fr}
+  .sources{columns:1}
+}
+@media (max-width:420px){ .kpis{grid-template-columns:1fr 1fr} }
+@media (prefers-reduced-motion:no-preference){ .bar span{transition:width .25s ease} }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <span class="eyebrow" id="asof">Ecuador · Sistema Nacional Interconectado · datos al viernes 16 oct 2026, 09:00</span>
+    <h1>¿Cuántos días le quedan a Mazar antes de la cota crítica de 2.115 msnm?</h1>
+    <p class="lede">Mueve las variables y el modelo recalcula, día por día, cuánta agua debe sacar el complejo Paute (Mazar, Molino y Sopladora) para cubrir lo que el resto del sistema no alcanza a generar. Los valores iniciales reproducen la caída real más reciente de Mazar.</p>
+  </header>
+
+  <section class="hero" aria-label="Resultado">
+    <div class="readout">
+      <span class="eyebrow">Días hasta 2.115 msnm</span>
+      <div class="big num" id="days">–</div>
+      <div id="dateLine" style="font-size:16px;font-weight:500"></div>
+      <span class="status" id="status">calculando</span>
+      <div class="kpis">
+        <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
+        <div class="kpi"><div class="v" id="kPaute">–</div><div class="l">MW que se le piden a Paute</div></div>
+        <div class="kpi"><div class="v" id="kCut">–</div><div class="l">racionamiento estimado al tocar 2.115</div></div>
+      </div>
+    </div>
+    <div class="gauge" aria-label="Regla de nivel del embalse">
+      <span class="eyebrow">Regla de nivel · embalse Mazar</span>
+      <svg id="gauge" viewBox="0 0 320 300" role="img" aria-label="Nivel actual y proyectado de Mazar"></svg>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display:grid;gap:6px">
+      <h2>Escenarios rápidos</h2>
+      <p class="note">Cada botón ajusta los controles de abajo. Después puedes afinarlos a mano.</p>
+    </div>
+    <div class="presets" role="group" aria-label="Escenarios">
+      <button type="button" data-p="hoy" aria-pressed="true">Hoy (calibrado)</button>
+      <button type="button" data-p="col450">Colombia a 450 MW</button>
+      <button type="button" data-p="sincortes">Sin cortes a industrias</button>
+      <button type="button" data-p="lluvia">Llegan las lluvias de El Niño</button>
+      <button type="button" data-p="peor">Peor caso</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Variables del modelo</h2>
+    <div class="groups">
+      <div class="group">
+        <h3><i style="background:var(--water)"></i>Agua en las cuencas</h3>
+        <div class="ctrl">
+          <div class="top"><label for="qMazar">Caudal que entra a Mazar</label><output id="oqMazar"></output></div>
+          <input type="range" id="qMazar" min="5" max="120" step="1">
+          <p class="src" id="srcMazar">Hoy bajó de 29 a 17 m³/s en la madrugada (Celec Sur). Promedio histórico de octubre: 66 m³/s.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="wPaute">Pronóstico cuenca del Paute</label></div>
+          <select id="wPaute">
+            <option value="seco">Seco: el estiaje se profundiza</option>
+            <option value="inamhi">Inamhi: lluvias 16–18 oct, luego estiaje</option>
+            <option value="nino">Lluvioso: El Niño activa la cuenca</option>
+          </select>
+          <p class="src">Advertencia N.º 80 del Inamhi hasta el 18 oct. Ojo: la lluvia intensa se espera en el lado occidental de Azuay y Cañar, que no drena hacia Mazar.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="qCoca">Caudal del río Coca (Coca Codo Sinclair)</label><output id="oqCoca"></output></div>
+          <input type="range" id="qCoca" min="80" max="450" step="1">
+          <p class="src" id="srcCoca">152 m³/s a las 06:00 de hoy, el más bajo desde marzo. Necesita 240–250 m³/s para 1.200 MW continuos.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="wCoca">Pronóstico cuenca del Coca (Amazonía norte)</label></div>
+          <select id="wCoca">
+            <option value="seco">Seco: sigue bajando</option>
+            <option value="inamhi">Inamhi: aumento gradual desde el 15 oct</option>
+            <option value="nino">Lluvioso: vuelve a niveles de septiembre</option>
+          </select>
+          <p class="src">Inamhi prevé más lluvias en la Amazonía desde el jueves 15 por humedad de la cuenca amazónica.</p>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3><i style="background:var(--crit)"></i>Demanda nacional</h3>
+        <div class="ctrl">
+          <div class="top"><label for="dBase">Demanda media sin cortes</label><output id="odBase"></output></div>
+          <input type="range" id="dBase" min="3800" max="5000" step="10">
+          <p class="src">Ecuador consume 100–110 GWh/día (4.170–4.580 MW medios). Récord instantáneo de 2026: 5.634 MW.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="tCosta">Temperatura máxima en la Costa (Guayaquil)</label><output id="otCosta"></output></div>
+          <input type="range" id="tCosta" min="28" max="36" step="0.5">
+          <p class="src">Inamhi: 32–33 °C en Guayaquil esta semana; Costa entre 24,5 y 34 °C hoy. El modelo suma 50 MW por cada °C sobre 32 °C (supuesto por aire acondicionado).</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="cut">Ahorro por cortes a empresas</label><output id="ocut"></output></div>
+          <input type="range" id="cut" min="0" max="700" step="10">
+          <p class="src">~9.080 empresas de alto y medio voltaje desconectadas por turnos. Ahorro real medido: ~300 MW; meta del Gobierno: 550 MW.</p>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3><i style="background:var(--therm)"></i>Otras fuentes de energía</h3>
+        <div class="ctrl">
+          <div class="top"><label for="imp">Importación desde Colombia</label><output id="oimp"></output></div>
+          <input type="range" id="imp" min="0" max="450" step="5">
+          <p class="src" id="srcImp">Se reanudó hoy. Promedio de 65 MW hasta las 14:00 (Cenace), 132 MW a las 11:00. Límite de la interconexión: 450 MW.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="therm">Generación térmica y barcazas</label><output id="otherm"></output></div>
+          <input type="range" id="therm" min="700" max="1700" step="10">
+          <p class="src">El 14 oct la térmica fue el 30,9 % de la producción (~1.280 MW). Incluye ~200 MW de dos barcazas sin contrato renovado.</p>
+        </div>
+        <div class="ctrl">
+          <div class="top"><label for="other">Otras hidroeléctricas</label><output id="oother"></output></div>
+          <input type="range" id="other" min="700" max="1600" step="10">
+          <p class="src">Agoyán, San Francisco, Minas San Francisco, Delsitanisagua, Toachi Pilatón y menores. Se ajusta con el pronóstico de lluvia.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display:grid;gap:6px">
+      <h2>Proyección de la cota de Mazar</h2>
+      <p class="note">Puntos: registros diarios reales de Celec Sur. Línea: proyección del escenario elegido. Franja roja: por debajo de 2.115 msnm la central Mazar debe apagarse para proteger sus turbinas de los sedimentos.</p>
+    </div>
+    <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
+  </section>
+
+  <section class="card">
+    <div style="display:grid;gap:6px">
+      <h2>Cómo se cubre la demanda hoy</h2>
+      <p class="note">Balance en megavatios medios del primer día. Paute cubre el hueco; cada MW que pone Paute sale del embalse cuando el río no alcanza.</p>
+    </div>
+    <div class="bal" id="bal"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="card">
+    <h2>Los siguientes 10 días, uno por uno</h2>
+    <div class="tbl"><table id="tbl"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Cómo calcula el modelo</h2>
+    <div class="facts">
+      <p><b>1. Demanda neta.</b> Demanda sin cortes + 50 MW por cada °C sobre 32 °C en la Costa − ahorro por cortes a empresas.</p>
+      <p><b>2. Lo que no es Paute.</b> Coca Codo genera 5 MW por cada m³/s (240 m³/s ≈ 1.200 MW, su tope continuo); sobre 450 m³/s se recorta a la mitad por sedimentos. Se suman térmica, otras hidroeléctricas y Colombia.</p>
+      <p><b>3. Lo que se le pide a Paute.</b> La diferencia, con tope en 1.757 MW instalados. La cascada Mazar–Molino–Sopladora produce unos 9 MW por cada m³/s turbinado (≈ 400 m³ de agua por MWh, coherente con la estimación de Ricardo Buitrón de 62 millones de m³ ≈ 200 MW durante 30 días).</p>
+      <p><b>4. El embalse.</b> Agua que sale menos agua que entra. Entre 2.115 y 2.153 msnm hay unos 300 millones de m³ útiles; el embalse es más angosto abajo, así que cada metro cerca del fondo equivale a menos agua (≈ 5,5 millones de m³ por metro en la cota actual). Con la cota de hoy quedan ≈ <span id="volTxt">37</span> millones de m³ útiles.</p>
+      <p><b>5. Al tocar 2.115.</b> Paute solo puede turbinar lo que trae el río. La diferencia es déficit, y el modelo lo traduce en horas de corte diarias equivalentes para todo el país.</p>
+      <p><b>6. Calibración.</b> <span id="calibTxt">Con los valores de "Hoy", Mazar baja ≈ 1,0 m/día. Lo real del 15 al 16 de octubre fue 0,97 m.</span></p>
+    </div>
+    <p class="note">Límites: el modelo trabaja con promedios diarios y no con la curva hora a hora; no incluye el pequeño embalse de Amaluza (ya por debajo de su referencia de 1.975 msnm), mantenimientos ni fallas de transmisión. La curva cota–volumen es una aproximación construida con los volúmenes publicados, no la tabla oficial de Celec. Bajo 2.115 msnm podrían existir otros 62 millones de m³ hasta la cota de diseño de 2.098, pero usarlos requiere estudios técnicos y el modelo no los cuenta.</p>
+  </section>
+
+  <section class="card">
+    <h2>Fuentes de los datos iniciales</h2>
+    <ul class="sources">
+      <li><a href="https://www.expreso.ec/economia-y-negocios/mazar-8-metros-minimo-seguro-generara-energia-llegue-ese-nivel-299606.html" target="_blank" rel="noopener">Expreso, 16 oct: cota 2.123,09 y caudal del Paute</a></li>
+      <li><a href="https://www.larepublica.ec/blog/2026/10/16/mazar-a-ocho-metros-del-limite-el-sistema-electrico-entra-en-su-tramo-mas-critico/" target="_blank" rel="noopener">La República, 16 oct: río Coca 152 m³/s, consumo diario</a></li>
+      <li><a href="https://www.expreso.ec/economia-y-negocios/ecuador-importa-promedio-65-mw-colombia-sera-suficiente-evitar-cortes-luz-299679.html" target="_blank" rel="noopener">Expreso, 16 oct: importación media de 65 MW</a></li>
+      <li><a href="https://www.larepublica.ec/blog/2026/10/16/noboa-cconfirma-que-colombia-volvera-a-vender-energia-a-ecuador/" target="_blank" rel="noopener">La República, 16 oct: 132 MW a las 11:00</a></li>
+      <li><a href="https://www.expreso.ec/economia-y-negocios/demanda-electrica-ecuador-300-mw-mazar-sigue-presion-298280.html" target="_blank" rel="noopener">Expreso: cortes industriales ahorran ~300 MW</a></li>
+      <li><a href="https://www.expreso.ec/economia-y-negocios/cortes-energia-siete-dias-seguidos-impactan-9-000-empresas-ecuador-299399.html" target="_blank" rel="noopener">Expreso: 9.080 empresas en el esquema de cortes</a></li>
+      <li><a href="https://www.extra.ec/noticia/ecuador/asi-estan-mazar-molino-coca-codo-sinclair-nivel-embalses-caudal-164760.html" target="_blank" rel="noopener">Extra, 14 oct: 68,1 % hidro y 30,9 % térmica</a></li>
+      <li><a href="https://www.primicias.ec/economia/caudal-coca-codo-sinclair-generacion-energia-electricidad-cortes-luz-apagones-133620/" target="_blank" rel="noopener">Primicias: 50 MW por cada 10 m³/s en Coca Codo</a></li>
+      <li><a href="https://www.expreso.ec/ecuador/inamhi-advierte-lluvias-tormentas-ecuador-15-18-octubre-299506.html" target="_blank" rel="noopener">Expreso: advertencia del Inamhi 15–18 oct</a></li>
+      <li><a href="https://www.elcomercio.com/actualidad/ecuador/llovera-ciudad-pronostico-quito-guayaquil-localidades-ecuador/" target="_blank" rel="noopener">El Comercio: temperaturas de la Costa, 16 oct</a></li>
+      <li><a href="https://www.radiopichincha.com/embalse-mazar-pierde-casi-seis-metros-1-octubre/" target="_blank" rel="noopener">Radio Pichincha: cotas del 1 al 11 oct</a></li>
+      <li><a href="https://www.primicias.ec/economia/embalse-mazar-paute-agosto-compra-electricidad-colombia-estiaje-130124/" target="_blank" rel="noopener">Primicias: 300 millones de m³ útiles en Mazar</a></li>
+    </ul>
+  </section>
+</div>
+
+<script>
+/* Datos del día: se reemplazan con datos.json si existe junto a la página */
+let DATA = {
+  fecha: "2026-10-16T09:00:00-05:00",
+  etiqueta: "datos al viernes 16 oct 2026, 09:00",
+  cota: 2123.09,
+  historico: [["2026-10-01",2130.89],["2026-10-02",2131.01],["2026-10-04",2131.89],["2026-10-08",2128.77],["2026-10-09",2128.35],["2026-10-10",2126.44],["2026-10-11",2124.91],["2026-10-12",2124.99],["2026-10-13",2125.44],["2026-10-14",2125.01],["2026-10-15",2124.06],["2026-10-16",2123.09]],
+  hoy: {qMazar:23,wPaute:"inamhi",qCoca:155,wCoca:"inamhi",dBase:4400,tCosta:33,cut:300,imp:65,therm:1280,other:1250},
+  notas: {}
+};
+const COTA_CRIT = 2115, COTA_MAX = 2153;
+let COTA_HOY, START, HIST;
+function applyData(){
+  COTA_HOY = DATA.cota;
+  START = new Date(DATA.fecha);
+  const d0 = new Date(DATA.fecha.slice(0,10)+"T00:00:00");
+  HIST = DATA.historico.map(([f,c])=>[Math.round((new Date(f+"T00:00:00")-d0)/86400000), c]);
+}
+applyData();
+const HORIZON = 60;
+
+/* Curva cota–volumen: área que crece linealmente con la altura.
+   A(x)=a+b·x [millones m³/m], x = metros sobre 2.115.
+   Ajustada a V(38 m)=300 hm³ útiles y A(8 m)≈5,5 hm³/m (caída observada). */
+const CA = 3.758, CB = 0.2177;
+const volOf = x => CA*x + CB*x*x/2;
+const xOf = v => v<=0 ? 0 : (-CA + Math.sqrt(CA*CA + 2*CB*v))/CB;
+const VMAX = volOf(COTA_MAX-COTA_CRIT);
+
+const MW_PER_M3S_PAUTE = 9.0;    // ≈400 m³/MWh en la cascada
+const PAUTE_MAX = 1757;
+const AC_MW_PER_C = 50;
+
+function profile(kind, t, q0, target){
+  if(kind==="seco") return q0*Math.max(0.7, 1-0.01*t);
+  if(kind==="inamhi"){ const b0=Math.exp(-1.6); return q0*(1+0.45*Math.max(0,Math.exp(-((t-2)**2)/2.5)-b0)/(1-b0)); }
+  return q0 + (target-q0)*(1-Math.exp(-t/7));   // nino
+}
+function ccsMW(q){
+  let p = Math.min(5*q, 1200);
+  if(q>450) p *= 0.5;   // salida de unidades por sedimentos
+  return p;
+}
+
+function simulate(P){
+  const dt = 0.25;
+  let V = volOf(COTA_HOY-COTA_CRIT);
+  const daily=[]; let crossDay=null; let firstDay=null;
+  for(let step=0; step<=HORIZON/dt; step++){
+    const t = step*dt;
+    const qin = profile(P.wPaute, t, P.qMazar, 66);
+    const qcoca = profile(P.wCoca, t, P.qCoca, 280);
+    const rainF = Math.min(1.35, Math.max(0.8, ((qin/P.qMazar)+(qcoca/P.qCoca))/2));
+    const demand = P.dBase + AC_MW_PER_C*(P.tCosta-32) - P.cut;
+    const ccs = ccsMW(qcoca);
+    const other = P.other*rainF;
+    const req = demand - ccs - other - P.therm - P.imp;
+    let paute, deficit=0, qturb;
+    if(V>0){
+      paute = Math.min(Math.max(req,0), PAUTE_MAX);
+      deficit = Math.max(0, req-PAUTE_MAX);
+      qturb = paute/MW_PER_M3S_PAUTE;
+      const Vprev = V;
+      V += (qin-qturb)*86400*dt/1e6;
+      if(V>VMAX) V=VMAX;
+      if(V<=0 && crossDay===null){
+        crossDay = t + dt*(Vprev/(Vprev-V));
+        V=0;
+      }
+    } else {
+      const runRiver = qin*MW_PER_M3S_PAUTE;
+      paute = Math.min(Math.max(req,0), runRiver, PAUTE_MAX);
+      deficit = Math.max(0, req-paute);
+      qturb = paute/MW_PER_M3S_PAUTE;
+      V += Math.max(0,(qin-qturb))*86400*dt/1e6;
+    }
+    const rec = {t, cota: COTA_CRIT + xOf(V), qin, qcoca, demand, ccs, other, therm:P.therm, imp:P.imp, paute, deficit, req};
+    if(step===0) firstDay=rec;
+    if(Math.abs(t-Math.round(t))<1e-9) daily.push(rec);
+  }
+  return {daily, crossDay, firstDay};
+}
+
+/* ===== Controles ===== */
+const IDS = ["qMazar","wPaute","qCoca","wCoca","dBase","tCosta","cut","imp","therm","other"];
+let PRESETS;
+function buildPresets(){
+  const h = DATA.hoy;
+  PRESETS = {
+    hoy: {...h},
+    col450: {...h, imp:450},
+    sincortes: {...h, cut:0},
+    lluvia: {...h, qMazar:Math.round(h.qMazar*1.3), wPaute:"nino", qCoca:Math.round(h.qCoca*1.1), wCoca:"nino", tCosta:Math.max(28,h.tCosta-1)},
+    peor: {...h, qMazar:Math.max(5,Math.round(h.qMazar*0.75)), wPaute:"seco", qCoca:Math.max(80,Math.round(h.qCoca*0.9)), wCoca:"seco", dBase:h.dBase+100, tCosta:Math.min(36,h.tCosta+1.5), cut:Math.max(0,h.cut-100), imp:0, therm:h.therm-130, other:h.other-100}
+  };
+}
+function applyTexts(){
+  el("asof").textContent = "Ecuador · Sistema Nacional Interconectado · "+DATA.etiqueta;
+  const n = DATA.notas||{};
+  if(n.mazar) el("srcMazar").textContent = n.mazar;
+  if(n.coca) el("srcCoca").textContent = n.coca;
+  if(n.importacion) el("srcImp").textContent = n.importacion;
+  if(n.calibracion) el("calibTxt").textContent = n.calibracion;
+  el("volTxt").textContent = fmt(volOf(COTA_HOY-COTA_CRIT));
+}
+const fmt = (n,d=0)=> n.toLocaleString("es-EC",{minimumFractionDigits:d,maximumFractionDigits:d});
+const el = id => document.getElementById(id);
+
+function read(){
+  const P={};
+  IDS.forEach(id=>{const v=el(id).value; P[id]= (id==="wPaute"||id==="wCoca")? v : parseFloat(v);});
+  return P;
+}
+function setPreset(name){
+  const p=PRESETS[name];
+  IDS.forEach(id=>{el(id).value=p[id];});
+  document.querySelectorAll(".presets button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.p===name?"true":"false"));
+  render();
+}
+
+function addDays(d){ const x=new Date(START.getTime()+d*86400000); return x; }
+const DOW=["dom","lun","mar","mié","jue","vie","sáb"], MON=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const dlabel = d => `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
+
+/* ===== Render ===== */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function render(){
+  const P=read();
+  el("oqMazar").textContent = fmt(P.qMazar)+" m³/s";
+  el("oqCoca").textContent  = fmt(P.qCoca)+" m³/s · "+fmt(ccsMW(P.qCoca))+" MW";
+  el("odBase").textContent  = fmt(P.dBase)+" MW";
+  el("otCosta").textContent = fmt(P.tCosta,1)+" °C · "+(P.tCosta>=32?"+":"")+fmt(AC_MW_PER_C*(P.tCosta-32))+" MW";
+  el("ocut").textContent    = "−"+fmt(P.cut)+" MW";
+  el("oimp").textContent    = fmt(P.imp)+" MW";
+  el("otherm").textContent  = fmt(P.therm)+" MW";
+  el("oother").textContent  = fmt(P.other)+" MW";
+
+  const R = simulate(P);
+  const f = R.firstDay;
+  const drop = (f.paute/MW_PER_M3S_PAUTE - f.qin)*86400/1e6 / (CA+CB*(COTA_HOY-COTA_CRIT));
+
+  // Lectura principal
+  const st = el("status");
+  if(R.crossDay!==null){
+    el("days").innerHTML = (R.crossDay<10? fmt(R.crossDay,1) : fmt(R.crossDay))+"<small>días</small>";
+    const d = addDays(R.crossDay);
+    el("dateLine").textContent = "Mazar tocaría 2.115 msnm alrededor del "+dlabel(d)+" de "+d.getFullYear();
+    if(R.crossDay<10){st.className="status st-crit";st.textContent="crítico: menos de 10 días";}
+    else if(R.crossDay<25){st.className="status st-warn";st.textContent="alerta: menos de 25 días";}
+    else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
+  } else {
+    el("days").innerHTML = "+60<small>días</small>";
+    const last=R.daily[R.daily.length-1];
+    el("dateLine").textContent = "No toca 2.115 en 60 días · cota final "+fmt(last.cota,2)+" msnm";
+    st.className="status st-ok"; st.textContent="el embalse aguanta el horizonte";
+  }
+  el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
+  el("kPaute").textContent = fmt(f.paute);
+  // déficit al tocar 2.115: primer día posterior al cruce
+  let cutTxt="no aplica";
+  if(R.crossDay!==null){
+    const after = R.daily.find(r=>r.t>R.crossDay) || R.daily[R.daily.length-1];
+    const h = after.deficit/after.demand*24;
+    cutTxt = fmt(after.deficit)+" MW · ≈"+fmt(h,1)+" h/día";
+  }
+  el("kCut").textContent = cutTxt;
+
+  drawGauge(R);
+  drawChart(R);
+  drawBalance(f);
+  drawTable(R);
+}
+
+function drawGauge(R){
+  const svg=el("gauge");
+  const top=2155, bot=2105, y0=24, y1=276, X=110, W=90;
+  const y = c => y0 + (top-c)/(top-bot)*(y1-y0);
+  const in7 = R.daily[7].cota, in14 = R.daily[14].cota;
+  const ink=css("--ink"), muted=css("--muted"), water=css("--water"), soft=css("--water-soft"), crit=css("--crit"), line=css("--line");
+  let s="";
+  // escala
+  for(let c=2105;c<=2155;c+=5){
+    s+=`<line x1="${X-6}" x2="${X}" y1="${y(c)}" y2="${y(c)}" stroke="${muted}" stroke-width="1"/>`;
+    s+=`<text x="${X-10}" y="${y(c)+4}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="10" fill="${muted}">${fmt(c)}</text>`;
+  }
+  s+=`<rect x="${X}" y="${y0}" width="${W}" height="${y1-y0}" fill="none" stroke="${line}"/>`;
+  s+=`<rect x="${X}" y="${y(COTA_CRIT)}" width="${W}" height="${y1-y(COTA_CRIT)}" fill="${crit}" opacity=".18"/>`;
+  s+=`<rect x="${X}" y="${y(COTA_HOY)}" width="${W}" height="${y(COTA_CRIT)-y(COTA_HOY)}" fill="${water}" opacity=".85"/>`;
+  s+=`<rect x="${X}" y="${y(COTA_MAX)}" width="${W}" height="${y(COTA_HOY)-y(COTA_MAX)}" fill="${soft}" opacity=".6"/>`;
+  // marcas
+  const mark=(c,label,color,dash)=>{
+    s+=`<line x1="${X}" x2="${X+W+8}" y1="${y(c)}" y2="${y(c)}" stroke="${color}" stroke-width="2" ${dash?'stroke-dasharray="4 3"':''}/>`;
+    s+=`<text x="${X+W+12}" y="${y(c)+4}" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="${color}">${label}</text>`;
+  };
+  mark(COTA_MAX,"2.153 máx",muted,true);
+  mark(COTA_CRIT,"2.115 crítica",crit,false);
+  mark(COTA_HOY,"hoy "+fmt(COTA_HOY,2),ink,false);
+  if(Math.abs(in7-COTA_HOY)>0.6) mark(Math.max(in7,bot+1),"en 7 días "+fmt(in7,1),water,true);
+  if(Math.abs(in14-in7)>1.2) mark(Math.max(in14,bot+1),"en 14 días "+fmt(in14,1),water,true);
+  s+=`<text x="${X+W/2}" y="${(y(COTA_HOY)+y(COTA_CRIT))/2+4}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#fff">${fmt(volOf(COTA_HOY-COTA_CRIT),0)} hm³</text>`;
+  s+=`<text x="${X+W/2}" y="${y(2108)+4}" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="10" fill="${crit}">sedimentos</text>`;
+  svg.innerHTML=s;
+}
+
+function drawChart(R){
+  const svg=el("chart");
+  const L=56,Rr=20,T=16,B=40,W=760,H=340;
+  const dMin=Math.min(-15, ...HIST.map(h=>h[0])),dMax=HORIZON; const allC=HIST.map(h=>h[1]).concat([COTA_HOY]); const cMin=2108,cMax=Math.max(2134, Math.ceil((Math.max(...allC)+1)/4)*4+2);
+  const x=d=>L+(d-dMin)/(dMax-dMin)*(W-L-Rr);
+  const y=c=>T+(cMax-Math.max(cMin,Math.min(cMax,c)))/(cMax-cMin)*(H-T-B);
+  const ink=css("--ink"),muted=css("--muted"),line=css("--line"),water=css("--water"),crit=css("--crit"),soft=css("--water-soft");
+  let s="";
+  s+=`<rect x="${L}" y="${y(COTA_CRIT)}" width="${W-L-Rr}" height="${y(cMin)-y(COTA_CRIT)}" fill="${crit}" opacity=".10"/>`;
+  for(let c=2110;c<=cMax;c+=4){
+    s+=`<line x1="${L}" x2="${W-Rr}" y1="${y(c)}" y2="${y(c)}" stroke="${line}" stroke-width="1"/>`;
+    s+=`<text x="${L-8}" y="${y(c)+4}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="${muted}">${fmt(c)}</text>`;
+  }
+  for(let d=Math.ceil(dMin/15)*15; d<=dMax; d+=15){
+    const dt=addDays(d);
+    s+=`<line x1="${x(d)}" x2="${x(d)}" y1="${H-B}" y2="${H-B+5}" stroke="${muted}"/>`;
+    s+=`<text x="${x(d)}" y="${H-B+19}" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="${muted}">${dt.getDate()} ${MON[dt.getMonth()]}</text>`;
+  }
+  s+=`<line x1="${L}" x2="${W-Rr}" y1="${y(COTA_CRIT)}" y2="${y(COTA_CRIT)}" stroke="${crit}" stroke-width="2"/>`;
+  s+=`<text x="${W-Rr-4}" y="${y(COTA_CRIT)-6}" text-anchor="end" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="600" fill="${crit}">cota crítica 2.115</text>`;
+  s+=`<line x1="${x(0)}" x2="${x(0)}" y1="${T}" y2="${H-B}" stroke="${muted}" stroke-dasharray="3 3"/>`;
+  s+=`<text x="${x(0)+5}" y="${T+12}" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="${muted}">hoy</text>`;
+  // proyección con área
+  const pts=R.daily.map(r=>`${x(r.t).toFixed(1)},${y(r.cota).toFixed(1)}`);
+  s+=`<path d="M${x(0)},${y(cMin)} L${pts.join(" L")} L${x(dMax)},${y(cMin)} Z" fill="${soft}" opacity=".55"/>`;
+  s+=`<polyline points="${pts.join(" ")}" fill="none" stroke="${water}" stroke-width="2.5"/>`;
+  // histórico
+  s+=`<polyline points="${HIST.map(h=>`${x(h[0])},${y(h[1])}`).join(" ")}" fill="none" stroke="${ink}" stroke-width="1.5" opacity=".5"/>`;
+  HIST.forEach(h=>{ s+=`<circle cx="${x(h[0])}" cy="${y(h[1])}" r="3.5" fill="${ink}"/>`; });
+  // cruce
+  if(R.crossDay!==null){
+    const cx=x(R.crossDay), cy=y(COTA_CRIT);
+    s+=`<circle cx="${cx}" cy="${cy}" r="7" fill="${crit}"/>`;
+    const d=addDays(R.crossDay);
+    const anchor = cx > W-150 ? "end" : "start";
+    s+=`<text x="${cx+(anchor==="end"?-10:10)}" y="${cy+20}" text-anchor="${anchor}" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="600" fill="${crit}">${dlabel(d)}</text>`;
+  }
+  svg.innerHTML=s;
+}
+
+function drawBalance(f){
+  const cols = {ccs:css("--water"), other:"#3f9a8a", therm:css("--therm"), imp:css("--col"), paute:"#1f4f7a", def:css("--crit")};
+  const supply=[
+    ["Coca Codo",f.ccs,cols.ccs],["Otras hidro",f.other,cols.other],["Térmica",f.therm,cols.therm],
+    ["Colombia",f.imp,cols.imp],["Paute",f.paute,cols.paute],["Déficit",f.deficit,cols.def]
+  ];
+  const total=Math.max(f.demand, supply.reduce((a,s)=>a+s[1],0));
+  const bar = arr => arr.filter(s=>s[1]>0).map(s=>`<span style="width:${s[1]/total*100}%;background:${s[2]}" title="${s[0]}: ${fmt(s[1])} MW">${s[1]/total>0.07?fmt(s[1]):""}</span>`).join("");
+  el("bal").innerHTML = `
+    <div class="barrow"><span>Demanda<br><b class="num">${fmt(f.demand)} MW</b></span><div class="bar"><span style="width:${f.demand/total*100}%;background:${css("--crit")};opacity:.85">${fmt(f.demand)}</span></div></div>
+    <div class="barrow"><span>Oferta</span><div class="bar">${bar(supply)}</div></div>`;
+  el("legend").innerHTML = supply.map(s=>`<span><i style="background:${s[2]}"></i>${s[0]} <b class="num">${fmt(s[1])}</b></span>`).join("");
+}
+
+function drawTable(R){
+  let h=`<tr><th>Día</th><th style="text-align:right">Cota msnm</th><th style="text-align:right">Entra a Mazar</th><th style="text-align:right">Río Coca</th><th style="text-align:right">Paute MW</th><th style="text-align:right">Déficit MW</th></tr>`;
+  R.daily.slice(0,11).forEach(r=>{
+    const d=addDays(r.t);
+    const c = r.cota<=COTA_CRIT+0.01 ? `style="color:var(--crit);font-weight:600"` : "";
+    h+=`<tr><td>${dlabel(d)}</td><td class="n" ${c}>${fmt(r.cota,2)}</td><td class="n">${fmt(r.qin)} m³/s</td><td class="n">${fmt(r.qcoca)} m³/s</td><td class="n">${fmt(r.paute)}</td><td class="n" ${r.deficit>0?'style="color:var(--crit)"':''}>${fmt(r.deficit)}</td></tr>`;
+  });
+  el("tbl").innerHTML=h;
+}
+
+IDS.forEach(id=>el(id).addEventListener("input",()=>{
+  document.querySelectorAll(".presets button").forEach(b=>b.setAttribute("aria-pressed","false"));
+  render();
+}));
+document.querySelectorAll(".presets button").forEach(b=>b.addEventListener("click",()=>setPreset(b.dataset.p)));
+try{ matchMedia("(prefers-color-scheme: dark)").addEventListener("change",render); }catch(e){}
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+buildPresets(); applyTexts(); setPreset("hoy");
+fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
+  if(!j||!j.cota) return;
+  DATA = j; applyData(); buildPresets(); applyTexts(); setPreset("hoy");
+}).catch(()=>{});
+</script>
+
+</body>
+</html>
