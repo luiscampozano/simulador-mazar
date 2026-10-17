@@ -1,0 +1,57 @@
+name: Robot cota Mazar y publicación
+
+on:
+  schedule:
+    # cada 2 horas, minuto 17 (hora UTC; Ecuador = UTC-5)
+    - cron: "17 */2 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  actualizar-y-publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Leer cota de Celec Sur
+        if: github.event_name != 'push'
+        run: python3 scripts/robot_cota.py
+
+      - name: Guardar cambios
+        if: github.event_name != 'push'
+        run: |
+          if git diff --quiet datos.json; then
+            echo "Sin cambios"
+          else
+            git config user.name "robot-cota"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            COTA=$(python3 -c "import json;print(json.load(open('datos.json'))['cota'])")
+            git commit -am "Robot: cota ${COTA} msnm"
+            if git pull --rebase origin main; then
+              git push
+            else
+              git rebase --abort
+              git reset --hard origin/main
+              echo "Otro cambio llegó al mismo tiempo; se reintenta en la próxima corrida"
+            fi
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4
