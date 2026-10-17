@@ -6,8 +6,9 @@ Actualiza datos.json con datos que se publican en formato legible por máquina:
     demanda nacional y energía de Coca Codo Sinclair, cada media hora.
   - Open-Meteo: temperatura máxima en Guayaquil y lluvia prevista en las
     cuencas del Paute y del Coca.
-Con esos datos recalibra "otras hidroeléctricas" para que el modelo reproduzca
-la variación real de la cota en las últimas 24 horas.
+"Otras hidroeléctricas" es la generación medida por Cenace de todas las centrales
+hidráulicas menos Coca Codo y el complejo Paute (Mazar, Molino, Sopladora). Paute
+queda como la central que cubre lo que falta, igual que en la operación real.
 
 Lo que no se publica como dato (los cortes a empresas) lo fija Claude en el
 bloque "manual" de datos.json. El robot respeta siempre ese bloque.
@@ -140,8 +141,28 @@ def cenace():
         fecha_perfil = datetime(int(md.group(3)), MESES_LARGO.index(md.group(2).lower()) + 1, int(md.group(1))).date()
         perfil = filas(curvas[1])
     mwh = {tr["name"].strip(): float(tr["y"][0]) for tr in plantas if isinstance(tr.get("y"), list) and tr["y"]}
+    # Energía hidráulica total (tortas) y por central (barras): [0] = hoy, [1] = último día completo
+    tortas = [p for p in plots if any("HIDROELÉCTRICA" in (tr.get("labels") or []) for tr in p)]
+    barras = [p for p in plots if any(tr.get("name") == "Coca Codo" for tr in p)]
+    def hidro_total(torta):
+        tr = torta[0]
+        return float(tr["values"][tr["labels"].index("HIDROELÉCTRICA")])
+    def por_central(barra):
+        return {tr["name"].strip(): float(tr["y"][0]) for tr in barra if isinstance(tr.get("y"), list) and tr["y"]}
+    energia = {}
+    if tortas and barras:
+        energia["hoy"] = {"hidro": hidro_total(tortas[0]), **por_central(barras[0])}
+    if len(tortas) > 1 and len(barras) > 1:
+        energia["perfil"] = {"hidro": hidro_total(tortas[1]), **por_central(barras[1])}
+    mwh["_energia"] = energia
     puntos = {f"{fecha.isoformat()}T{hh}": f for hh, f in hoy_filas.items()}
     return fecha, puntos, mwh, perfil, fecha_perfil
+
+
+def otras_mw(e, horas):
+    """MW medios de las hidroeléctricas que no son Coca Codo ni el complejo Paute."""
+    paute = sum(e.get(k, 0.0) for k in ("Paute", "Sopladora", "Mazar"))
+    return (e["hidro"] - e.get("Coca Codo", 0.0) - paute) / horas, paute / horas
 
 
 CLAVE = {"Hidráulica": "h", "Térmica": "t", "Importación": "i", "Renovable": "r",
@@ -263,6 +284,7 @@ def main():
     D = None
     try:
         fecha_rt, puntos, mwh, perfil, fecha_perfil = cenace()
+        energia = mwh.pop("_energia", {})
         if fecha_rt != ahora.date():
             raise ValueError(f"la página de Cenace muestra el {fecha_rt}, no hoy")
         try:
@@ -308,6 +330,19 @@ def main():
             hoy["qCoca"] = int(clamp(round(ccs_mw / 5), 80, 450))
             notas["coca"] = (f"Coca Codo generó en promedio {ccs_mw:.0f} MW ({base[0]}, Cenace, automático), "
                              f"equivalente a ~{hoy['qCoca']} m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.")
+        # Otras hidroeléctricas: hoy si ya hay 12 h de datos; si no, el último día completo de Cenace
+        horas_hoy = len(puntos) / 2.0
+        if "hoy" in energia and horas_hoy >= 12:
+            otras, paute_real = otras_mw(energia["hoy"], horas_hoy); ref = f"hoy, {horas_hoy:.0f} h"
+        elif "perfil" in energia:
+            otras, paute_real = otras_mw(energia["perfil"], 24.0); ref = f"día completo {fecha_perfil}"
+        else:
+            otras = None
+        if otras is not None:
+            hoy["other"] = int(clamp(r10(otras), 500, 2200))
+            notas["otras"] = (f"Generación medida de las demás hidroeléctricas: {otras:.0f} MW ({ref}, Cenace, automático). "
+                              f"El complejo Paute generó {paute_real:.0f} MW en ese mismo periodo.")
+            log(f"Otras hidro {otras:.0f} MW, Paute real {paute_real:.0f} MW ({ref})")
         notas["importacion"] = (f"Promedio de las últimas 24 h: {prom['i']:.0f} MW (Cenace, automático). "
                                 "Límite de la interconexión: 450 MW.")
         notas["termica"] = (f"Promedio de las últimas 24 h: {prom['t']:.0f} MW térmicos + {prom['r']:.0f} MW "
@@ -351,26 +386,22 @@ def main():
         notas["demanda"] = (f"Demanda atendida en las últimas 24 h: {D:.0f} MW medios (Cenace). Sin cortes ni calor "
                             f"extra sería ~{hoy['dBase']} MW. Récord instantáneo de 2026: 5.634 MW.")
 
-    # --- Calibración: "otras hidroeléctricas" de modo que el modelo reproduzca la variación de 24 h
-    if cota_t is not None and cota_24 is not None and q24 is not None and D is not None:
-        caida = cota_24 - cota_t
-        x = cota_t - 2115
+    # --- Control: ritmo que estima el modelo frente a la variación real de las últimas 24 h
+    if cota_t is not None:
+        x = datos["cota"] - 2115
         A = 3.758 + 0.2177 * x
-        neto = caida * A * 1e6 / 86400
-        paute = clamp(9 * (q24 + neto), 0, 1757)
         demanda = hoy["dBase"] + 50 * (hoy["tCosta"] - 32) - hoy["cut"]
         ccs = min(5 * hoy["qCoca"], 1200)
-        otras = demanda - ccs - hoy["therm"] - hoy["imp"] - paute
-        ajustado = int(clamp(r10(otras), 500, 2200))
-        hoy["other"] = ajustado
-        verbo = "bajó" if caida >= 0 else "subió"
-        notas["calibracion"] = (f"En las últimas 24 h Mazar {verbo} {abs(caida):.2f} m; con los valores de \"Hoy\" el "
-                                f"modelo parte de ese mismo ritmo (Paute ≈ {paute:.0f} MW). Calibración automática.")
-        if ajustado != r10(otras):
-            notas["calibracion"] += f" Aviso: el ajuste pedía {otras:.0f} MW en otras hidro y se limitó a {ajustado}."
-        notas["otras"] = (f"Calculado por el robot para cerrar el balance: {ajustado} MW "
-                          "(Agoyán, San Francisco, Minas San Francisco, Delsitanisagua y menores).")
-        log(f"Calibración: caída {caida:.2f} m/24 h, Paute {paute:.0f} MW, otras {otras:.0f} → {ajustado}")
+        paute = clamp(demanda - ccs - hoy["other"] - hoy["therm"] - hoy["imp"], 0, 1757)
+        ritmo = (paute / 9 - hoy["qMazar"]) * 86400 / 1e6 / A
+        txt = (f"Con los valores de \"Hoy\", Paute debe aportar ≈ {paute:.0f} MW y Mazar "
+               f"{'baja' if ritmo >= 0 else 'sube'} ≈ {abs(ritmo):.2f} m/día.")
+        if cota_24 is not None:
+            real = cota_24 - cota_t
+            txt += (f" En las últimas 24 h lo real fue {'una bajada' if real >= 0 else 'una subida'} de {abs(real):.2f} m: "
+                    "un solo día depende mucho de cuánto se hizo operar a Paute.")
+        notas["calibracion"] = txt
+        log(f"Control: modelo {ritmo:+.2f} m/día de bajada, Paute requerido {paute:.0f} MW")
 
     if manual.get("nota_cortes"):
         notas["cortes"] = manual["nota_cortes"]
