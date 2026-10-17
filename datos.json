@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-10-17T08:00:00-05:00",
-  "etiqueta": "datos al sáb 17 oct 2026, 08:00 (actualización automática)",
-  "cota": 2123.71,
+  "fecha": "2026-10-17T09:00:00-05:00",
+  "etiqueta": "datos al sáb 17 oct 2026, 09:00 (actualización automática)",
+  "cota": 2123.76,
   "historico": [
     [
       "2026-10-01",
@@ -53,15 +53,15 @@
     ],
     [
       "2026-10-17",
-      2123.71
+      2123.76
     ]
   ],
   "hoy": {
-    "qMazar": 37,
+    "qMazar": 38,
     "wPaute": "inamhi",
-    "qCoca": 174,
+    "qCoca": 177,
     "wCoca": "inamhi",
-    "dBase": 4390,
+    "dBase": 4400,
     "tCosta": 32.5,
     "cut": 300,
     "imp": 5,
@@ -69,45 +69,45 @@
     "other": 1210
   },
   "notas": {
-    "mazar": "Promedio de las últimas 24 h: 37 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Coca Codo generó en promedio 868 MW (2026-10-17, Cenace, automático), equivalente a ~174 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
+    "mazar": "Promedio de las últimas 24 h: 38 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
+    "coca": "Coca Codo generó en promedio 887 MW (2026-10-17, Cenace, automático), equivalente a ~177 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
     "importacion": "Promedio de las últimas 24 h: 3 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
-    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 780 MW y Mazar baja ≈ 0.76 m/día. En las últimas 24 h lo real fue una subida de 0.59 m: un solo día depende mucho de cuánto se hizo operar a Paute.",
-    "termica": "Promedio de las últimas 24 h: 1216 MW térmicos + 29 MW renovables no convencionales (Cenace, automático).",
+    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 775 MW y Mazar baja ≈ 0.73 m/día. En las últimas 24 h lo real fue una subida de 0.67 m: un solo día depende mucho de cuánto se hizo operar a Paute.",
+    "termica": "Promedio de las últimas 24 h: 1222 MW térmicos + 29 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-10-17: 32.6 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 23 mm en los últimos 7 días y 86 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 85 mm en los últimos 7 días y 67 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Demanda atendida en las últimas 24 h: 4120 MW medios (Cenace). Sin cortes ni calor extra sería ~4390 MW. Récord instantáneo de 2026: 5.634 MW.",
+    "demanda": "Demanda atendida en las últimas 24 h: 4121 MW medios (Cenace). Sin cortes ni calor extra sería ~4400 MW. Récord instantáneo de 2026: 5.634 MW.",
     "otras": "Generación medida de las demás hidroeléctricas: 1209 MW (día completo 2026-10-15, Cenace, automático). El complejo Paute generó 979 MW en ese mismo periodo.",
     "cortes": "Desde el 12 oct, ~9.080 empresas de alto y medio voltaje con desconexiones por turnos; ahorro medido ~300 MW (Cámara de Energía). Valor fijado por Claude según noticias."
   },
   "robot": {
-    "ultima_lectura": "2026-10-17T08:00:00-05:00",
-    "caudal_entrada_24h": 37,
-    "variacion_cota_24h": 0.59,
+    "ultima_lectura": "2026-10-17T09:00:00-05:00",
+    "caudal_entrada_24h": 38,
+    "variacion_cota_24h": 0.67,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
         "ok": true,
-        "lectura": "2026-10-17T08:00:00-05:00"
+        "lectura": "2026-10-17T09:00:00-05:00"
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-17T08:00",
-        "medias_horas_propias": 17,
+        "ultimo_dato": "2026-10-17T09:30",
+        "medias_horas_propias": 20,
         "completadas_con_dia": "2026-10-15"
       },
       "openmeteo": {
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-17T08:25-05:00",
+    "ultima_ejecucion": "2026-10-17T09:40-05:00",
     "registro": [
-      "Celec: cota 2123.74 a las 08:00; hace 24 h 2123.155; caudal 24 h 37.25994054833333",
+      "Celec: cota 2123.76 a las 09:00; hace 24 h 2123.092; caudal 24 h 37.661752917083334",
       "Otras hidro 1209 MW, Paute real 979 MW (día completo 2026-10-15)",
-      "Cenace: demanda 4120, térmica 1216, importación 3, hidro 2871 MW (17 medias horas propias, 31 del perfil del 2026-10-15)",
+      "Cenace: demanda 4121, térmica 1222, importación 3, hidro 2867 MW (20 medias horas propias, 28 del perfil del 2026-10-15)",
       "Open-Meteo: Guayaquil 32.6 °C; Paute 23/86 mm → inamhi; Coca 85/67 mm → inamhi",
-      "Control: modelo +0.76 m/día de bajada, Paute requerido 780 MW"
+      "Control: modelo +0.73 m/día de bajada, Paute requerido 775 MW"
     ]
   },
   "manual": {
