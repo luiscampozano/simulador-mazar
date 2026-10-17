@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-10-16T09:00:00-05:00",
-  "etiqueta": "datos al viernes 16 oct 2026, 09:00",
-  "cota": 2123.09,
+  "fecha": "2026-10-17T07:00:00-05:00",
+  "etiqueta": "cota al sáb 17 oct 2026, 07:00 (lectura automática de Celec Sur)",
+  "cota": 2123.72,
   "historico": [
     [
       "2026-10-01",
@@ -50,10 +50,14 @@
     [
       "2026-10-16",
       2123.09
+    ],
+    [
+      "2026-10-17",
+      2123.72
     ]
   ],
   "hoy": {
-    "qMazar": 23,
+    "qMazar": 36,
     "wPaute": "inamhi",
     "qCoca": 155,
     "wCoca": "inamhi",
@@ -65,9 +69,15 @@
     "other": 1250
   },
   "notas": {
-    "mazar": "Hoy bajó de 29 a 17 m³/s en la madrugada (Celec Sur). Promedio histórico de octubre: 66 m³/s.",
+    "mazar": "Promedio de las últimas 24 h: 36 m³/s (panel Celec Sur, lectura de las 07:00). Promedio histórico de octubre: 66 m³/s.",
     "coca": "152 m³/s a las 06:00 de hoy, el más bajo desde marzo. Necesita 240–250 m³/s para 1.200 MW continuos.",
     "importacion": "Se reanudó hoy. Promedio de 65 MW hasta las 14:00 (Cenace), 132 MW a las 11:00. Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Mazar baja ≈ 1,0 m/día. Lo real del 15 al 16 de octubre fue 0,97 m."
+  },
+  "robot": {
+    "ultima_lectura": "2026-10-17T07:00:00-05:00",
+    "caudal_entrada_24h": 36,
+    "variacion_cota_24h": 0.49,
+    "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)"
   }
 }
