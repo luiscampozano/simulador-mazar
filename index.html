@@ -142,6 +142,22 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     </div>
   </section>
 
+  <section class="card" id="probCard">
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
+      <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
+      <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
+        <option value="2120">2.120 m · zona de racionamiento</option>
+        <option value="2115">2.115 m · nivel mínimo</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:10px 0 4px">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--water);margin-right:6px"></span>con la lluvia pronosticada</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
+    </div>
+    <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
+    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de arriba (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es aproximadamente donde empezó el racionamiento fuerte en 2023 (~2.121 m) y 2024 (~2.118 m). No incluye decisiones de operación futuras.</p>
+  </section>
+
   <section class="card">
     <div style="display:grid;gap:6px">
       <h2>Escenarios rápidos</h2>
@@ -241,22 +257,6 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
   </section>
 
-  <section class="card" id="probCard">
-    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
-      <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
-      <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
-        <option value="2120">2.120 m · zona de racionamiento</option>
-        <option value="2115">2.115 m · nivel mínimo</option>
-      </select>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:10px 0 4px">
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--water);margin-right:6px"></span>con la lluvia pronosticada</span>
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
-    </div>
-    <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
-    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de arriba (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es aproximadamente donde empezó el racionamiento fuerte en 2023 (~2.121 m) y 2024 (~2.118 m). No incluye decisiones de operación futuras.</p>
-  </section>
-
   <section class="card">
     <div style="display:grid;gap:6px">
       <h2>Cómo se cubre la demanda hoy</h2>
@@ -304,7 +304,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
-<script src="modelo.js"></script>
+<script src="modelo.js?v=20261018b"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -476,7 +476,8 @@ function render(){
 function drawProb(P){
   const M = DATA.modelo || {};
   const box = el("probBars");
-  if(!M.ratios_percentiles){ el("probCard").hidden = true; return; }
+  if(!M.ratios_percentiles || !ModeloMazar.probabilidades){ el("probCard").hidden = true; return; }
+  el("probCard").hidden = false;
   const u = parseFloat(el("probUmbral").value);
   const Pa = {...P, wPaute:"auto", wCoca:"auto"};
   const dem = {qMazar:Pa.qMazar, qCoca:Pa.qCoca, wPaute:"auto", wCoca:"auto", demanda:Pa.dBase + AC_MW_PER_C*(Pa.tCosta-32), cut:Pa.cut, imp:Pa.imp, therm:Pa.therm, other:Pa.other};
