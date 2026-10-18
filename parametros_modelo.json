@@ -1,13 +1,13 @@
 {
-  "calibrado": "2026-10-17",
+  "calibrado": "2026-10-18",
   "historial": {
     "desde": "2023-01-01",
-    "hasta": "2026-10-16",
-    "dias": 1385
+    "hasta": "2026-10-17",
+    "dias": 1386
   },
   "curva_mazar": {
-    "a": 3.6654,
-    "b": 0.12477
+    "a": 3.6647,
+    "b": 0.12479
   },
   "eficiencia_mazar": 0.845,
   "k_molino_sopladora": 9.618,
@@ -20,41 +20,41 @@
     ]
   },
   "caudal_coef": [
-    0.01219,
-    0.66701,
-    0.2668,
-    0.02645,
-    0.01909,
-    -0.00525,
-    0.00921,
-    -0.01481
+    0.01152,
+    0.66691,
+    0.26691,
+    0.02647,
+    0.01899,
+    -0.00518,
+    0.00927,
+    -0.01479
   ],
-  "sesgo_lluvia_pronostico": 0.723,
+  "sesgo_lluvia_pronostico": 0.722,
   "factor_dia_semana_lun_dom": [
-    0.9943,
+    0.9942,
     1.0582,
-    1.0665,
+    1.049,
     1.0773,
-    1.1005,
-    0.9509,
-    0.7524
+    1.1004,
+    0.9669,
+    0.754
   ],
   "rango_cuantiles": {
     "7": [
-      0.589,
-      1.214
+      0.588,
+      1.213
     ],
     "14": [
-      0.585,
-      1.215
+      0.584,
+      1.213
     ],
     "21": [
       0.559,
-      1.164
+      1.165
     ],
     "30": [
-      0.482,
-      1.231
+      0.481,
+      1.229
     ]
   },
   "retrospectiva": {
@@ -66,19 +66,19 @@
     },
     "14": {
       "error_medio_m": 3.79,
-      "sesgo_m": -1.33,
+      "sesgo_m": -1.34,
       "mediana_real_vs_pred": 0.81,
       "casos": 80
     },
     "21": {
-      "error_medio_m": 5.74,
-      "sesgo_m": -2.26,
+      "error_medio_m": 5.75,
+      "sesgo_m": -2.27,
       "mediana_real_vs_pred": 0.81,
       "casos": 73
     },
     "30": {
       "error_medio_m": 8.16,
-      "sesgo_m": -3.84,
+      "sesgo_m": -3.86,
       "mediana_real_vs_pred": 0.75,
       "casos": 71
     }
@@ -86,19 +86,19 @@
   "rango_cuantiles_caudal_bajo": {
     "7": [
       0.761,
-      1.235
+      1.234
     ],
     "14": [
-      0.649,
-      1.304
+      0.648,
+      1.301
     ],
     "21": [
       0.7,
-      1.164
+      1.165
     ],
     "30": [
-      0.608,
-      1.241
+      0.607,
+      1.239
     ]
   },
   "retrospectiva_caudal_bajo": {
@@ -110,19 +110,19 @@
     },
     "14": {
       "error_medio_m": 3.21,
-      "sesgo_m": -0.8,
+      "sesgo_m": -0.81,
       "mediana_real_vs_pred": 0.85,
       "casos": 64
     },
     "21": {
       "error_medio_m": 4.93,
-      "sesgo_m": -1.44,
+      "sesgo_m": -1.46,
       "mediana_real_vs_pred": 0.85,
       "casos": 57
     },
     "30": {
-      "error_medio_m": 7.18,
-      "sesgo_m": -2.6,
+      "error_medio_m": 7.19,
+      "sesgo_m": -2.62,
       "mediana_real_vs_pred": 0.79,
       "casos": 53
     }

@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-10-17T23:00:00-05:00",
-  "etiqueta": "datos al sáb 17 oct 2026, 23:00 (actualización automática)",
-  "cota": 2123.2,
+  "fecha": "2026-10-18T01:00:00-05:00",
+  "etiqueta": "datos al dom 18 oct 2026, 01:00 (actualización automática)",
+  "cota": 2123.16,
   "historico": [
     [
       "2026-10-01",
@@ -54,46 +54,50 @@
     [
       "2026-10-17",
       2123.2
+    ],
+    [
+      "2026-10-18",
+      2123.16
     ]
   ],
   "hoy": {
-    "qMazar": 31,
+    "qMazar": 29,
     "wPaute": "auto",
     "qCoca": 167,
     "wCoca": "auto",
-    "dBase": 4630,
+    "dBase": 4500,
     "tCosta": 33.0,
     "cut": 300,
     "imp": 0,
     "therm": 1300,
-    "other": 1310
+    "other": 1250
   },
   "notas": {
-    "mazar": "Promedio de las últimas 24 h: 31 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
+    "mazar": "Promedio de las últimas 24 h: 29 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
     "coca": "Coca Codo generó en promedio 833 MW (2026-10-17, Cenace, automático), equivalente a ~167 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
     "importacion": "Promedio de las últimas 24 h: 2 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
-    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 889 MW y para eso Mazar suelta ≈ 69 m³/s mientras le entran 31: hoy baja ≈ 0,70 m/día. Promedio real de los últimos 7 días: 0,46 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1970,9 m, su nivel mínimo, y ya no puede ayudar.",
+    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 652 MW y para eso Mazar suelta ≈ 48 m³/s mientras le entran 29: hoy baja ≈ 0,35 m/día. Promedio real de los últimos 7 días: 0,25 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1971,0 m, su nivel mínimo, y ya no puede ayudar.",
     "termica": "Promedio de las últimas 24 h: 1264 MW térmicos + 33 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-10-18: 32.9 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
-    "lluviaPaute": "Cuenca del Paute: 23 mm en los últimos 7 días y 47 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "lluviaCoca": "Cuenca del Coca: 85 mm en los últimos 7 días y 67 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a la última semana: Paute generó en promedio 936 MW del 2026-10-10 al 2026-10-16 (Celec Sur). Demanda atendida en las últimas 24 h: 4130 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1306 MW (hoy, 24 h, Cenace, automático). El complejo Paute generó 697 MW en ese mismo periodo.",
+    "lluviaPaute": "Cuenca del Paute: 23 mm en los últimos 7 días y 51 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
+    "lluviaCoca": "Cuenca del Coca: 99 mm en los últimos 7 días y 45 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
+    "demanda": "Equivale a la última semana: Paute generó en promedio 864 MW del 2026-10-11 al 2026-10-17 (Celec Sur). Demanda atendida en las últimas 24 h: 4151 MW (Cenace).",
+    "otras": "Generación medida de las demás hidroeléctricas: 1246 MW (día completo 2026-10-16, Cenace, automático). El complejo Paute generó 693 MW en ese mismo periodo.",
     "cortes": "17 oct: dom 18 sin cortes a empresas; desde 19 oct AV1 lun–mié y MV mié–vie, 72 h/sem (CNEL/Expreso); ahorro ~300 MW (Cámara de Energía). Hogares: 17 oct 03–06h (Extra)"
   },
   "robot": {
-    "ultima_lectura": "2026-10-17T23:00:00-05:00",
-    "caudal_entrada_24h": 31,
-    "variacion_cota_24h": -0.27,
+    "ultima_lectura": "2026-10-18T01:00:00-05:00",
+    "caudal_entrada_24h": 29,
+    "variacion_cota_24h": -0.39,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
         "ok": true,
-        "lectura": "2026-10-17T23:00:00-05:00"
+        "lectura": "2026-10-18T01:00:00-05:00"
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-17T23:30",
+        "ultimo_dato": "2026-10-18T01:30",
         "medias_horas_propias": 48,
         "completadas_con_dia": null
       },
@@ -107,16 +111,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-17T23:43-05:00",
+    "ultima_ejecucion": "2026-10-18T01:50-05:00",
     "registro": [
-      "Celec: cota 2123.20 a las 23:00; hace 24 h 2123.47; caudal 24 h 31.079971027499997",
-      "Otras hidro 1306 MW, Paute real 697 MW (hoy, 24 h)",
-      "Cenace: demanda 4130, térmica 1264, importación 2, hidro 2831 MW (48 medias horas propias, 0 del perfil del 2026-10-16)",
-      "Open-Meteo: Guayaquil 32.9 °C; Paute 23/47 mm → inamhi; Coca 85/67 mm → inamhi",
-      "Física Paute: 12.74 MW por m³/s (10 días), Paute promedio 936 MW (7 días)",
-      "Caudal Mazar previsto: 31 → 38 m³/s en 7 días, 39 en 30 (lluvia prevista 7 días 49 mm)",
+      "Celec: cota 2123.16 a las 01:00; hace 24 h 2123.544; caudal 24 h 29.14765188375",
+      "Otras hidro 1246 MW, Paute real 693 MW (día completo 2026-10-16)",
+      "Cenace: demanda 4151, térmica 1264, importación 2, hidro 2852 MW (48 medias horas propias, 0 del perfil del 2026-10-16)",
+      "Open-Meteo: Guayaquil 32.9 °C; Paute 23/51 mm → inamhi; Coca 99/45 mm → inamhi",
+      "Física Paute: 13.09 MW por m³/s (10 días), Paute promedio 864 MW (7 días)",
+      "Caudal Mazar previsto: 29 → 38 m³/s en 7 días, 40 en 30 (lluvia prevista 7 días 55 mm)",
       "Río Coca (GloFAS): ×1.05 en 7 días, ×0.97 en 30",
-      "Modelo: 19.4 días hasta 2.115 (rango 11.094005321873398–21.950061480993426); hoy -0.70 m/día"
+      "Modelo: 22.5 días hasta 2.115 (rango 21.08622396011015–24.38367529701441); hoy -0.35 m/día"
     ]
   },
   "manual": {
@@ -130,21 +134,13 @@
     "tCosta_hasta": null
   },
   "fisica": {
-    "k_mw_por_m3s": 12.74,
-    "paute_prom_mw": 936,
+    "k_mw_por_m3s": 13.09,
+    "paute_prom_mw": 864,
     "dias_k": 10,
     "dias_p": 7,
-    "desde": "2026-10-07",
-    "hasta": "2026-10-16",
+    "desde": "2026-10-08",
+    "hasta": "2026-10-17",
     "detalle": [
-      {
-        "dia": "2026-10-07",
-        "paute_mw": 1333,
-        "caudal": 23.0,
-        "cota": 2130.07,
-        "variacion": -1.2,
-        "salida": 123.0
-      },
       {
         "dia": "2026-10-08",
         "paute_mw": 1480,
@@ -216,14 +212,22 @@
         "cota": 2123.52,
         "variacion": -0.01,
         "salida": 32.4
+      },
+      {
+        "dia": "2026-10-17",
+        "paute_mw": 706,
+        "caudal": 30.0,
+        "cota": 2123.17,
+        "variacion": -0.35,
+        "salida": 52.6
       }
     ],
-    "actualizado": "2026-10-17T23:43-05:00"
+    "actualizado": "2026-10-18T01:50-05:00"
   },
   "modelo": {
     "curva_mazar": {
-      "a": 3.6654,
-      "b": 0.12477
+      "a": 3.6647,
+      "b": 0.12479
     },
     "eficiencia_mazar": 0.845,
     "k_molino_sopladora": 9.618,
@@ -238,19 +242,19 @@
     "rango_cuantiles": {
       "7": [
         0.761,
-        1.235
+        1.234
       ],
       "14": [
-        0.649,
-        1.304
+        0.648,
+        1.301
       ],
       "21": [
         0.7,
-        1.164
+        1.165
       ],
       "30": [
-        0.608,
-        1.241
+        0.607,
+        1.239
       ]
     },
     "retrospectiva": {
@@ -262,106 +266,106 @@
       },
       "14": {
         "error_medio_m": 3.21,
-        "sesgo_m": -0.8,
+        "sesgo_m": -0.81,
         "mediana_real_vs_pred": 0.85,
         "casos": 64
       },
       "21": {
         "error_medio_m": 4.93,
-        "sesgo_m": -1.44,
+        "sesgo_m": -1.46,
         "mediana_real_vs_pred": 0.85,
         "casos": 57
       },
       "30": {
-        "error_medio_m": 7.18,
-        "sesgo_m": -2.6,
+        "error_medio_m": 7.19,
+        "sesgo_m": -2.62,
         "mediana_real_vs_pred": 0.79,
         "casos": 53
       }
     },
-    "calibrado": "2026-10-17",
+    "calibrado": "2026-10-18",
     "historial": {
       "desde": "2023-01-01",
-      "hasta": "2026-10-16",
-      "dias": 1385
+      "hasta": "2026-10-17",
+      "dias": 1386
     },
-    "diaSemana0": 6,
+    "diaSemana0": 0,
     "rango_base": "caudal bajo",
-    "amaluzaCota": 1970.92,
-    "amaluzaRitmo": 0.605,
+    "amaluzaCota": 1971.01,
+    "amaluzaRitmo": 1.025,
     "amaluzaVolumen": 0.0,
     "deltaDia": [
-      -231.8,
-      -5.3,
-      54.5,
-      62.2,
-      72.4,
-      94.1,
-      -46.0
+      -212.5,
+      -5.0,
+      50.3,
+      42.3,
+      66.8,
+      86.7,
+      -28.6
     ],
     "cutDias": null,
     "serieMazar": [
       1.0,
-      0.9348,
-      1.0952,
-      1.3898,
-      1.3524,
-      1.349,
-      1.3281,
-      1.2167,
-      1.2402,
-      1.2385,
-      1.2561,
-      1.2951,
-      1.2516,
-      1.2636,
-      1.2529,
-      1.221,
-      1.2139,
-      1.2067,
-      1.1948,
-      1.1857,
-      1.1786,
-      1.1746,
-      1.1753,
-      1.1804,
-      1.1944,
-      1.2142,
-      1.2263,
-      1.2334,
-      1.2406,
-      1.2488,
-      1.2633,
-      1.2772,
-      1.2878,
-      1.3031,
-      1.3171,
-      1.3268,
-      1.3372,
-      1.346,
-      1.3536,
-      1.3635,
-      1.3732,
-      1.383,
-      1.3888,
-      1.3955,
-      1.4035,
-      1.4112,
-      1.4204,
-      1.4305,
-      1.4405,
-      1.4496,
-      1.4595,
-      1.4683,
-      1.4756,
-      1.4823,
-      1.4866,
-      1.4912,
-      1.496,
-      1.4987,
-      1.5042,
-      1.5122,
-      1.5186
+      1.1708,
+      1.4831,
+      1.4427,
+      1.4393,
+      1.4155,
+      1.2909,
+      1.3215,
+      1.3213,
+      1.3514,
+      1.4063,
+      1.3589,
+      1.3894,
+      1.3794,
+      1.331,
+      1.3195,
+      1.3078,
+      1.2921,
+      1.2796,
+      1.2686,
+      1.2619,
+      1.2612,
+      1.2657,
+      1.28,
+      1.3008,
+      1.3135,
+      1.3209,
+      1.3285,
+      1.3373,
+      1.3527,
+      1.3678,
+      1.3793,
+      1.3959,
+      1.411,
+      1.4216,
+      1.4329,
+      1.4424,
+      1.4506,
+      1.4616,
+      1.4721,
+      1.483,
+      1.4895,
+      1.4968,
+      1.5057,
+      1.5138,
+      1.5233,
+      1.5338,
+      1.5441,
+      1.5535,
+      1.5638,
+      1.5729,
+      1.5806,
+      1.5875,
+      1.592,
+      1.5968,
+      1.6019,
+      1.6047,
+      1.6106,
+      1.6191,
+      1.6259,
+      1.6314
     ],
     "serieCoca": [
       1.0,
@@ -426,14 +430,14 @@
       1.3169,
       1.2458
     ],
-    "serie_fecha": "2026-10-17",
+    "serie_fecha": "2026-10-18",
     "prediccion": {
-      "dias": 19.4,
+      "dias": 22.5,
       "rango": [
-        11.1,
-        22.0
+        21.1,
+        24.4
       ],
-      "ritmo_hoy_m_dia": -0.7
+      "ritmo_hoy_m_dia": -0.35
     }
   }
 }
