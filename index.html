@@ -128,6 +128,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <span class="eyebrow">Días hasta 2.115 msnm</span>
       <div class="big num" id="days">–</div>
       <div id="dateLine" style="font-size:16px;font-weight:500"></div>
+      <div id="rangeLine" style="font-size:13px;color:var(--muted);max-width:46ch;line-height:1.4"></div>
       <span class="status" id="status">calculando</span>
       <div class="kpis">
         <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
@@ -168,6 +169,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         <div class="ctrl">
           <div class="top"><label for="wPaute">Pronóstico cuenca del Paute</label></div>
           <select id="wPaute">
+            <option value="auto">Pronóstico calibrado (automático)</option>
             <option value="seco">Seco: el estiaje se profundiza</option>
             <option value="inamhi">Inamhi: lluvias 16–18 oct, luego estiaje</option>
             <option value="nino">Lluvioso: El Niño activa la cuenca</option>
@@ -182,6 +184,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         <div class="ctrl">
           <div class="top"><label for="wCoca">Pronóstico cuenca del Coca (Amazonía norte)</label></div>
           <select id="wCoca">
+            <option value="auto">Pronóstico GloFAS del río Coca (automático)</option>
             <option value="seco">Seco: sigue bajando</option>
             <option value="inamhi">Inamhi: aumento gradual desde el 15 oct</option>
             <option value="nino">Lluvioso: vuelve a niveles de septiembre</option>
@@ -255,14 +258,15 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   <section class="card">
     <h2>Cómo calcula el modelo</h2>
     <div class="facts">
-      <p><b>1. Demanda neta.</b> Demanda sin cortes + 50 MW por cada °C sobre 32 °C en la Costa − ahorro por cortes a empresas. El valor inicial se ajusta para que Paute genere lo mismo que su promedio real de los últimos 7 días, así un fin de semana no distorsiona la proyección.</p>
+      <p><b>1. Demanda neta.</b> Demanda sin cortes + 50 MW por cada °C sobre 32 °C en la Costa − ahorro por cortes a empresas. El valor inicial se ajusta para que Paute genere lo mismo que su promedio real de los últimos 7 días, y luego varía según el día de la semana como lo ha hecho Paute en los últimos 6 meses (los domingos genera bastante menos).</p>
       <p><b>2. Lo que no es Paute.</b> Coca Codo genera 5 MW por cada m³/s (240 m³/s ≈ 1.200 MW, su tope continuo); sobre 450 m³/s se recorta a la mitad por sedimentos. Se suman térmica, otras hidroeléctricas y Colombia.</p>
       <p><b>3. Lo que se le pide a Paute.</b> La diferencia, con tope en 1.757 MW instalados. La cascada Mazar–Molino–Sopladora genera <span id="kTxt">unos 9 MW por cada m³/s que sale de Mazar</span></p>
-      <p><b>4. El embalse.</b> Agua que sale menos agua que entra. Entre 2.115 y 2.153 msnm hay unos 300 millones de m³ útiles; el embalse es más angosto abajo, así que cada metro cerca del fondo equivale a menos agua (≈ 5,5 millones de m³ por metro en la cota actual). Con la cota de hoy quedan ≈ <span id="volTxt">37</span> millones de m³ útiles.</p>
-      <p><b>5. Al tocar 2.115.</b> Paute solo puede turbinar lo que trae el río. La diferencia es déficit, y el modelo lo traduce en horas de corte diarias equivalentes para todo el país.</p>
-      <p><b>6. Calibración.</b> <span id="calibTxt">Con los valores de "Hoy", Mazar baja ≈ 1,0 m/día. Lo real del 15 al 16 de octubre fue 0,97 m.</span></p>
+      <p><b>4. El embalse.</b> Agua que sale menos agua que entra. Entre 2.115 y 2.153 msnm hay unos 230 millones de m³; el embalse es más angosto abajo, así que cada metro cerca del fondo equivale a menos agua (<span id="curvaTxt">≈ 4,7 millones de m³ por metro en la cota actual</span>). Con la cota de hoy quedan ≈ <span id="volTxt">37</span> millones de m³ útiles.</p>
+      <p><b>5. El caudal de los próximos días.</b> Con "Pronóstico calibrado", el caudal que entra a Mazar sale de un modelo lluvia–caudal ajustado con 2023–2026: lluvia prevista por el modelo europeo ECMWF (corregida, porque en esta cuenca pronostica ≈ 40 % de más) y, desde el día 5, se mezcla poco a poco con la lluvia normal de la fecha. El río Coca sigue el pronóstico hidrológico GloFAS, y las demás hidroeléctricas siguen al río Coca.</p>
+      <p><b>6. Al tocar 2.115.</b> Paute solo puede turbinar lo que trae el río. La diferencia es déficit, y el modelo lo traduce en horas de corte diarias equivalentes para todo el país.</p>
+      <p><b>7. Control.</b> <span id="calibTxt">Con los valores de "Hoy", Mazar baja ≈ 1,0 m/día. Lo real del 15 al 16 de octubre fue 0,97 m.</span></p>
     </div>
-    <p class="note">Límites: el modelo trabaja con promedios diarios y no con la curva hora a hora; no incluye el pequeño embalse de Amaluza (ya por debajo de su referencia de 1.975 msnm), mantenimientos ni fallas de transmisión. La curva cota–volumen es una aproximación construida con los volúmenes publicados, no la tabla oficial de Celec. Bajo 2.115 msnm podrían existir otros 62 millones de m³ hasta la cota de diseño de 2.098, pero usarlos requiere estudios técnicos y el modelo no los cuenta.</p>
+    <p class="note">Qué tan exacto es: en pruebas con 136 fechas de época seca entre 2023 y 2026, conociendo cuánto generó Paute, el modelo erró en promedio 1,9 m a 7 días y 3,7 m a 14 días, sin sesgo. El rango probable bajo el número sale de esas pruebas. Lo que el modelo no puede saber son las decisiones de operación: en septiembre de 2024, al acercarse a 2.115, se racionó y Paute bajó de ~1.200 a ~225 MW, lo que alargó la llegada al mínimo. El robot guarda cada día su predicción y la compara con lo que pasó, y la calibración se repite cada día con el historial completo. Bajo 2.115 msnm podrían existir otros ~60 millones de m³ hasta la cota de diseño de 2.098, pero usarlos requiere estudios técnicos y el modelo no los cuenta.</p>
   </section>
 
   <section class="card">
@@ -284,6 +288,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
+<script src="modelo.js"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -305,66 +310,23 @@ function applyData(){
 applyData();
 const HORIZON = 60;
 
-/* Curva cota–volumen: área que crece linealmente con la altura.
-   A(x)=a+b·x [millones m³/m], x = metros sobre 2.115.
-   Ajustada a V(38 m)=300 hm³ útiles y A(8 m)≈5,5 hm³/m (caída observada). */
-const CA = 3.758, CB = 0.2177;
-const volOf = x => CA*x + CB*x*x/2;
-const xOf = v => v<=0 ? 0 : (-CA + Math.sqrt(CA*CA + 2*CB*v))/CB;
-const VMAX = volOf(COTA_MAX-COTA_CRIT);
-
-let MW_PER_M3S_PAUTE = 9.0;    // se reemplaza con datos.json → fisica (calculado con Celec Sur)
+/* El cálculo vive en modelo.js (compartido con el otro simulador) y se calibra cada día con el historial
+   de Celec Sur desde 2023: curva del embalse, agua que suelta Mazar por cada MW de Paute, aporte de la
+   cuenca entre Mazar y Amaluza, pronóstico de caudales y variación por día de la semana. */
+const volOf = x => ModeloMazar.volOf(x);
+const xOf = v => ModeloMazar.xOf(v);
+let MW_PER_M3S_PAUTE = 9.0;    // solo para textos de respaldo
 const PAUTE_MAX = 1757;
 const AC_MW_PER_C = 50;
-
-function profile(kind, t, q0, target){
-  if(kind==="seco") return q0*Math.max(0.7, 1-0.01*t);
-  if(kind==="inamhi"){ const b0=Math.exp(-1.6); return q0*(1+0.45*Math.max(0,Math.exp(-((t-2)**2)/2.5)-b0)/(1-b0)); }
-  return q0 + (target-q0)*(1-Math.exp(-t/7));   // nino
+const ccsMW = q => ModeloMazar.ccsMW(q);
+function contexto(){
+  const m = DATA.modelo || {};
+  return {cota: COTA_HOY, inicio: START, diaSemana0: m.diaSemana0, amaluzaCota: m.amaluzaCota, amaluzaRitmo: m.amaluzaRitmo,
+          deltaDia: m.deltaDia, cutDias: m.cutDias, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
 }
-function ccsMW(q){
-  let p = Math.min(5*q, 1200);
-  if(q>450) p *= 0.5;   // salida de unidades por sedimentos
-  return p;
-}
-
 function simulate(P){
-  const dt = 0.25;
-  let V = volOf(COTA_HOY-COTA_CRIT);
-  const daily=[]; let crossDay=null; let firstDay=null;
-  for(let step=0; step<=HORIZON/dt; step++){
-    const t = step*dt;
-    const qin = profile(P.wPaute, t, P.qMazar, 66);
-    const qcoca = profile(P.wCoca, t, P.qCoca, 280);
-    const rainF = Math.min(1.35, Math.max(0.8, ((qin/P.qMazar)+(qcoca/P.qCoca))/2));
-    const demand = P.dBase + AC_MW_PER_C*(P.tCosta-32) - P.cut;
-    const ccs = ccsMW(qcoca);
-    const other = P.other*rainF;
-    const req = demand - ccs - other - P.therm - P.imp;
-    let paute, deficit=0, qturb;
-    if(V>0){
-      paute = Math.min(Math.max(req,0), PAUTE_MAX);
-      deficit = Math.max(0, req-PAUTE_MAX);
-      qturb = paute/MW_PER_M3S_PAUTE;
-      const Vprev = V;
-      V += (qin-qturb)*86400*dt/1e6;
-      if(V>VMAX) V=VMAX;
-      if(V<=0 && crossDay===null){
-        crossDay = t + dt*(Vprev/(Vprev-V));
-        V=0;
-      }
-    } else {
-      const runRiver = qin*MW_PER_M3S_PAUTE;
-      paute = Math.min(Math.max(req,0), runRiver, PAUTE_MAX);
-      deficit = Math.max(0, req-paute);
-      qturb = paute/MW_PER_M3S_PAUTE;
-      V += Math.max(0,(qin-qturb))*86400*dt/1e6;
-    }
-    const rec = {t, cota: COTA_CRIT + xOf(V), qin, qcoca, demand, ccs, other, therm:P.therm, imp:P.imp, paute, deficit, req};
-    if(step===0) firstDay=rec;
-    if(Math.abs(t-Math.round(t))<1e-9) daily.push(rec);
-  }
-  return {daily, crossDay, firstDay};
+  return ModeloMazar.simular({qMazar:P.qMazar, qCoca:P.qCoca, wPaute:P.wPaute, wCoca:P.wCoca,
+    demanda: P.dBase + AC_MW_PER_C*(P.tCosta-32), cut:P.cut, imp:P.imp, therm:P.therm, other:P.other}, contexto());
 }
 
 /* ===== Controles ===== */
@@ -402,8 +364,20 @@ function applyTexts(){
     });
     box.hidden = false;
   }
+  ModeloMazar.configurar(DATA.modelo);
   el("volTxt").textContent = fmt(volOf(COTA_HOY-COTA_CRIT));
-  if (DATA.fisica && DATA.fisica.k_mw_por_m3s) {
+  const M = DATA.modelo;
+  if (M && M.k_molino_sopladora) {
+    const kmz = 0.00981*M.eficiencia_mazar*(COTA_HOY-(M.amaluzaCota||1980));
+    el("kTxt").textContent = "unos " + fmt(kmz+M.k_molino_sopladora,1) + " MW por cada m³/s que sale de Mazar (" + fmt(kmz,1) +
+      " en Mazar y " + fmt(M.k_molino_sopladora,1) + " en Molino y Sopladora). Además, Molino y Sopladora aprovechan el agua que llega entre las dos presas (≈ " +
+      fmt(M.beta_cuenca_intermedia*100) + " % del caudal de Mazar) y la que se saque de Amaluza, que hoy está en " + fmt(M.amaluzaCota||0,1) +
+      " msnm" + ((M.amaluzaVolumen!=null && M.amaluzaVolumen<1) ? ", su nivel mínimo: ya no puede ayudar." : ".") +
+      " Calibrado con " + fmt(M.historial.dias) + " días de Celec Sur (" + M.historial.desde + " a " + M.historial.hasta + ").";
+    const c = M.curva_mazar;
+    el("curvaTxt").textContent = "≈ " + fmt(ModeloMazar.areaEn(COTA_HOY),1).replace(".",",") + " millones de m³ por metro en la cota actual; la curva se ajustó con el balance diario de agua de " + fmt(M.historial.dias) + " días";
+  }
+  if (!(M && M.k_molino_sopladora) && DATA.fisica && DATA.fisica.k_mw_por_m3s) {
     MW_PER_M3S_PAUTE = DATA.fisica.k_mw_por_m3s;
     el("kTxt").textContent = "unos " + fmt(MW_PER_M3S_PAUTE,1) + " MW por cada m³/s que sale de Mazar. El robot lo calcula cada día con la energía real de Mazar, Molino y Sopladora, el caudal de entrada y la variación de la cota del " + DATA.fisica.desde + " al " + DATA.fisica.hasta + " (Celec Sur). Es más que la caída física de la cascada porque Molino y Sopladora también usan el agua que llega a Amaluza entre las dos presas.";
   }
@@ -443,7 +417,7 @@ function render(){
 
   const R = simulate(P);
   const f = R.firstDay;
-  const drop = (f.paute/MW_PER_M3S_PAUTE - f.qin)*86400/1e6 / (CA+CB*(COTA_HOY-COTA_CRIT));
+  const drop = (f.qturb - f.qin)*86400/1e6 / ModeloMazar.areaEn(COTA_HOY);
 
   // Lectura principal
   const st = el("status");
@@ -451,6 +425,9 @@ function render(){
     el("days").innerHTML = (R.crossDay<10? fmt(R.crossDay,1) : fmt(R.crossDay))+"<small>días</small>";
     const d = addDays(R.crossDay);
     el("dateLine").textContent = "Mazar tocaría 2.115 msnm alrededor del "+dlabel(d)+" de "+d.getFullYear();
+    const rg = ModeloMazar.rango(R, DATA.modelo && DATA.modelo.rango_cuantiles, COTA_HOY);
+    el("rangeLine").textContent = rg ? ("Rango probable: entre " + fmt(rg[0]) + " y " + (rg[1]!=null ? fmt(rg[1])+" días" : "más de 60 días") +
+      " · así de lejos cayó la realidad en la mitad de las pruebas con fechas pasadas (2023–2026), si Paute sigue generando como la última semana") : "";
     if(R.crossDay<10){st.className="status st-crit";st.textContent="atención: menos de 10 días";}
     else if(R.crossDay<25){st.className="status st-warn";st.textContent="seguimiento: menos de 25 días";}
     else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
@@ -458,6 +435,8 @@ function render(){
     el("days").innerHTML = "+60<small>días</small>";
     const last=R.daily[R.daily.length-1];
     el("dateLine").textContent = "No toca 2.115 en 60 días · cota final "+fmt(last.cota,2)+" msnm";
+    const rg = ModeloMazar.rango(R, DATA.modelo && DATA.modelo.rango_cuantiles, COTA_HOY);
+    el("rangeLine").textContent = (rg && rg[0]!=null) ? ("Rango probable: desde " + fmt(rg[0]) + " días hasta más de 60 · según las pruebas con fechas pasadas (2023–2026)") : "";
     st.className="status st-ok"; st.textContent="el embalse aguanta el horizonte";
   }
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);

@@ -15,7 +15,7 @@ bloque "manual" de datos.json. El robot respeta siempre ese bloque.
 Si una fuente falla, el robot conserva el valor anterior de lo que depende de
 ella y sigue con el resto.
 """
-import base64, html as htmllib, json, math, re, ssl, struct, sys, urllib.request
+import base64, html as htmllib, json, math, os, re, ssl, struct, sys, urllib.request
 from datetime import datetime, timedelta, timezone
 
 EC = timezone(timedelta(hours=-5))
@@ -288,6 +288,258 @@ def manual_activo(manual, clave, hoy):
     return v
 
 
+
+# ---------------------------------------------------------------- Modelo calibrado con el historial
+# Los parámetros los calcula scripts/calibrar.py una vez al día con todo el historial de Celec Sur.
+# Aquí se preparan las entradas del día para modelo.js (que usan las dos páginas) y se repite el mismo
+# cálculo en Python para guardar la predicción del día y medir después cuánto acertó.
+F_PARAM = "parametros_modelo.json"
+F_HIST = os.path.join("historial", "celec_diario.json")
+F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
+F_REG = os.path.join("registro", "predicciones.json")
+
+
+def _json_url(url, timeout=60):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (simulador-mazar)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
+def _vol_amaluza(h, am_par):
+    piso = am_par["piso"]; a, b = am_par["area"]
+    if h <= piso:
+        return 0.0
+    return a * (h - piso) + b * ((h - 1971) ** 2 - (piso - 1971) ** 2) / 2
+
+
+def serie_caudal_paute(par, q0, hoy_d, dias=61):
+    """Caudal de entrada a Mazar día a día (relativo al de hoy) con el modelo lluvia–caudal calibrado.
+    Lluvia: pronóstico ECMWF corregido por su sesgo medido en la cuenca (pronostica de más); desde el día 5
+    se mezcla poco a poco con la lluvia normal de la fecha, que es la única que se usa desde el día 15."""
+    locs = _json_url("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
+                     "&daily=precipitation_sum&past_days=7&forecast_days=16&models=ecmwf_ifs025"
+                     "&timezone=America%2FGuayaquil")
+    sesgo = par.get("sesgo_lluvia_pronostico", 0.72)
+    lluvia = {}
+    for loc in locs:
+        for t, v in zip(loc["daily"]["time"], loc["daily"]["precipitation_sum"]):
+            if v is not None:
+                lluvia.setdefault(t, []).append(v * sesgo)
+    lluvia = {t: sum(v) / len(v) for t, v in lluvia.items()}
+    clim = json.load(open(F_CLIM, encoding="utf-8"))
+    def p(d):
+        normal = clim[d.timetuple().tm_yday - 1]
+        k = d.isoformat()
+        if k not in lluvia:
+            return normal
+        j = (d - hoy_d).days
+        w = 1.0 if j <= 5 else max(0.0, 1 - (j - 5) / 10)
+        return w * lluvia[k] + (1 - w) * normal
+    co = par["caudal_coef"]
+    q = q0; serie = [1.0]
+    for j in range(1, dias):
+        d = hoy_d + timedelta(days=j)
+        p36 = sum(p(d - timedelta(days=k)) for k in range(3, 7)) / 4
+        q = math.exp(co[0] + co[1] * math.log(max(q, 1.0)) + co[2] * p(d) + co[3] * p(d - timedelta(days=1))
+                     + co[4] * p(d - timedelta(days=2)) + co[5] * p36)
+        serie.append(round(q / q0, 4))
+    previstos = sum(lluvia.get((hoy_d + timedelta(days=j)).isoformat(), 0) for j in range(1, 8))
+    return serie, previstos
+
+
+def serie_caudal_coca(dias=61):
+    """Caudal del río Coca relativo al de hoy según el pronóstico hidrológico GloFAS (Open-Meteo)."""
+    f = _json_url("https://flood-api.open-meteo.com/v1/flood?latitude=-0.2&longitude=-77.7"
+                  f"&daily=river_discharge&past_days=1&forecast_days={dias}")
+    v = [x for x in f["daily"]["river_discharge"]][1:1 + dias]
+    if not v or not v[0]:
+        raise ValueError("GloFAS sin datos para el río Coca")
+    return [round(min(2.5, max(0.4, (x or v[0]) / v[0])), 4) for x in v]
+
+
+def perfil_py(kind, t, q0, target, serie):
+    if kind == "auto" and serie and len(serie) > 1:
+        i = min(len(serie) - 2, int(math.floor(t))); f = min(1.0, t - i)
+        return q0 * (serie[i] + (serie[i + 1] - serie[i]) * f)
+    if kind == "seco":
+        return q0 * max(0.7, 1 - 0.01 * t)
+    if kind in ("inamhi", "auto"):
+        b0 = math.exp(-1.6)
+        return q0 * (1 + 0.45 * max(0.0, math.exp(-((t - 2) ** 2) / 2.5) - b0) / (1 - b0))
+    return q0 + (target - q0) * (1 - math.exp(-t / 7))
+
+
+def simular_py(P, ctx, par, horizonte=60):
+    """Mismo cálculo que modelo.js → simular()."""
+    dt = 0.25
+    a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
+    vol = lambda x: a * x + b * x * x / 2
+    xo = lambda v: 0.0 if v <= 0 else (-a + math.sqrt(a * a + 2 * b * v)) / b
+    kms, beta, eta = par["k_molino_sopladora"], par["beta_cuenca_intermedia"], par["eficiencia_mazar"]
+    amC = ctx["amaluzaCota"]; am_rest = _vol_amaluza(amC, par["amaluza"]); am_ritmo = max(0.0, ctx["amaluzaRitmo"])
+    V = vol(ctx["cota"] - 2115); VMAX = vol(2153 - 2115); Vv = V
+    diarios, cruce = [], None
+    for step in range(int(horizonte / dt) + 1):
+        t = step * dt
+        dia = (ctx["diaSemana0"] + int(math.floor(t))) % 7
+        qin = perfil_py(P["wPaute"], t, P["qMazar"], 66, ctx["serieMazar"])
+        qc = perfil_py(P["wCoca"], t, P["qCoca"], 280, ctx["serieCoca"])
+        rf = min(1.35, max(0.8, qc / P["qCoca"]))
+        cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
+        demanda = P["demanda"] + ctx["deltaDia"][dia] - cut
+        ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1)
+        req = demanda - ccs - P["other"] * rf - P["therm"] - P["imp"]
+        cota_ahora = 2115 + xo(V)
+        kmz = 0.00981 * eta * max(20.0, cota_ahora - amC)
+        saque = min(am_ritmo * dt, am_rest); am_rest -= saque
+        inter = beta * qin + saque / dt / 0.0864
+        pv = min(max(req, 0), 1757)
+        kmzv = 0.00981 * eta * max(20.0, 2115 + (xo(Vv) if Vv > 0 else Vv / a) - amC)
+        Vv = min(VMAX, Vv + (qin - max(0.0, (pv - kms * inter) / (kmzv + kms))) * 86400 * dt / 1e6)
+        if V > 0:
+            paute = min(max(req, 0), 1757)
+            qt = max(0.0, (paute - kms * inter) / (kmz + kms))
+            Vp = V; V += (qin - qt) * 86400 * dt / 1e6
+            V = min(V, VMAX)
+            if V <= 0 and cruce is None:
+                cruce = t + dt * (Vp / (Vp - V)); V = 0.0
+        else:
+            filo = qin * (kmz + kms) + kms * inter
+            paute = min(max(req, 0), filo, 1757)
+            qt = max(0.0, (paute - kms * inter) / (kmz + kms))
+            V += max(0.0, qin - qt) * 86400 * dt / 1e6
+        if abs(t - round(t)) < 1e-9:
+            diarios.append({"t": t, "cota": 2115 + xo(V), "cotaV": 2115 + (xo(Vv) if Vv > 0 else Vv / a),
+                            "paute": paute, "qturb": qt, "qin": qin})
+    return diarios, cruce
+
+
+def rango_py(diarios, cuant, cota0):
+    """Mismo cálculo que modelo.js → rango()."""
+    if not cuant:
+        return None
+    hs = sorted(int(h) for h in cuant)
+    def q(t, i):
+        h = hs[0]
+        for k in hs:
+            if abs(k - t) < abs(h - t):
+                h = k
+        return cuant[str(h)][i]
+    def cruza(i):
+        for k in range(1, len(diarios)):
+            c1 = cota0 - q(diarios[k]["t"], i) * (cota0 - diarios[k]["cotaV"])
+            if c1 <= 2115:
+                c0 = cota0 - q(diarios[k - 1]["t"], i) * (cota0 - diarios[k - 1]["cotaV"])
+                return diarios[k - 1]["t"] + (c0 - 2115) / max(1e-6, c0 - c1)
+        return None
+    return cruza(1), cruza(0)
+
+
+def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
+    if not os.path.exists(F_PARAM):
+        log("Modelo: falta parametros_modelo.json; se usa el modelo simple")
+        return
+    par = json.load(open(F_PARAM, encoding="utf-8"))
+    hoy_d = datetime.fromisoformat(datos["fecha"]).date()
+    manual = datos.get("manual", {})
+    mod = {k: par[k] for k in ("curva_mazar", "eficiencia_mazar", "k_molino_sopladora", "beta_cuenca_intermedia",
+                               "amaluza", "rango_cuantiles", "retrospectiva", "calibrado", "historial")}
+    mod["diaSemana0"] = (hoy_d.weekday() + 1) % 7          # JavaScript: 0 = domingo
+    # Amaluza: cota de ahora y cuánto se le ha sacado por día en la última semana
+    try:
+        pts = _celec_puntos(24019, ahora.date()) or _celec_puntos(24019, ahora.date() - timedelta(days=1))
+        am_hoy = pts[-1][1]
+        H = json.load(open(F_HIST, encoding="utf-8"))
+        hace7 = (ahora.date() - timedelta(days=7)).isoformat()
+        am_7 = H[hace7]["am"] if hace7 in H else am_hoy
+        ritmo = max(0.0, (_vol_amaluza(am_7, par["amaluza"]) - _vol_amaluza(am_hoy, par["amaluza"])) / 7)
+        mod["amaluzaCota"] = round(am_hoy, 2); mod["amaluzaRitmo"] = round(ritmo, 3)
+        mod["amaluzaVolumen"] = round(_vol_amaluza(am_hoy, par["amaluza"]), 2)
+    except Exception as e:
+        log(f"Amaluza: {e}")
+        mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
+    # Paute según el día de la semana (MW sobre o bajo su promedio)
+    p7 = (fis or {}).get("paute_prom_mw") or 900
+    f = par["factor_dia_semana_lun_dom"]
+    js = [f[6]] + f[:6]
+    mod["deltaDia"] = [round((x - 1) * p7, 1) for x in js]
+    cd = manual.get("cut_dias")
+    mod["cutDias"] = cd if (isinstance(cd, list) and len(cd) == 7) else None
+    # Pronóstico de caudales
+    serieM = serieC = None
+    try:
+        serieM, mm7 = serie_caudal_paute(par, hoy["qMazar"], hoy_d)
+        mod["serieMazar"] = serieM
+        fuentes["pronostico_caudal"] = {"ok": True}
+        log(f"Caudal Mazar previsto: {hoy['qMazar']} → {hoy['qMazar']*serieM[7]:.0f} m³/s en 7 días, "
+            f"{hoy['qMazar']*serieM[30]:.0f} en 30 (lluvia prevista 7 días {mm7:.0f} mm)")
+    except Exception as e:
+        fuentes["pronostico_caudal"] = {"ok": False, "error": str(e)[:200]}
+        log(f"Pronóstico de caudal del Paute falló: {e}")
+    try:
+        serieC = serie_caudal_coca()
+        mod["serieCoca"] = serieC
+        log(f"Río Coca (GloFAS): ×{serieC[7]:.2f} en 7 días, ×{serieC[30]:.2f} en 30")
+    except Exception as e:
+        log(f"GloFAS Coca falló: {e}")
+    # Escenario automático = pronóstico calibrado (salvo que Claude haya fijado otro)
+    hoy_txt = ahora.date().isoformat()
+    if serieM and not manual_activo(manual, "wPaute", hoy_txt):
+        hoy["wPaute"] = "auto"
+    if serieC and not manual_activo(manual, "wCoca", hoy_txt):
+        hoy["wCoca"] = "auto"
+    datos["modelo"] = mod
+
+    # Predicción del día con el mismo cálculo de la página
+    P = {"qMazar": hoy["qMazar"], "qCoca": hoy["qCoca"], "wPaute": hoy["wPaute"], "wCoca": hoy["wCoca"],
+         "demanda": hoy["dBase"] + 50 * (hoy["tCosta"] - 32), "cut": hoy["cut"], "imp": hoy["imp"],
+         "therm": hoy["therm"], "other": hoy["other"]}
+    ctx = {"cota": datos["cota"], "diaSemana0": mod["diaSemana0"], "amaluzaCota": mod["amaluzaCota"],
+           "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
+           "serieMazar": serieM, "serieCoca": serieC}
+    diarios, cruce = simular_py(P, ctx, par)
+    rg = rango_py(diarios, par.get("rango_cuantiles"), datos["cota"])
+    d0 = diarios[0]
+    ritmo = (d0["qturb"] - d0["qin"]) * 0.0864 / (par["curva_mazar"]["a"] + par["curva_mazar"]["b"] * (datos["cota"] - 2115))
+    mod["prediccion"] = {"dias": round(cruce, 1) if cruce is not None else None,
+                         "rango": [(round(x, 1) if x is not None else None) for x in rg] if rg else None,
+                         "ritmo_hoy_m_dia": round(-ritmo, 2)}
+    log(f"Modelo: {('%.1f días' % cruce) if cruce else 'más de 60 días'} hasta 2.115"
+        + (f" (rango {rg[0]}–{rg[1]})" if rg else "") + f"; hoy {-ritmo:+.2f} m/día")
+    # Registro de predicciones: una por día (la primera lectura desde las 06:00)
+    try:
+        os.makedirs("registro", exist_ok=True)
+        reg = json.load(open(F_REG, encoding="utf-8")) if os.path.exists(F_REG) else []
+        hora = datetime.fromisoformat(datos["fecha"])
+        previa = next((e for e in reg if e["fecha"] == hoy_d.isoformat()), None)
+        if hora.hour >= 6 and (previa is None or previa.get("hora", "00:00") < "06:00"):
+            reg = [e for e in reg if e["fecha"] != hoy_d.isoformat()]
+            reg.append({"fecha": hoy_d.isoformat(), "hora": hora.strftime("%H:%M"), "cota": datos["cota"],
+                        "dias": mod["prediccion"]["dias"], "rango": mod["prediccion"]["rango"],
+                        "cota_pred": {str(h): round(diarios[h]["cota"], 2) for h in (1, 3, 7, 14)}})
+            reg = sorted(reg, key=lambda e: e["fecha"])[-400:]
+            with open(F_REG, "w", encoding="utf-8") as fo:
+                json.dump(reg, fo, ensure_ascii=False, indent=1)
+            log("Predicción del día guardada en registro/predicciones.json")
+    except Exception as e:
+        log(f"Registro de predicciones: {e}")
+    # Texto de control
+    real7 = None
+    hist = datos.get("historico", [])
+    if len(hist) >= 8:
+        real7 = (hist[-1][1] - hist[-8][1]) / 7
+    c2 = lambda v: f"{v:.2f}".replace(".", ",")
+    txt = (f"Con los valores de \"Hoy\", Paute debe aportar ≈ {d0['paute']:.0f} MW y para eso Mazar suelta "
+           f"≈ {d0['qturb']:.0f} m³/s mientras le entran {d0['qin']:.0f}: hoy baja ≈ {c2(ritmo)} m/día.")
+    if real7 is not None:
+        txt += f" Promedio real de los últimos 7 días: {c2(-real7)} m/día"
+        if mod.get("amaluzaVolumen") is not None and mod["amaluzaVolumen"] < 1:
+            txt += (f", cuando Amaluza todavía aportaba agua; hoy Amaluza está en {mod['amaluzaCota']:.1f} m, ".replace(".", ",", 1)
+                    "su nivel mínimo, y ya no puede ayudar.")
+        else:
+            txt += "."
+    notas["calibracion"] = txt
+
 # ---------------------------------------------------------------- principal
 def main():
     ahora = datetime.now(EC)
@@ -467,26 +719,11 @@ def main():
         notas["demanda"] = (f"Demanda atendida en las últimas 24 h: {D:.0f} MW medios (Cenace). Sin cortes ni calor "
                             f"extra sería ~{hoy['dBase']} MW.")
 
-    # --- Control: ritmo que estima el modelo frente a la variación real de las últimas 24 h
-    if cota_t is not None:
-        x = datos["cota"] - 2115
-        A = 3.758 + 0.2177 * x
-        demanda = hoy["dBase"] + 50 * (hoy["tCosta"] - 32) - hoy["cut"]
-        ccs = min(5 * hoy["qCoca"], 1200)
-        paute = clamp(demanda - ccs - hoy["other"] - hoy["therm"] - hoy["imp"], 0, 1757)
-        ritmo = (paute / k - hoy["qMazar"]) * 86400 / 1e6 / A
-        txt = (f"Con los valores de \"Hoy\", Paute debe aportar ≈ {paute:.0f} MW y Mazar "
-               f"{'baja' if ritmo >= 0 else 'sube'} ≈ {abs(ritmo):.2f} m/día.")
-        if cota_24 is not None:
-            real = cota_24 - cota_t
-            txt += (f" En las últimas 24 h lo real fue {'una bajada' if real >= 0 else 'una subida'} de {abs(real):.2f} m: "
-                    "un solo día depende mucho de cuánto se hizo operar a Paute.")
-        if fis is not None:
-            tot = sum(f["variacion"] for f in fis["detalle"])
-            txt += (f" Del {fis['desde']} al {fis['hasta']} Mazar varió {tot:+.2f} m en total; el factor de "
-                    f"{k:.1f} MW por m³/s se calcula con esos mismos días.")
-        notas["calibracion"] = txt
-        log(f"Control: modelo {ritmo:+.2f} m/día de bajada, Paute requerido {paute:.0f} MW")
+    # --- Modelo calibrado: pronóstico de caudales, Amaluza, día de la semana, predicción y registro
+    try:
+        bloque_modelo(datos, hoy, ahora, fis, notas, fuentes)
+    except Exception as e:
+        log(f"Modelo calibrado falló: {e}")
 
     if manual.get("nota_cortes"):
         notas["cortes"] = manual["nota_cortes"]

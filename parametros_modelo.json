@@ -1,0 +1,85 @@
+{
+  "calibrado": "2026-10-17",
+  "historial": {
+    "desde": "2023-01-01",
+    "hasta": "2026-10-16",
+    "dias": 1385
+  },
+  "curva_mazar": {
+    "a": 3.6654,
+    "b": 0.12477
+  },
+  "eficiencia_mazar": 0.845,
+  "k_molino_sopladora": 9.618,
+  "beta_cuenca_intermedia": 0.4637,
+  "amaluza": {
+    "piso": 1971.3,
+    "area": [
+      0.0844,
+      0.1203
+    ]
+  },
+  "caudal_coef": [
+    0.38923,
+    0.8571,
+    0.02613,
+    0.01387,
+    -0.01295,
+    -0.00186
+  ],
+  "sesgo_lluvia_pronostico": 0.723,
+  "factor_dia_semana_lun_dom": [
+    0.9943,
+    1.0582,
+    1.0665,
+    1.0773,
+    1.1005,
+    0.9509,
+    0.7524
+  ],
+  "rango_cuantiles": {
+    "7": [
+      0.586,
+      1.482
+    ],
+    "14": [
+      0.634,
+      1.348
+    ],
+    "21": [
+      0.789,
+      1.465
+    ],
+    "30": [
+      0.854,
+      1.541
+    ]
+  },
+  "retrospectiva": {
+    "7": {
+      "error_medio_m": 1.89,
+      "sesgo_m": -0.09,
+      "mediana_real_vs_pred": 1.01,
+      "casos": 80
+    },
+    "14": {
+      "error_medio_m": 3.69,
+      "sesgo_m": -0.01,
+      "mediana_real_vs_pred": 0.96,
+      "casos": 74
+    },
+    "21": {
+      "error_medio_m": 5.53,
+      "sesgo_m": 0.39,
+      "mediana_real_vs_pred": 0.98,
+      "casos": 68
+    },
+    "30": {
+      "error_medio_m": 7.79,
+      "sesgo_m": 0.86,
+      "mediana_real_vs_pred": 1.05,
+      "casos": 60
+    }
+  },
+  "aciertos_registro": {}
+}

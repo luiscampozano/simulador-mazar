@@ -26,6 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Calibrar el modelo con el historial (una vez al día)
+        if: github.event_name != 'push'
+        continue-on-error: true
+        run: |
+          python3 -m pip install --quiet numpy
+          python3 scripts/calibrar.py
+
       - name: Leer Celec Sur, Cenace y Open-Meteo
         if: github.event_name != 'push'
         run: python3 scripts/robot.py
@@ -33,7 +40,7 @@ jobs:
       - name: Guardar cambios
         if: github.event_name != 'push'
         run: |
-          git add datos.json serie_cenace.json
+          git add datos.json serie_cenace.json parametros_modelo.json historial registro
           if git diff --cached --quiet; then
             echo "Sin cambios"
           else
