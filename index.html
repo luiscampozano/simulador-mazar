@@ -128,6 +128,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <span class="eyebrow">Días hasta 2.115 msnm</span>
       <div class="big num" id="days">–</div>
       <div id="dateLine" style="font-size:16px;font-weight:500"></div>
+      <div id="zonaLine" style="font-size:14px;font-weight:600;color:var(--warn);max-width:46ch;line-height:1.4"></div>
       <div id="rangeLine" style="font-size:13px;color:var(--muted);max-width:46ch;line-height:1.4"></div>
       <span class="status" id="status">calculando</span>
       <div class="kpis">
@@ -316,6 +317,8 @@ let DATA = {
   notas: {}
 };
 const COTA_CRIT = 2115, COTA_MAX = 2153;
+const COTA_ZONA = 2120;   // zona de racionamiento: en 2023 (~2.121) y 2024 (~2.118) empezó ahí el racionamiento fuerte
+
 let COTA_HOY, START, HIST;
 function applyData(){
   COTA_HOY = DATA.cota;
@@ -455,6 +458,16 @@ function render(){
     el("rangeLine").textContent = (rg && rg[0]!=null) ? ("Rango probable: desde " + fmt(rg[0]) + " días hasta más de 60 · según las pruebas con fechas pasadas (2023–2026)") : "";
     st.className="status st-ok"; st.textContent="el embalse aguanta el horizonte";
   }
+  // Zona de racionamiento (2.120 m)
+  let tz = null;
+  if (COTA_HOY <= COTA_ZONA) tz = 0;
+  for (let k=1; k<R.daily.length && tz===null; k++){
+    const a=R.daily[k-1], b=R.daily[k];
+    if (b.cota <= COTA_ZONA) tz = a.t + (a.cota-COTA_ZONA)/Math.max(1e-6, a.cota-b.cota);
+  }
+  if (tz === 0) el("zonaLine").textContent = "Ya está en la zona de racionamiento (bajo 2.120 msnm)";
+  else if (tz === null) el("zonaLine").textContent = "No entra a la zona de racionamiento (2.120 msnm) en 60 días";
+  else { const dz = addDays(tz); el("zonaLine").textContent = "Entra a la zona de racionamiento (2.120 msnm) en ≈ " + (tz<10? fmt(tz,1) : fmt(tz)) + " días, alrededor del " + dlabel(dz); }
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
   el("kPaute").textContent = fmt(f.paute);
   // déficit al tocar 2.115: primer día posterior al cruce
@@ -502,6 +515,7 @@ function drawGauge(R){
   }
   s+=`<rect x="${X}" y="${y0}" width="${W}" height="${y1-y0}" fill="none" stroke="${line}"/>`;
   s+=`<rect x="${X}" y="${y(COTA_CRIT)}" width="${W}" height="${y1-y(COTA_CRIT)}" fill="${crit}" opacity=".18"/>`;
+  s+=`<rect x="${X}" y="${y(COTA_ZONA)}" width="${W}" height="${y(COTA_CRIT)-y(COTA_ZONA)}" fill="${css("--warn")}" opacity=".30"/>`;
   s+=`<rect x="${X}" y="${y(COTA_HOY)}" width="${W}" height="${y(COTA_CRIT)-y(COTA_HOY)}" fill="${water}" opacity=".85"/>`;
   s+=`<rect x="${X}" y="${y(COTA_MAX)}" width="${W}" height="${y(COTA_HOY)-y(COTA_MAX)}" fill="${soft}" opacity=".6"/>`;
   // marcas
@@ -511,6 +525,7 @@ function drawGauge(R){
   };
   mark(COTA_MAX,"2.153 máx",muted,true);
   mark(COTA_CRIT,"2.115 mínimo",crit,false);
+  if (Math.abs(COTA_HOY-COTA_ZONA)>0.8) mark(COTA_ZONA,"2.120 racionamiento",css("--warn"),true);
   mark(COTA_HOY,"hoy "+fmt(COTA_HOY,2),ink,false);
   if(Math.abs(in7-COTA_HOY)>0.6) mark(Math.max(in7,bot+1),"en 7 días "+fmt(in7,1),water,true);
   if(Math.abs(in14-in7)>1.2) mark(Math.max(in14,bot+1),"en 14 días "+fmt(in14,1),water,true);
@@ -528,6 +543,10 @@ function drawChart(R){
   const ink=css("--ink"),muted=css("--muted"),line=css("--line"),water=css("--water"),crit=css("--crit"),soft=css("--water-soft");
   let s="";
   s+=`<rect x="${L}" y="${y(COTA_CRIT)}" width="${W-L-Rr}" height="${y(cMin)-y(COTA_CRIT)}" fill="${crit}" opacity=".10"/>`;
+  const warn=css("--warn");
+  s+=`<rect x="${L}" y="${y(COTA_ZONA)}" width="${W-L-Rr}" height="${y(COTA_CRIT)-y(COTA_ZONA)}" fill="${warn}" opacity=".16"/>`;
+  s+=`<line x1="${L}" x2="${W-Rr}" y1="${y(COTA_ZONA)}" y2="${y(COTA_ZONA)}" stroke="${warn}" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  s+=`<text x="${L+6}" y="${y(COTA_ZONA)+14}" font-family="IBM Plex Sans, sans-serif" font-size="11" font-weight="600" fill="${warn}">zona de racionamiento (2.115–2.120)</text>`;
   for(let c=2110;c<=cMax;c+=4){
     s+=`<line x1="${L}" x2="${W-Rr}" y1="${y(c)}" y2="${y(c)}" stroke="${line}" stroke-width="1"/>`;
     s+=`<text x="${L-8}" y="${y(c)+4}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="${muted}">${fmt(c)}</text>`;
