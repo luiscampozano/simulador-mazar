@@ -235,7 +235,7 @@ def main():
     inicios = [i for i in range(40, n - 31, 2)
                if 2116 < c[i - 1] < 2150 and q[i - 1] < 60 and mes[i] in (7, 8, 9, 10, 11, 12, 1)]
     def medir(lista):
-        cuant, metr = {}, {}
+        cuant, metr, perc = {}, {}, {}
         for h in (7, 14, 21, 30):
             ratios, errs = [], []
             for i0 in lista:
@@ -251,13 +251,15 @@ def main():
                 continue
             r25, r50, r75 = np.percentile(ratios, [25, 50, 75])
             cuant[str(h)] = [round(float(r25), 3), round(float(r75), 3)]
+            # distribución completa (percentiles 5, 10, …, 95) para calcular probabilidades
+            perc[str(h)] = [round(float(x), 3) for x in np.percentile(ratios, list(range(5, 100, 5)))]
             metr[str(h)] = {"error_medio_m": round(float(np.mean(np.abs(errs))), 2),
                             "sesgo_m": round(float(np.mean(errs)), 2), "mediana_real_vs_pred": round(float(r50), 2),
                             "casos": len(ratios)}
-        return cuant, metr
-    cuant, metr = medir(inicios)
+        return cuant, metr, perc
+    cuant, metr, perc = medir(inicios)
     # Mismo análisis solo con fechas de caudal bajo (< 35 m³/s), como en las sequías de 2023 y 2024
-    cuant_seco, metr_seco = medir([i for i in inicios if q[i - 1] < 35])
+    cuant_seco, metr_seco, perc_seco = medir([i for i in inicios if q[i - 1] < 35])
     print("Prueba retrospectiva (caudal bajo):", metr_seco)
     print("Prueba retrospectiva:", metr)
 
@@ -288,6 +290,8 @@ def main():
         "rango_cuantiles": cuant,
         "retrospectiva": metr,
         "rango_cuantiles_caudal_bajo": cuant_seco,
+        "ratios_percentiles": perc,
+        "ratios_percentiles_caudal_bajo": perc_seco,
         "retrospectiva_caudal_bajo": metr_seco,
         "aciertos_registro": aciertos,
     }

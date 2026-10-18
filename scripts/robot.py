@@ -319,7 +319,7 @@ def _vol_amaluza(h, am_par):
     return a * (h - piso) + b * ((h - 1971) ** 2 - (piso - 1971) ** 2) / 2
 
 
-def serie_caudal_paute(par, q0, hoy_d, dias=61):
+def serie_caudal_paute(par, q0, hoy_d, dias=61, semana_seca=False):
     """Caudal de entrada a Mazar día a día (relativo al de hoy) con el modelo lluvia–caudal calibrado.
     Lluvia: pronóstico ECMWF corregido por su sesgo medido en la cuenca (pronostica de más); desde el día 5
     se mezcla poco a poco con la lluvia normal de la fecha, que es la única que se usa desde el día 15."""
@@ -333,6 +333,13 @@ def serie_caudal_paute(par, q0, hoy_d, dias=61):
             if v is not None:
                 lluvia.setdefault(t, []).append(v * sesgo)
     lluvia = {t: sum(v) / len(v) for t, v in lluvia.items()}
+    if semana_seca:
+        # Escenario "semana seca": los próximos 7 días llueve lo mismo que en los 7 anteriores
+        pasada = [lluvia.get((hoy_d - timedelta(days=k)).isoformat()) for k in range(1, 8)]
+        pasada = [x for x in pasada if x is not None]
+        media = sum(pasada) / len(pasada) if pasada else 0.0
+        for j in range(0, 8):
+            lluvia[(hoy_d + timedelta(days=j)).isoformat()] = media
     clim = json.load(open(F_CLIM, encoding="utf-8"))
     def p(d):
         normal = clim[d.timetuple().tm_yday - 1]
@@ -340,7 +347,7 @@ def serie_caudal_paute(par, q0, hoy_d, dias=61):
         if k not in lluvia:
             return normal
         j = (d - hoy_d).days
-        w = 1.0 if j <= 5 else max(0.0, 1 - (j - 5) / 10)
+        w = 1.0 if j <= (7 if semana_seca else 5) else max(0.0, 1 - (j - 5) / 10)
         return w * lluvia[k] + (1 - w) * normal
     co = par["caudal_coef"]
     # caudal de los últimos 30 días (memoria de la sequía): historial de Celec + el de hoy
@@ -367,7 +374,13 @@ def serie_caudal_coca(dias=61):
     v = [x for x in f["daily"]["river_discharge"]][1:1 + dias]
     if not v or not v[0]:
         raise ValueError("GloFAS sin datos para el río Coca")
-    return [round(min(2.5, max(0.4, (x or v[0]) / v[0])), 4) for x in v]
+    # Después de 10 días el pronóstico pierde precisión: su efecto se atenúa hacia el caudal de hoy
+    out = []
+    for j, x in enumerate(v):
+        rel = min(2.5, max(0.4, (x or v[0]) / v[0]))
+        w = 1.0 if j <= 10 else max(0.3, 1 - (j - 10) / 20)
+        out.append(round(1 + (rel - 1) * w, 4))
+    return out
 
 
 def perfil_py(kind, t, q0, target, serie):
@@ -453,6 +466,32 @@ def date_from(txt):
     return _d.fromisoformat(txt)
 
 
+def probabilidades_py(diarios, perc, cota0, umbral, horizontes=(7, 14, 30)):
+    """Mismo cálculo que modelo.js → probabilidades()."""
+    if not perc:
+        return None
+    hs = sorted(int(h) for h in perc)
+    n = len(perc[str(hs[0])])
+    def r(t, i):
+        h = hs[0]
+        for k in hs:
+            if abs(k - t) < abs(h - t):
+                h = k
+        return perc[str(h)][i]
+    tiempos = []
+    for i in range(n):
+        tc = 0.0 if cota0 <= umbral else None
+        for k in range(1, len(diarios)):
+            if tc is not None:
+                break
+            c1 = cota0 - r(diarios[k]["t"], i) * (cota0 - diarios[k]["cotaV"])
+            if c1 <= umbral:
+                c0 = cota0 - r(diarios[k - 1]["t"], i) * (cota0 - diarios[k - 1]["cotaV"])
+                tc = diarios[k - 1]["t"] + (c0 - umbral) / max(1e-6, c0 - c1)
+        tiempos.append(tc)
+    return {str(H): round(sum(1 for t in tiempos if t is not None and t <= H) / n, 3) for H in horizontes}
+
+
 def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     if not os.path.exists(F_PARAM):
         log("Modelo: falta parametros_modelo.json; se usa el modelo simple")
@@ -467,10 +506,12 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     # Con caudal bajo (como en las sequías de 2023 y 2024) el rango sale solo de esas fechas
     if hoy.get("qMazar", 99) < 35 and par.get("rango_cuantiles_caudal_bajo"):
         mod["rango_cuantiles"] = par["rango_cuantiles_caudal_bajo"]
+        mod["ratios_percentiles"] = par.get("ratios_percentiles_caudal_bajo")
         mod["retrospectiva"] = par.get("retrospectiva_caudal_bajo")
         mod["rango_base"] = "caudal bajo"
     else:
         mod["rango_base"] = "todas las fechas de estiaje"
+        mod["ratios_percentiles"] = par.get("ratios_percentiles")
     # Amaluza: cota de ahora y cuánto se le ha sacado por día en la última semana
     try:
         pts = _celec_puntos(24019, ahora.date()) or _celec_puntos(24019, ahora.date() - timedelta(days=1))
@@ -496,6 +537,10 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     try:
         serieM, mm7 = serie_caudal_paute(par, hoy["qMazar"], hoy_d)
         mod["serieMazar"] = serieM
+        try:
+            mod["serieMazarSeca"], _ = serie_caudal_paute(par, hoy["qMazar"], hoy_d, semana_seca=True)
+        except Exception as e:
+            log(f"Escenario semana seca: {e}")
         fuentes["pronostico_caudal"] = {"ok": True}
         log(f"Caudal Mazar previsto: {hoy['qMazar']} → {hoy['qMazar']*serieM[7]:.0f} m³/s en 7 días, "
             f"{hoy['qMazar']*serieM[30]:.0f} en 30 (lluvia prevista 7 días {mm7:.0f} mm)")
@@ -541,6 +586,14 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     mod["prediccion"] = {"dias": round(cruce, 1) if cruce is not None else None,
                          "rango": [(round(x, 1) if x is not None else None) for x in rg] if rg else None,
                          "ritmo_hoy_m_dia": round(-ritmo, 2)}
+    # Probabilidades (con la lluvia pronosticada y si la semana fuera seca), para dos umbrales
+    probs = {}
+    ctx_seco = dict(ctx, serieMazar=mod.get("serieMazarSeca") or serieM)
+    di_seco, _ = simular_py(P, ctx_seco, par)
+    for nombre, di in (("pronostico", diarios), ("semana_seca", di_seco)):
+        probs[nombre] = {str(u): probabilidades_py(di, mod.get("ratios_percentiles"), datos["cota"], u) for u in (2120, 2115)}
+    mod["probabilidades"] = probs
+    log(f"Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {probs['pronostico']['2115']}, semana seca {probs['semana_seca']['2115']}")
     log(f"Modelo: {('%.1f días' % cruce) if cruce else 'más de 60 días'} hasta 2.115"
         + (f" (rango {rg[0]}–{rg[1]})" if rg else "") + f"; hoy {-ritmo:+.2f} m/día")
     # Registro de predicciones: una por día (la primera lectura desde las 06:00)

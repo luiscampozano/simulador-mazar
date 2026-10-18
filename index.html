@@ -241,6 +241,22 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
   </section>
 
+  <section class="card" id="probCard">
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
+      <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
+      <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
+        <option value="2120">2.120 m · zona de racionamiento</option>
+        <option value="2115">2.115 m · nivel mínimo</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:10px 0 4px">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--water);margin-right:6px"></span>con la lluvia pronosticada</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
+    </div>
+    <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
+    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de arriba (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es aproximadamente donde empezó el racionamiento fuerte en 2023 (~2.121 m) y 2024 (~2.118 m). No incluye decisiones de operación futuras.</p>
+  </section>
+
   <section class="card">
     <div style="display:grid;gap:6px">
       <h2>Cómo se cubre la demanda hoy</h2>
@@ -450,10 +466,25 @@ function render(){
   }
   el("kCut").textContent = cutTxt;
 
+  drawProb(P);
   drawGauge(R);
   drawChart(R);
   drawBalance(f);
   drawTable(R);
+}
+
+function drawProb(P){
+  const M = DATA.modelo || {};
+  const box = el("probBars");
+  if(!M.ratios_percentiles){ el("probCard").hidden = true; return; }
+  const u = parseFloat(el("probUmbral").value);
+  const Pa = {...P, wPaute:"auto", wCoca:"auto"};
+  const dem = {qMazar:Pa.qMazar, qCoca:Pa.qCoca, wPaute:"auto", wCoca:"auto", demanda:Pa.dBase + AC_MW_PER_C*(Pa.tCosta-32), cut:Pa.cut, imp:Pa.imp, therm:Pa.therm, other:Pa.other};
+  const ctxA = contexto(), ctxB = {...contexto(), serieMazar: M.serieMazarSeca || M.serieMazar};
+  const pA = ModeloMazar.probabilidades(ModeloMazar.simular(dem, ctxA), M.ratios_percentiles, COTA_HOY, u, [7,14,30]);
+  const pB = ModeloMazar.probabilidades(ModeloMazar.simular(dem, ctxB), M.ratios_percentiles, COTA_HOY, u, [7,14,30]);
+  const barra = (p, color) => `<div style="display:flex;align-items:center;gap:10px"><div style="flex:1;height:18px;background:var(--line);border-radius:5px;overflow:hidden"><div style="width:${Math.max(1.5,p*100)}%;height:100%;background:${color};border-radius:5px"></div></div><b class="num" style="min-width:3.2em;text-align:right">${fmt(p*100)} %</b></div>`;
+  box.innerHTML = [7,14,30].map(H => `<div style="display:grid;grid-template-columns:5.5em 1fr;gap:4px 10px;align-items:center"><span style="font-weight:600">En ${H} días</span>${barra(pA[H],"var(--water)")}<span></span>${barra(pB[H],"var(--crit)")}</div>`).join("");
 }
 
 function drawGauge(R){
@@ -551,6 +582,7 @@ function drawTable(R){
   el("tbl").innerHTML=h;
 }
 
+el("probUmbral").addEventListener("change", render);
 IDS.forEach(id=>el(id).addEventListener("input",()=>{
   document.querySelectorAll(".presets button").forEach(b=>b.setAttribute("aria-pressed","false"));
   render();

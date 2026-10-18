@@ -120,5 +120,33 @@
     return [cruza(1), cruza(0)];
   }
 
-  global.ModeloMazar = { configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
+  /* Probabilidad de que Mazar llegue a un umbral dentro de cada horizonte.
+     percentiles = {"7":[p5, p10, …, p95], ...}: bajada real ÷ bajada predicha en las pruebas con fechas pasadas.
+     Cada percentil escala la trayectoria del modelo; la probabilidad es la parte de esos 19 casos que cruza
+     el umbral antes del horizonte. */
+  function probabilidades(R, percentiles, cota0, umbral, horizontes) {
+    if (!R || !percentiles) return null;
+    const hs = Object.keys(percentiles).map(Number).sort((x, y) => x - y);
+    const n = percentiles[String(hs[0])].length;
+    const r = (t, i) => { let h = hs[0]; for (const k of hs) if (Math.abs(k - t) < Math.abs(h - t)) h = k; return percentiles[String(h)][i]; };
+    const d = R.daily;
+    const tiempos = [];
+    for (let i = 0; i < n; i++) {
+      let tc = null;
+      if (cota0 <= umbral) tc = 0;
+      for (let k = 1; k < d.length && tc === null; k++) {
+        const c1 = cota0 - r(d[k].t, i) * (cota0 - d[k].cotaV);
+        if (c1 <= umbral) {
+          const c0 = cota0 - r(d[k - 1].t, i) * (cota0 - d[k - 1].cotaV);
+          tc = d[k - 1].t + (c0 - umbral) / Math.max(1e-6, c0 - c1);
+        }
+      }
+      tiempos.push(tc);
+    }
+    const out = {};
+    for (const H of horizontes) out[H] = tiempos.filter(t => t !== null && t <= H).length / n;
+    return out;
+  }
+
+  global.ModeloMazar = { probabilidades, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
 })(typeof window !== "undefined" ? window : globalThis);
