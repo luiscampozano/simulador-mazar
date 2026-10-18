@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-10-18T11:00:00-05:00",
-  "etiqueta": "datos al dom 18 oct 2026, 11:00 (actualización automática)",
-  "cota": 2123.03,
+  "fecha": "2026-10-18T13:00:00-05:00",
+  "etiqueta": "datos al dom 18 oct 2026, 13:00 (actualización automática)",
+  "cota": 2123.07,
   "historico": [
     [
       "2026-10-01",
@@ -57,47 +57,47 @@
     ],
     [
       "2026-10-18",
-      2123.03
+      2123.07
     ]
   ],
   "hoy": {
     "qMazar": 25,
     "wPaute": "auto",
-    "qCoca": 152,
+    "qCoca": 157,
     "wCoca": "auto",
-    "dBase": 4300,
+    "dBase": 4380,
     "tCosta": 33.5,
     "cut": 300,
-    "imp": 0,
+    "imp": 5,
     "therm": 1300,
-    "other": 1150
+    "other": 1200
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 25 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Coca Codo generó en promedio 758 MW (2026-10-18, Cenace, automático), equivalente a ~152 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
-    "importacion": "Promedio de las últimas 24 h: 2 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
-    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 652 MW y para eso Mazar suelta ≈ 43 m³/s mientras le entran 25: hoy baja ≈ 0,33 m/día. Promedio real de los últimos 7 días: 0,27 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1972,3 m, su nivel mínimo, y ya no puede ayudar.",
-    "termica": "Promedio de las últimas 24 h: 1270 MW térmicos + 30 MW renovables no convencionales (Cenace, automático).",
+    "coca": "Coca Codo generó en promedio 783 MW (2026-10-18, Cenace, automático), equivalente a ~157 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
+    "importacion": "Promedio de las últimas 24 h: 3 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
+    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 652 MW y para eso Mazar suelta ≈ 46 m³/s mientras le entran 25: hoy baja ≈ 0,39 m/día. Promedio real de los últimos 7 días: 0,26 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1971,9 m, su nivel mínimo, y ya no puede ayudar.",
+    "termica": "Promedio de las últimas 24 h: 1269 MW térmicos + 29 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-10-18: 33.4 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 23 mm en los últimos 7 días y 59 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 99 mm en los últimos 7 días y 46 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a la última semana: Paute generó en promedio 864 MW del 2026-10-11 al 2026-10-17 (Celec Sur). Demanda atendida en las últimas 24 h: 4179 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1155 MW (hoy, 12 h, Cenace, automático). El complejo Paute generó 537 MW en ese mismo periodo.",
+    "demanda": "Equivale a la última semana: Paute generó en promedio 864 MW del 2026-10-11 al 2026-10-17 (Celec Sur). Demanda atendida en las últimas 24 h: 4151 MW (Cenace).",
+    "otras": "Generación medida de las demás hidroeléctricas: 1198 MW (hoy, 14 h, Cenace, automático). El complejo Paute generó 541 MW en ese mismo periodo.",
     "cortes": "18 oct: dom sin cortes a empresas; AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (Expreso 17 oct); ahorro ~300 MW (Cámara de Energía). Hogares: sin horario oficial"
   },
   "robot": {
-    "ultima_lectura": "2026-10-18T11:00:00-05:00",
+    "ultima_lectura": "2026-10-18T13:00:00-05:00",
     "caudal_entrada_24h": 25,
-    "variacion_cota_24h": -0.78,
+    "variacion_cota_24h": -0.77,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
         "ok": true,
-        "lectura": "2026-10-18T11:00:00-05:00"
+        "lectura": "2026-10-18T13:00:00-05:00"
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-18T11:30",
+        "ultimo_dato": "2026-10-18T13:30",
         "medias_horas_propias": 48,
         "completadas_con_dia": null
       },
@@ -111,16 +111,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-18T11:42-05:00",
+    "ultima_ejecucion": "2026-10-18T13:42-05:00",
     "registro": [
-      "Otras hidro 1155 MW, Paute real 537 MW (hoy, 12 h)",
-      "Cenace: demanda 4179, térmica 1270, importación 2, hidro 2877 MW (48 medias horas propias, 0 del perfil del 2026-10-16)",
+      "Otras hidro 1198 MW, Paute real 541 MW (hoy, 14 h)",
+      "Cenace: demanda 4151, térmica 1269, importación 3, hidro 2850 MW (48 medias horas propias, 0 del perfil del 2026-10-16)",
       "Open-Meteo: Guayaquil 33.4 °C; Paute 23/59 mm → inamhi; Coca 99/46 mm → inamhi",
       "Física Paute: 13.1 MW por m³/s (10 días), Paute promedio 864 MW (7 días)",
       "Caudal Mazar previsto: 25 → 36 m³/s en 7 días, 38 en 30 (lluvia prevista 7 días 53 mm)",
       "Río Coca (GloFAS): ×1.00 en 7 días, ×0.99 en 30",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.053, '14': 0.368, '30': 0.789}, semana seca {'7': 0.211, '14': 0.579, '30': 0.895}",
-      "Modelo: 19.5 días hasta 2.115 (rango 10.05352990966617–28.456730544451286); hoy -0.33 m/día"
+      "Modelo: 19.9 días hasta 2.115 (rango 10.030158009687423–29.0827582370604); hoy -0.39 m/día"
     ]
   },
   "manual": {
@@ -222,7 +222,7 @@
         "salida": 52.6
       }
     ],
-    "actualizado": "2026-10-18T11:42-05:00"
+    "actualizado": "2026-10-18T13:42-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -377,9 +377,9 @@
       ]
     },
     "rango_base": "caudal bajo",
-    "amaluzaCota": 1972.27,
-    "amaluzaRitmo": 1.0,
-    "amaluzaVolumen": 0.17,
+    "amaluzaCota": 1971.91,
+    "amaluzaRitmo": 1.011,
+    "amaluzaVolumen": 0.1,
     "deltaDia": [
       -212.5,
       -5.0,
@@ -581,12 +581,12 @@
     ],
     "serie_fecha": "2026-10-18",
     "prediccion": {
-      "dias": 19.5,
+      "dias": 19.9,
       "rango": [
-        10.1,
-        28.5
+        10.0,
+        29.1
       ],
-      "ritmo_hoy_m_dia": -0.33
+      "ritmo_hoy_m_dia": -0.39
     },
     "probabilidades": {
       "pronostico": {
