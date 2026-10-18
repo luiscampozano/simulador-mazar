@@ -299,10 +299,17 @@ F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
 F_REG = os.path.join("registro", "predicciones.json")
 
 
-def _json_url(url, timeout=60):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (simulador-mazar)"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.load(r)
+def _json_url(url, timeout=60, intentos=4):
+    import time
+    for k in range(intentos):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (simulador-mazar)"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except Exception:
+            if k == intentos - 1:
+                raise
+            time.sleep(5 * (k + 1))
 
 
 def _vol_amaluza(h, am_par):
@@ -317,7 +324,7 @@ def serie_caudal_paute(par, q0, hoy_d, dias=61):
     Lluvia: pronóstico ECMWF corregido por su sesgo medido en la cuenca (pronostica de más); desde el día 5
     se mezcla poco a poco con la lluvia normal de la fecha, que es la única que se usa desde el día 15."""
     locs = _json_url("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
-                     "&daily=precipitation_sum&past_days=7&forecast_days=16&models=ecmwf_ifs025"
+                     "&daily=precipitation_sum&past_days=31&forecast_days=16&models=ecmwf_ifs025"
                      "&timezone=America%2FGuayaquil")
     sesgo = par.get("sesgo_lluvia_pronostico", 0.72)
     lluvia = {}
@@ -336,12 +343,18 @@ def serie_caudal_paute(par, q0, hoy_d, dias=61):
         w = 1.0 if j <= 5 else max(0.0, 1 - (j - 5) / 10)
         return w * lluvia[k] + (1 - w) * normal
     co = par["caudal_coef"]
+    # caudal de los últimos 30 días (memoria de la sequía): historial de Celec + el de hoy
+    H = json.load(open(F_HIST, encoding="utf-8"))
+    hq = [H[k]["q"] for k in sorted(H) if k < hoy_d.isoformat()][-29:] + [q0]
     q = q0; serie = [1.0]
     for j in range(1, dias):
         d = hoy_d + timedelta(days=j)
         p36 = sum(p(d - timedelta(days=k)) for k in range(3, 7)) / 4
-        q = math.exp(co[0] + co[1] * math.log(max(q, 1.0)) + co[2] * p(d) + co[3] * p(d - timedelta(days=1))
-                     + co[4] * p(d - timedelta(days=2)) + co[5] * p36)
+        p730 = sum(p(d - timedelta(days=k)) for k in range(7, 31)) / 24
+        q = math.exp(co[0] + co[1] * math.log(max(q, 1.0)) + co[2] * math.log(max(sum(hq[-30:]) / len(hq[-30:]), 1.0))
+                     + co[3] * p(d) + co[4] * p(d - timedelta(days=1)) + co[5] * p(d - timedelta(days=2))
+                     + co[6] * p36 + co[7] * p730)
+        hq.append(q)
         serie.append(round(q / q0, 4))
     previstos = sum(lluvia.get((hoy_d + timedelta(days=j)).isoformat(), 0) for j in range(1, 8))
     return serie, previstos
@@ -435,6 +448,11 @@ def rango_py(diarios, cuant, cota0):
     return cruza(1), cruza(0)
 
 
+def date_from(txt):
+    from datetime import date as _d
+    return _d.fromisoformat(txt)
+
+
 def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     if not os.path.exists(F_PARAM):
         log("Modelo: falta parametros_modelo.json; se usa el modelo simple")
@@ -442,9 +460,17 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     par = json.load(open(F_PARAM, encoding="utf-8"))
     hoy_d = datetime.fromisoformat(datos["fecha"]).date()
     manual = datos.get("manual", {})
+    previo = datos.get("modelo") or {}
     mod = {k: par[k] for k in ("curva_mazar", "eficiencia_mazar", "k_molino_sopladora", "beta_cuenca_intermedia",
                                "amaluza", "rango_cuantiles", "retrospectiva", "calibrado", "historial")}
     mod["diaSemana0"] = (hoy_d.weekday() + 1) % 7          # JavaScript: 0 = domingo
+    # Con caudal bajo (como en las sequías de 2023 y 2024) el rango sale solo de esas fechas
+    if hoy.get("qMazar", 99) < 35 and par.get("rango_cuantiles_caudal_bajo"):
+        mod["rango_cuantiles"] = par["rango_cuantiles_caudal_bajo"]
+        mod["retrospectiva"] = par.get("retrospectiva_caudal_bajo")
+        mod["rango_base"] = "caudal bajo"
+    else:
+        mod["rango_base"] = "todas las fechas de estiaje"
     # Amaluza: cota de ahora y cuánto se le ha sacado por día en la última semana
     try:
         pts = _celec_puntos(24019, ahora.date()) or _celec_puntos(24019, ahora.date() - timedelta(days=1))
@@ -476,12 +502,23 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     except Exception as e:
         fuentes["pronostico_caudal"] = {"ok": False, "error": str(e)[:200]}
         log(f"Pronóstico de caudal del Paute falló: {e}")
+        dias_previo = (hoy_d - date_from(previo.get("serie_fecha"))).days if previo.get("serie_fecha") else 99
+        if previo.get("serieMazar") and dias_previo <= 2:
+            s = previo["serieMazar"][dias_previo:]
+            base = s[0]
+            serieM = [round(x / base, 4) for x in s] + [round(s[-1] / base, 4)] * dias_previo
+            mod["serieMazar"] = serieM
+            log(f"Se conserva el pronóstico de caudal anterior ({previo.get('serie_fecha')})")
     try:
         serieC = serie_caudal_coca()
         mod["serieCoca"] = serieC
         log(f"Río Coca (GloFAS): ×{serieC[7]:.2f} en 7 días, ×{serieC[30]:.2f} en 30")
     except Exception as e:
         log(f"GloFAS Coca falló: {e}")
+        if previo.get("serieCoca"):
+            serieC = previo["serieCoca"]; mod["serieCoca"] = serieC
+            log("Se conserva el pronóstico anterior del río Coca")
+    mod["serie_fecha"] = hoy_d.isoformat() if serieM is not None and fuentes.get("pronostico_caudal", {}).get("ok") else previo.get("serie_fecha")
     # Escenario automático = pronóstico calibrado (salvo que Claude haya fijado otro)
     hoy_txt = ahora.date().isoformat()
     if serieM and not manual_activo(manual, "wPaute", hoy_txt):
@@ -498,7 +535,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
            "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
            "serieMazar": serieM, "serieCoca": serieC}
     diarios, cruce = simular_py(P, ctx, par)
-    rg = rango_py(diarios, par.get("rango_cuantiles"), datos["cota"])
+    rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]
     ritmo = (d0["qturb"] - d0["qin"]) * 0.0864 / (par["curva_mazar"]["a"] + par["curva_mazar"]["b"] * (datos["cota"] - 2115))
     mod["prediccion"] = {"dias": round(cruce, 1) if cruce is not None else None,

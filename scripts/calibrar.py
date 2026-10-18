@@ -118,9 +118,10 @@ def vol_amaluza(h):
     return a * (h - PISO_AMALUZA) + b * ((h - 1971) ** 2 - (PISO_AMALUZA - 1971) ** 2) / 2
 
 
-def paso_caudal(coef, q_prev, p0, p1, p2, p36):
-    return float(np.exp(coef[0] + coef[1] * np.log(max(q_prev, 1.0)) + coef[2] * p0 + coef[3] * p1
-                        + coef[4] * p2 + coef[5] * p36))
+def paso_caudal(coef, q_prev, q30, p0, p1, p2, p36, p730):
+    """Modelo lluvia–caudal con memoria de 30 días (distingue un año seco de uno normal)."""
+    return float(np.exp(coef[0] + coef[1] * np.log(max(q_prev, 1.0)) + coef[2] * np.log(max(q30, 1.0))
+                        + coef[3] * p0 + coef[4] * p1 + coef[5] * p2 + coef[6] * p36 + coef[7] * p730))
 
 
 def main():
@@ -176,9 +177,10 @@ def main():
     p = np.where(np.isnan(p), np.nanmean(p), p)
     mes = np.array([int(d[5:7]) for d in ds])
     Xl, yl = [], []
-    for i in range(7, n):
+    for i in range(31, n):
         if mes[i] in (8, 9, 10, 11, 12, 1):
-            Xl.append([1.0, np.log(max(q[i - 1], 1)), p[i], p[i - 1], p[i - 2], np.mean(p[i - 6:i - 2])])
+            Xl.append([1.0, np.log(max(q[i - 1], 1)), np.log(max(q[i - 30:i].mean(), 1)), p[i], p[i - 1], p[i - 2],
+                       np.mean(p[i - 6:i - 2]), np.mean(p[i - 30:i - 6])])
             yl.append(np.log(max(q[i], 1)))
     coef_q = [float(x) for x in np.linalg.lstsq(np.array(Xl), np.array(yl), rcond=None)[0]]
 
@@ -218,9 +220,11 @@ def main():
         pp = p.copy()
         for j in range(i0, min(n, i0 + Hh)):
             pp[j] = clim[doy[j] - 1]
-        qq = q[i0 - 1]; out = []
+        qq = q[i0 - 1]; out = []; hq = list(q[i0 - 30:i0])
         for j in range(i0, min(n, i0 + Hh)):
-            qq = paso_caudal(coef_q, qq, pp[j], pp[j - 1], pp[j - 2], np.mean(pp[j - 6:j - 2]))
+            qq = paso_caudal(coef_q, qq, np.mean(hq[-30:]), pp[j], pp[j - 1], pp[j - 2], np.mean(pp[j - 6:j - 2]),
+                             np.mean(pp[j - 30:j - 6]))
+            hq.append(qq)
             cc = 2115 + x_mazar(V, a, b)
             Qam = -(vol_amaluza(am[j]) - vol_amaluza(am[j - 1])) / 0.0864
             Qm = max(0.0, (Ptot[j] - k_ms * (beta * qq + Qam)) / (0.00981 * eta * (cc - am[j]) + k_ms))
@@ -230,23 +234,31 @@ def main():
 
     inicios = [i for i in range(40, n - 31, 2)
                if 2116 < c[i - 1] < 2150 and q[i - 1] < 60 and mes[i] in (7, 8, 9, 10, 11, 12, 1)]
-    cuant, metr = {}, {}
-    for h in (7, 14, 21, 30):
-        ratios, errs = [], []
-        for i0 in inicios:
-            pr = retro(i0)
-            if len(pr) < h:
+    def medir(lista):
+        cuant, metr = {}, {}
+        for h in (7, 14, 21, 30):
+            ratios, errs = [], []
+            for i0 in lista:
+                pr = retro(i0)
+                if len(pr) < h:
+                    continue
+                real = c[i0 - 1 + h]
+                errs.append(pr[h - 1] - real)
+                caida_pred = c[i0 - 1] - pr[h - 1]
+                if caida_pred > 1.0:
+                    ratios.append((c[i0 - 1] - real) / caida_pred)
+            if len(ratios) < 8:
                 continue
-            real = c[i0 - 1 + h]
-            errs.append(pr[h - 1] - real)
-            caida_pred = c[i0 - 1] - pr[h - 1]
-            if caida_pred > 1.0:
-                ratios.append((c[i0 - 1] - real) / caida_pred)
-        r25, r50, r75 = np.percentile(ratios, [25, 50, 75])
-        cuant[str(h)] = [round(float(r25), 3), round(float(r75), 3)]
-        metr[str(h)] = {"error_medio_m": round(float(np.mean(np.abs(errs))), 2),
-                        "sesgo_m": round(float(np.mean(errs)), 2), "mediana_real_vs_pred": round(float(r50), 2),
-                        "casos": len(ratios)}
+            r25, r50, r75 = np.percentile(ratios, [25, 50, 75])
+            cuant[str(h)] = [round(float(r25), 3), round(float(r75), 3)]
+            metr[str(h)] = {"error_medio_m": round(float(np.mean(np.abs(errs))), 2),
+                            "sesgo_m": round(float(np.mean(errs)), 2), "mediana_real_vs_pred": round(float(r50), 2),
+                            "casos": len(ratios)}
+        return cuant, metr
+    cuant, metr = medir(inicios)
+    # Mismo análisis solo con fechas de caudal bajo (< 35 m³/s), como en las sequías de 2023 y 2024
+    cuant_seco, metr_seco = medir([i for i in inicios if q[i - 1] < 35])
+    print("Prueba retrospectiva (caudal bajo):", metr_seco)
     print("Prueba retrospectiva:", metr)
 
     # 6) Evaluación del registro diario de predicciones del robot
@@ -275,6 +287,8 @@ def main():
         "factor_dia_semana_lun_dom": [round(float(x), 4) for x in fd],
         "rango_cuantiles": cuant,
         "retrospectiva": metr,
+        "rango_cuantiles_caudal_bajo": cuant_seco,
+        "retrospectiva_caudal_bajo": metr_seco,
         "aciertos_registro": aciertos,
     }
     with open(F_PAR, "w", encoding="utf-8") as f:
