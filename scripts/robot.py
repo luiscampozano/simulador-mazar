@@ -440,7 +440,7 @@ def simular_py(P, ctx, par, horizonte=60):
     return diarios, cruce
 
 
-def rango_py(diarios, cuant, cota0):
+def rango_py(diarios, cuant, cota0, umbral=2115):
     """Mismo cálculo que modelo.js → rango()."""
     if not cuant:
         return None
@@ -454,10 +454,12 @@ def rango_py(diarios, cuant, cota0):
     def cruza(i):
         for k in range(1, len(diarios)):
             c1 = cota0 - q(diarios[k]["t"], i) * (cota0 - diarios[k]["cotaV"])
-            if c1 <= 2115:
+            if c1 <= umbral:
                 c0 = cota0 - q(diarios[k - 1]["t"], i) * (cota0 - diarios[k - 1]["cotaV"])
-                return diarios[k - 1]["t"] + (c0 - 2115) / max(1e-6, c0 - c1)
+                return diarios[k - 1]["t"] + (c0 - umbral) / max(1e-6, c0 - c1)
         return None
+    if cota0 <= umbral:
+        return 0.0, 0.0
     return cruza(1), cruza(0)
 
 
@@ -583,7 +585,18 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]
     ritmo = (d0["qturb"] - d0["qin"]) * 0.0864 / (par["curva_mazar"]["a"] + par["curva_mazar"]["b"] * (datos["cota"] - 2115))
-    mod["prediccion"] = {"dias": round(cruce, 1) if cruce is not None else None,
+    # Días hasta la zona de racionamiento (2.120 m)
+    tz = 0.0 if datos["cota"] <= 2120 else None
+    for k in range(1, len(diarios)):
+        if tz is not None:
+            break
+        a_, b_ = diarios[k - 1], diarios[k]
+        if b_["cota"] <= 2120:
+            tz = a_["t"] + (a_["cota"] - 2120) / max(1e-6, a_["cota"] - b_["cota"])
+    rgz = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"], 2120)
+    mod["prediccion"] = {"dias_zona_2120": round(tz, 1) if tz is not None else None,
+                         "rango_zona_2120": [(round(x, 1) if x is not None else None) for x in rgz] if rgz else None,
+                         "dias": round(cruce, 1) if cruce is not None else None,
                          "rango": [(round(x, 1) if x is not None else None) for x in rg] if rg else None,
                          "ritmo_hoy_m_dia": round(-ritmo, 2)}
     # Probabilidades (con la lluvia pronosticada y si la semana fuera seca), para dos umbrales

@@ -102,7 +102,8 @@
      cuantiles = {"7":[r25,r75], "14":[...], ...}: bajada real ÷ bajada predicha (mitad central de los casos).
      Se escala la trayectoria del modelo con esos factores y se busca cuándo cruzaría 2.115.
      Devuelve [mínimo, máximo] en días; null = no cruza en el horizonte. */
-  function rango(R, cuantiles, cota0) {
+  function rango(R, cuantiles, cota0, umbral) {
+    const U = umbral == null ? COTA_CRIT : umbral;
     if (!R || !cuantiles) return null;
     const hs = Object.keys(cuantiles).map(Number).sort((x, y) => x - y);
     const q = (t, i) => { let h = hs[0]; for (const k of hs) if (Math.abs(k - t) < Math.abs(h - t)) h = k; return cuantiles[String(h)][i]; };
@@ -110,13 +111,14 @@
       const d = R.daily;
       for (let k = 1; k < d.length; k++) {
         const c1 = cota0 - q(d[k].t, i) * (cota0 - d[k].cotaV);
-        if (c1 <= COTA_CRIT) {
+        if (c1 <= U) {
           const c0 = cota0 - q(d[k - 1].t, i) * (cota0 - d[k - 1].cotaV);
-          return d[k - 1].t + (c0 - COTA_CRIT) / Math.max(1e-6, c0 - c1);
+          return d[k - 1].t + (c0 - U) / Math.max(1e-6, c0 - c1);
         }
       }
       return null;
     };
+    if (cota0 <= U) return [0, 0];
     return [cruza(1), cruza(0)];
   }
 

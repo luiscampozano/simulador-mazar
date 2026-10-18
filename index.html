@@ -53,6 +53,13 @@ p{margin:0}
 .status{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-mono);font-size:12px;font-weight:500;padding:4px 10px;border-radius:999px;border:1px solid currentColor;width:max-content;max-width:100%}
 .status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
 .st-crit{color:var(--crit)} .st-warn{color:var(--warn)} .st-ok{color:var(--ok)}
+.duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.cuenta{display:grid;gap:6px;align-content:start;padding:12px 14px;border:1px solid var(--line);border-radius:12px}
+.big2{font-family:var(--f-display);font-weight:800;font-stretch:75%;font-size:clamp(52px,12vw,92px);line-height:.9;letter-spacing:-.02em}
+.big2 small{font-size:.32em;font-weight:600;margin-left:.15em;letter-spacing:0}
+.cuando{font-size:15px;font-weight:600}
+.explica{font-size:13px;color:var(--muted);line-height:1.4;margin:0}
+.rng{font-size:13px;font-weight:600;color:var(--ink)}
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-top:1px solid var(--line);padding-top:12px}
 .kpi .v{font-family:var(--f-mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}
 .kpi .l{font-size:12px;color:var(--muted);line-height:1.3}
@@ -125,11 +132,23 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
 
   <section class="hero" aria-label="Resultado">
     <div class="readout">
-      <span class="eyebrow">Días hasta 2.115 msnm</span>
-      <div class="big num" id="days">–</div>
-      <div id="dateLine" style="font-size:16px;font-weight:500"></div>
-      <div id="zonaLine" style="font-size:14px;font-weight:600;color:var(--warn);max-width:46ch;line-height:1.4"></div>
-      <div id="rangeLine" style="font-size:13px;color:var(--muted);max-width:46ch;line-height:1.4"></div>
+      <div class="duo">
+        <div class="cuenta">
+          <span class="eyebrow">1 · Zona de racionamiento · 2.120 msnm</span>
+          <div class="big2 num" id="daysZona">–</div>
+          <div class="cuando" id="dateZona"></div>
+          <p class="explica">Cuándo empezarían los cortes de luz: en 2023 y 2024 el racionamiento fuerte comenzó cuando Mazar bajó a este nivel.</p>
+          <div class="rng" id="rangeZona"></div>
+        </div>
+        <div class="cuenta">
+          <span class="eyebrow">2 · Nivel mínimo · 2.115 msnm</span>
+          <div class="big2 num" id="days">–</div>
+          <div class="cuando" id="dateLine"></div>
+          <p class="explica">Cuándo Mazar se queda sin reserva: Paute solo podría generar con el agua que trae el río y los cortes serían más largos.</p>
+          <div class="rng" id="rangeLine"></div>
+        </div>
+      </div>
+      <p class="explica" style="margin:0">Los rangos muestran dónde cayó la realidad en la mitad de las pruebas con fechas pasadas (2023–2026), si Paute sigue generando como la última semana.</p>
       <span class="status" id="status">calculando</span>
       <div class="kpis">
         <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
@@ -305,7 +324,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
-<script src="modelo.js?v=20261018b"></script>
+<script src="modelo.js?v=20261018c"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -438,36 +457,42 @@ function render(){
   const f = R.firstDay;
   const drop = (f.qturb - f.qin)*86400/1e6 / ModeloMazar.areaEn(COTA_HOY);
 
-  // Lectura principal
+  // Lectura principal: dos cuentas regresivas
+  const M0 = DATA.modelo || {};
   const st = el("status");
-  if(R.crossDay!==null){
-    el("days").innerHTML = (R.crossDay<10? fmt(R.crossDay,1) : fmt(R.crossDay))+"<small>días</small>";
-    const d = addDays(R.crossDay);
-    el("dateLine").textContent = "Mazar tocaría 2.115 msnm alrededor del "+dlabel(d)+" de "+d.getFullYear();
-    const rg = ModeloMazar.rango(R, DATA.modelo && DATA.modelo.rango_cuantiles, COTA_HOY);
-    el("rangeLine").textContent = rg ? ("Rango probable: entre " + fmt(rg[0]) + " y " + (rg[1]!=null ? fmt(rg[1])+" días" : "más de 60 días") +
-      " · así de lejos cayó la realidad en la mitad de las pruebas con fechas pasadas (2023–2026), si Paute sigue generando como la última semana") : "";
-    if(R.crossDay<10){st.className="status st-crit";st.textContent="atención: menos de 10 días";}
-    else if(R.crossDay<25){st.className="status st-warn";st.textContent="seguimiento: menos de 25 días";}
-    else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
-  } else {
-    el("days").innerHTML = "+60<small>días</small>";
-    const last=R.daily[R.daily.length-1];
-    el("dateLine").textContent = "No toca 2.115 en 60 días · cota final "+fmt(last.cota,2)+" msnm";
-    const rg = ModeloMazar.rango(R, DATA.modelo && DATA.modelo.rango_cuantiles, COTA_HOY);
-    el("rangeLine").textContent = (rg && rg[0]!=null) ? ("Rango probable: desde " + fmt(rg[0]) + " días hasta más de 60 · según las pruebas con fechas pasadas (2023–2026)") : "";
-    st.className="status st-ok"; st.textContent="el embalse aguanta el horizonte";
-  }
-  // Zona de racionamiento (2.120 m)
+  const nDias = t => t<10 ? fmt(t,1) : fmt(t);
+  const txtRango = rg => rg ? ("Rango probable: " + (rg[0]!=null ? fmt(rg[0]) : "–") + " a " + (rg[1]!=null ? fmt(rg[1])+" días" : "más de 60 días")) : "";
+  // 1) Zona de racionamiento (2.120 msnm)
   let tz = null;
   if (COTA_HOY <= COTA_ZONA) tz = 0;
   for (let k=1; k<R.daily.length && tz===null; k++){
     const a=R.daily[k-1], b=R.daily[k];
     if (b.cota <= COTA_ZONA) tz = a.t + (a.cota-COTA_ZONA)/Math.max(1e-6, a.cota-b.cota);
   }
-  if (tz === 0) el("zonaLine").textContent = "Ya está en la zona de racionamiento (bajo 2.120 msnm)";
-  else if (tz === null) el("zonaLine").textContent = "No entra a la zona de racionamiento (2.120 msnm) en 60 días";
-  else { const dz = addDays(tz); el("zonaLine").textContent = "Entra a la zona de racionamiento (2.120 msnm) en ≈ " + (tz<10? fmt(tz,1) : fmt(tz)) + " días, alrededor del " + dlabel(dz); }
+  if (tz === 0){ el("daysZona").innerHTML = "Ya"; el("dateZona").textContent = "Mazar ya está bajo 2.120 msnm"; el("rangeZona").textContent = ""; }
+  else if (tz === null){ el("daysZona").innerHTML = "+60<small>días</small>"; el("dateZona").textContent = "No entra a la zona en 60 días"; el("rangeZona").textContent = ""; }
+  else {
+    el("daysZona").innerHTML = nDias(tz)+"<small>días</small>";
+    const dz = addDays(tz); el("dateZona").textContent = "alrededor del "+dlabel(dz);
+    el("rangeZona").textContent = txtRango(ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY, COTA_ZONA));
+  }
+  // 2) Nivel mínimo (2.115 msnm)
+  if(R.crossDay!==null){
+    el("days").innerHTML = nDias(R.crossDay)+"<small>días</small>";
+    const d = addDays(R.crossDay);
+    el("dateLine").textContent = "alrededor del "+dlabel(d);
+    el("rangeLine").textContent = txtRango(ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY));
+  } else {
+    el("days").innerHTML = "+60<small>días</small>";
+    const last=R.daily[R.daily.length-1];
+    el("dateLine").textContent = "No toca 2.115 en 60 días (cota final "+fmt(last.cota,2)+")";
+    const rg = ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY);
+    el("rangeLine").textContent = (rg && rg[0]!=null) ? ("Rango probable: desde "+fmt(rg[0])+" días hasta más de 60") : "";
+  }
+  const tRef = tz===null ? 99 : tz;
+  if (tRef < 7){ st.className="status st-crit"; st.textContent = tz===0 ? "atención: Mazar ya está en la zona de racionamiento" : "atención: entra a la zona de racionamiento en menos de una semana"; }
+  else if (tRef < 21){ st.className="status st-warn"; st.textContent="seguimiento: entra a la zona de racionamiento en menos de 3 semanas"; }
+  else { st.className="status st-ok"; st.textContent="margen de más de 3 semanas antes de la zona de racionamiento"; }
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
   el("kPaute").textContent = fmt(f.paute);
   // déficit al tocar 2.115: primer día posterior al cruce
