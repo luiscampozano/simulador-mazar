@@ -161,6 +161,20 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
 
   <div class="split">
     <div class="col col-res">
+      <section class="card">
+        <div style="display:grid;gap:6px">
+          <h2>Escenarios rápidos</h2>
+          <p class="note">Cada botón ajusta las variables del modelo. Después puedes afinarlas a mano.</p>
+        </div>
+        <div class="presets" role="group" aria-label="Escenarios">
+          <button type="button" data-p="hoy" aria-pressed="true">Hoy (calibrado)</button>
+          <button type="button" data-p="col450">Colombia a 450 MW</button>
+          <button type="button" data-p="sincortes">Sin cortes a industrias</button>
+          <button type="button" data-p="lluvia">Llegan las lluvias de El Niño</button>
+          <button type="button" data-p="peor">Peor caso</button>
+        </div>
+      </section>
+
       <section class="card" id="probCard">
         <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
           <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
@@ -187,20 +201,6 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       </section>
     </div>
     <div class="col col-ctl">
-      <section class="card">
-        <div style="display:grid;gap:6px">
-          <h2>Escenarios rápidos</h2>
-          <p class="note">Cada botón ajusta los controles de abajo. Después puedes afinarlos a mano.</p>
-        </div>
-        <div class="presets" role="group" aria-label="Escenarios">
-          <button type="button" data-p="hoy" aria-pressed="true">Hoy (calibrado)</button>
-          <button type="button" data-p="col450">Colombia a 450 MW</button>
-          <button type="button" data-p="sincortes">Sin cortes a industrias</button>
-          <button type="button" data-p="lluvia">Llegan las lluvias de El Niño</button>
-          <button type="button" data-p="peor">Peor caso</button>
-        </div>
-      </section>
-
       <section class="card">
         <h2>Variables del modelo</h2>
         <div class="groups">
