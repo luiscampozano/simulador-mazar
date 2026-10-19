@@ -67,10 +67,10 @@
   "hoy": {
     "qMazar": 22,
     "wPaute": "auto",
-    "qCoca": 144,
+    "qCoca": 143,
     "wCoca": "auto",
-    "dBase": 4250,
-    "tCosta": 32.0,
+    "dBase": 4370,
+    "tCosta": 29.5,
     "cut": 300,
     "imp": 0,
     "therm": 1270,
@@ -78,15 +78,15 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 22 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Coca Codo generó en promedio 718 MW (2026-10-19, Cenace, automático), equivalente a ~144 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
+    "coca": "Coca Codo generó en promedio 714 MW (2026-10-19, Cenace, automático), equivalente a ~143 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
     "importacion": "Promedio de las últimas 24 h: 2 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 664 MW y para eso Mazar suelta ≈ 45 m³/s mientras le entran 22: hoy baja ≈ 0,44 m/día. Promedio real de los últimos 7 días: 0,43 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1973,1 m, su nivel mínimo, y ya no puede ayudar.",
     "termica": "Promedio de las últimas 24 h: 1245 MW térmicos + 24 MW renovables no convencionales (Cenace, automático).",
-    "temperatura": "Máxima prevista en Guayaquil para el 2026-10-19: 31.8 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
+    "temperatura": "Máxima prevista en Guayaquil para el 2026-10-20: 29.6 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 20 mm en los últimos 7 días y 42 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 83 mm en los últimos 7 días y 39 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a la última semana: Paute generó en promedio 844 MW del 2026-10-12 al 2026-10-18 (Celec Sur), con ~129 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4092 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1292 MW (hoy, 18 h, Cenace, automático). El complejo Paute generó 647 MW en ese mismo periodo.",
+    "demanda": "Equivale a la última semana: Paute generó en promedio 844 MW del 2026-10-12 al 2026-10-18 (Celec Sur), con ~129 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4095 MW (Cenace).",
+    "otras": "Generación medida de las demás hidroeléctricas: 1292 MW (hoy, 18 h, Cenace, automático). El complejo Paute generó 667 MW en ese mismo periodo.",
     "cortes": "19 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL, vía Expreso 17/10 y Prensa Latina 19/10); ~300 MW/día. Hogares: sin cortes anunciados"
   },
   "robot": {
@@ -101,7 +101,7 @@
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-19T17:30",
+        "ultimo_dato": "2026-10-19T18:00",
         "medias_horas_propias": 48,
         "completadas_con_dia": null
       },
@@ -115,16 +115,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-19T17:42-05:00",
+    "ultima_ejecucion": "2026-10-19T18:06-05:00",
     "registro": [
-      "Open-Meteo: Guayaquil 31.8 °C; Paute 20/42 mm → inamhi; Coca 83/39 mm → inamhi",
+      "Open-Meteo: Guayaquil 29.6 °C; Paute 20/42 mm → inamhi; Coca 83/39 mm → inamhi",
       "Física Paute: 13.72 MW por m³/s (10 días), Paute promedio 844 MW (7 días)",
       "Cortes en la semana medida (2026-10-12 a 2026-10-18): 129 MW en promedio",
       "Cortes por fecha: 2026-10-19 300 MW, 2026-10-20 300 MW",
       "Caudal Mazar previsto: 22 → 31 m³/s en 7 días, 37 en 30 (lluvia prevista 7 días 46 mm)",
       "Río Coca (GloFAS): ×0.95 en 7 días, ×0.99 en 30",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.158, '14': 0.632, '30': 0.632}, semana seca {'7': 0.316, '14': 0.789, '30': 0.789}",
-      "Modelo: 9.1 días hasta 2.115 (rango 7.834219347950093–33.52344478792231); hoy -0.44 m/día"
+      "Modelo: 9.1 días hasta 2.115 (rango 7.836474447091645–33.499353064100006); hoy -0.44 m/día"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-12",
@@ -254,7 +254,7 @@
         "salida": 64.3
       }
     ],
-    "actualizado": "2026-10-19T17:42-05:00"
+    "actualizado": "2026-10-19T18:06-05:00"
   },
   "modelo": {
     "curva_mazar": {
