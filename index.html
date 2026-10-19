@@ -32,7 +32,7 @@
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
-.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}.split .col{display:grid;gap:20px;min-width:0;align-content:start}.split .groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split .group{gap:10px}.split .card{padding:16px;gap:12px}.split .ctrl .src{font-size:12px;line-height:1.35}@media (max-width:900px){.split{grid-template-columns:1fr}}@media (max-width:560px){.split .groups{grid-template-columns:1fr}}.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
 h1{font-size:clamp(28px,6vw,46px);font-stretch:85%;font-weight:800;letter-spacing:-.01em;line-height:1.05}
 h2{font-size:20px;font-stretch:90%;font-weight:700}
@@ -159,121 +159,126 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
   </section>
 
-  <section class="card" id="probCard">
-    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
-      <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
-      <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
-        <option value="2115">2.115 m · nivel mínimo</option>
-        <option value="2120">2.120 m · referencia de 2023–2024</option>
-      </select>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:10px 0 4px">
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--water);margin-right:6px"></span>con la lluvia pronosticada</span>
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
-    </div>
-    <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
-    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de las variables del modelo (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es solo una referencia: en 2023 y 2024 el racionamiento fuerte empezó entre 2.118 y 2.121 m, pero no es un umbral oficial. No incluye decisiones de operación futuras.</p>
-  </section>
-
-  <section class="card">
-    <div style="display:grid;gap:6px">
-      <h2>Cómo se cubre la demanda hoy</h2>
-      <p class="note">Balance en megavatios medios del primer día. Paute cubre el hueco; cada MW que pone Paute sale del embalse cuando el río no alcanza.</p>
-    </div>
-    <div class="bal" id="bal"></div>
-    <div class="legend" id="legend"></div>
-  </section>
-
-  <section class="card">
-    <div style="display:grid;gap:6px">
-      <h2>Escenarios rápidos</h2>
-      <p class="note">Cada botón ajusta los controles de abajo. Después puedes afinarlos a mano.</p>
-    </div>
-    <div class="presets" role="group" aria-label="Escenarios">
-      <button type="button" data-p="hoy" aria-pressed="true">Hoy (calibrado)</button>
-      <button type="button" data-p="col450">Colombia a 450 MW</button>
-      <button type="button" data-p="sincortes">Sin cortes a industrias</button>
-      <button type="button" data-p="lluvia">Llegan las lluvias de El Niño</button>
-      <button type="button" data-p="peor">Peor caso</button>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Variables del modelo</h2>
-    <div class="groups">
-      <div class="group">
-        <h3><i style="background:var(--water)"></i>Agua en las cuencas</h3>
-        <div class="ctrl">
-          <div class="top"><label for="qMazar">Caudal que entra a Mazar</label><output id="oqMazar"></output></div>
-          <input type="range" id="qMazar" min="5" max="120" step="1">
-          <p class="src" id="srcMazar">Hoy bajó de 29 a 17 m³/s en la madrugada (Celec Sur). Promedio histórico de octubre: 66 m³/s.</p>
-        </div>
-        <div class="ctrl">
-          <div class="top"><label for="wPaute">Pronóstico cuenca del Paute</label></div>
-          <select id="wPaute">
-            <option value="auto">Pronóstico calibrado (automático)</option>
-            <option value="seco">Seco: el estiaje se profundiza</option>
-            <option value="inamhi">Inamhi: lluvias 16–18 oct, luego estiaje</option>
-            <option value="nino">Lluvioso: El Niño activa la cuenca</option>
+  <div class="split">
+    <div class="col col-res">
+      <section class="card" id="probCard">
+        <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
+          <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
+          <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
+            <option value="2115">2.115 m · nivel mínimo</option>
+            <option value="2120">2.120 m · referencia de 2023–2024</option>
           </select>
-          <p class="src" id="srcWPaute">Advertencia N.º 80 del Inamhi hasta el 18 oct. Ojo: la lluvia intensa se espera en el lado occidental de Azuay y Cañar, que no drena hacia Mazar.</p>
         </div>
-        <div class="ctrl">
-          <div class="top"><label for="qCoca">Caudal del río Coca (Coca Codo Sinclair)</label><output id="oqCoca"></output></div>
-          <input type="range" id="qCoca" min="80" max="450" step="1">
-          <p class="src" id="srcCoca">152 m³/s a las 06:00 de hoy, el más bajo desde marzo. Necesita 240–250 m³/s para 1.200 MW continuos.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:10px 0 4px">
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--water);margin-right:6px"></span>con la lluvia pronosticada</span>
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
         </div>
-        <div class="ctrl">
-          <div class="top"><label for="wCoca">Pronóstico cuenca del Coca (Amazonía norte)</label></div>
-          <select id="wCoca">
-            <option value="auto">Pronóstico GloFAS del río Coca (automático)</option>
-            <option value="seco">Seco: sigue bajando</option>
-            <option value="inamhi">Inamhi: aumento gradual desde el 15 oct</option>
-            <option value="nino">Lluvioso: vuelve a niveles de septiembre</option>
-          </select>
-          <p class="src" id="srcWCoca">Inamhi prevé más lluvias en la Amazonía desde el jueves 15 por humedad de la cuenca amazónica.</p>
-        </div>
-      </div>
+        <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
+        <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de las variables del modelo (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es solo una referencia: en 2023 y 2024 el racionamiento fuerte empezó entre 2.118 y 2.121 m, pero no es un umbral oficial. No incluye decisiones de operación futuras.</p>
+      </section>
 
-      <div class="group">
-        <h3><i style="background:var(--crit)"></i>Demanda nacional</h3>
-        <div class="ctrl">
-          <div class="top"><label for="dBase">Demanda media sin cortes</label><output id="odBase"></output></div>
-          <input type="range" id="dBase" min="3500" max="5200" step="10">
-          <p class="src" id="srcDem">Ecuador consume 100–110 GWh/día (4.170–4.580 MW medios). Récord instantáneo de 2026: 5.634 MW.</p>
+      <section class="card">
+        <div style="display:grid;gap:6px">
+          <h2>Cómo se cubre la demanda hoy</h2>
+          <p class="note">Balance en megavatios medios del primer día. Paute cubre el hueco; cada MW que pone Paute sale del embalse cuando el río no alcanza.</p>
         </div>
-        <div class="ctrl">
-          <div class="top"><label for="tCosta">Temperatura máxima en la Costa (Guayaquil)</label><output id="otCosta"></output></div>
-          <input type="range" id="tCosta" min="28" max="36" step="0.5">
-          <p class="src" id="srcTemp">Inamhi: 32–33 °C en Guayaquil esta semana; Costa entre 24,5 y 34 °C hoy. El modelo suma 50 MW por cada °C sobre 32 °C (supuesto por aire acondicionado).</p>
-        </div>
-        <div class="ctrl">
-          <div class="top"><label for="cut">Ahorro por cortes a empresas</label><output id="ocut"></output></div>
-          <input type="range" id="cut" min="0" max="700" step="10">
-          <p class="src" id="srcCut">~9.080 empresas de alto y medio voltaje desconectadas por turnos. Ahorro real medido: ~300 MW; meta del Gobierno: 550 MW.</p>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3><i style="background:var(--therm)"></i>Otras fuentes de energía</h3>
-        <div class="ctrl">
-          <div class="top"><label for="imp">Importación desde Colombia</label><output id="oimp"></output></div>
-          <input type="range" id="imp" min="0" max="450" step="5">
-          <p class="src" id="srcImp">Se reanudó hoy. Promedio de 65 MW hasta las 14:00 (Cenace), 132 MW a las 11:00. Límite de la interconexión: 450 MW.</p>
-        </div>
-        <div class="ctrl">
-          <div class="top"><label for="therm">Generación térmica y barcazas</label><output id="otherm"></output></div>
-          <input type="range" id="therm" min="700" max="1700" step="10">
-          <p class="src" id="srcTherm">El 14 oct la térmica fue el 30,9 % de la producción (~1.280 MW). Incluye ~200 MW de dos barcazas sin contrato renovado.</p>
-        </div>
-        <div class="ctrl">
-          <div class="top"><label for="other">Otras hidroeléctricas</label><output id="oother"></output></div>
-          <input type="range" id="other" min="500" max="2200" step="10">
-          <p class="src" id="srcOther">Agoyán, San Francisco, Minas San Francisco, Delsitanisagua, Toachi Pilatón y menores. Se ajusta con el pronóstico de lluvia.</p>
-        </div>
-      </div>
+        <div class="bal" id="bal"></div>
+        <div class="legend" id="legend"></div>
+      </section>
     </div>
-  </section>
+    <div class="col col-ctl">
+      <section class="card">
+        <div style="display:grid;gap:6px">
+          <h2>Escenarios rápidos</h2>
+          <p class="note">Cada botón ajusta los controles de abajo. Después puedes afinarlos a mano.</p>
+        </div>
+        <div class="presets" role="group" aria-label="Escenarios">
+          <button type="button" data-p="hoy" aria-pressed="true">Hoy (calibrado)</button>
+          <button type="button" data-p="col450">Colombia a 450 MW</button>
+          <button type="button" data-p="sincortes">Sin cortes a industrias</button>
+          <button type="button" data-p="lluvia">Llegan las lluvias de El Niño</button>
+          <button type="button" data-p="peor">Peor caso</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Variables del modelo</h2>
+        <div class="groups">
+          <div class="group">
+            <h3><i style="background:var(--water)"></i>Agua en las cuencas</h3>
+            <div class="ctrl">
+              <div class="top"><label for="qMazar">Caudal que entra a Mazar</label><output id="oqMazar"></output></div>
+              <input type="range" id="qMazar" min="5" max="120" step="1">
+              <p class="src" id="srcMazar">Hoy bajó de 29 a 17 m³/s en la madrugada (Celec Sur). Promedio histórico de octubre: 66 m³/s.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="wPaute">Pronóstico cuenca del Paute</label></div>
+              <select id="wPaute">
+                <option value="auto">Pronóstico calibrado (automático)</option>
+                <option value="seco">Seco: el estiaje se profundiza</option>
+                <option value="inamhi">Inamhi: lluvias 16–18 oct, luego estiaje</option>
+                <option value="nino">Lluvioso: El Niño activa la cuenca</option>
+              </select>
+              <p class="src" id="srcWPaute">Advertencia N.º 80 del Inamhi hasta el 18 oct. Ojo: la lluvia intensa se espera en el lado occidental de Azuay y Cañar, que no drena hacia Mazar.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="qCoca">Caudal del río Coca (Coca Codo Sinclair)</label><output id="oqCoca"></output></div>
+              <input type="range" id="qCoca" min="80" max="450" step="1">
+              <p class="src" id="srcCoca">152 m³/s a las 06:00 de hoy, el más bajo desde marzo. Necesita 240–250 m³/s para 1.200 MW continuos.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="wCoca">Pronóstico cuenca del Coca (Amazonía norte)</label></div>
+              <select id="wCoca">
+                <option value="auto">Pronóstico GloFAS del río Coca (automático)</option>
+                <option value="seco">Seco: sigue bajando</option>
+                <option value="inamhi">Inamhi: aumento gradual desde el 15 oct</option>
+                <option value="nino">Lluvioso: vuelve a niveles de septiembre</option>
+              </select>
+              <p class="src" id="srcWCoca">Inamhi prevé más lluvias en la Amazonía desde el jueves 15 por humedad de la cuenca amazónica.</p>
+            </div>
+          </div>
+
+          <div class="group">
+            <h3><i style="background:var(--crit)"></i>Demanda nacional</h3>
+            <div class="ctrl">
+              <div class="top"><label for="dBase">Demanda media sin cortes</label><output id="odBase"></output></div>
+              <input type="range" id="dBase" min="3500" max="5200" step="10">
+              <p class="src" id="srcDem">Ecuador consume 100–110 GWh/día (4.170–4.580 MW medios). Récord instantáneo de 2026: 5.634 MW.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="tCosta">Temperatura máxima en la Costa (Guayaquil)</label><output id="otCosta"></output></div>
+              <input type="range" id="tCosta" min="28" max="36" step="0.5">
+              <p class="src" id="srcTemp">Inamhi: 32–33 °C en Guayaquil esta semana; Costa entre 24,5 y 34 °C hoy. El modelo suma 50 MW por cada °C sobre 32 °C (supuesto por aire acondicionado).</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="cut">Ahorro por cortes a empresas</label><output id="ocut"></output></div>
+              <input type="range" id="cut" min="0" max="700" step="10">
+              <p class="src" id="srcCut">~9.080 empresas de alto y medio voltaje desconectadas por turnos. Ahorro real medido: ~300 MW; meta del Gobierno: 550 MW.</p>
+            </div>
+          </div>
+
+          <div class="group">
+            <h3><i style="background:var(--therm)"></i>Otras fuentes de energía</h3>
+            <div class="ctrl">
+              <div class="top"><label for="imp">Importación desde Colombia</label><output id="oimp"></output></div>
+              <input type="range" id="imp" min="0" max="450" step="5">
+              <p class="src" id="srcImp">Se reanudó hoy. Promedio de 65 MW hasta las 14:00 (Cenace), 132 MW a las 11:00. Límite de la interconexión: 450 MW.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="therm">Generación térmica y barcazas</label><output id="otherm"></output></div>
+              <input type="range" id="therm" min="700" max="1700" step="10">
+              <p class="src" id="srcTherm">El 14 oct la térmica fue el 30,9 % de la producción (~1.280 MW). Incluye ~200 MW de dos barcazas sin contrato renovado.</p>
+            </div>
+            <div class="ctrl">
+              <div class="top"><label for="other">Otras hidroeléctricas</label><output id="oother"></output></div>
+              <input type="range" id="other" min="500" max="2200" step="10">
+              <p class="src" id="srcOther">Agoyán, San Francisco, Minas San Francisco, Delsitanisagua, Toachi Pilatón y menores. Se ajusta con el pronóstico de lluvia.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 
   <section class="card">
     <h2>Los siguientes 10 días, uno por uno</h2>

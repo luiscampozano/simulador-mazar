@@ -25,6 +25,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # siempre la última versión (incluye los datos que acaba de subir el robot)
 
       - name: Calibrar el modelo con el historial (una vez al día)
         if: github.event_name != 'push'
