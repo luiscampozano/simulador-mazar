@@ -151,6 +151,14 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     </div>
   </section>
 
+  <section class="card">
+    <div style="display:grid;gap:6px">
+      <h2>Proyección de la cota de Mazar</h2>
+      <p class="note">Puntos: registros diarios reales de Celec Sur. Línea: proyección del escenario elegido. Franja roja: por debajo de 2.115 msnm la central Mazar debe apagarse para proteger sus turbinas de los sedimentos.</p>
+    </div>
+    <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
+  </section>
+
   <section class="card" id="probCard">
     <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
       <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
@@ -164,7 +172,16 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--crit);margin-right:6px"></span>si esta semana fuera seca como la anterior</span>
     </div>
     <div id="probBars" style="display:grid;gap:12px;margin-top:8px"></div>
-    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de arriba (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es solo una referencia: en 2023 y 2024 el racionamiento fuerte empezó entre 2.118 y 2.121 m, pero no es un umbral oficial. No incluye decisiones de operación futuras.</p>
+    <p class="note" id="probNota" style="margin-top:12px">Cómo se calcula: el modelo proyecta la cota con los valores de las variables del modelo (cortes, Colombia, térmica…) y esa trayectoria se compara con lo que pasó en la realidad en las pruebas con fechas pasadas de caudal bajo (2023–2026). La probabilidad es la parte de esos casos que llega al umbral antes de cada plazo. 2.120 m es solo una referencia: en 2023 y 2024 el racionamiento fuerte empezó entre 2.118 y 2.121 m, pero no es un umbral oficial. No incluye decisiones de operación futuras.</p>
+  </section>
+
+  <section class="card">
+    <div style="display:grid;gap:6px">
+      <h2>Cómo se cubre la demanda hoy</h2>
+      <p class="note">Balance en megavatios medios del primer día. Paute cubre el hueco; cada MW que pone Paute sale del embalse cuando el río no alcanza.</p>
+    </div>
+    <div class="bal" id="bal"></div>
+    <div class="legend" id="legend"></div>
   </section>
 
   <section class="card">
@@ -256,23 +273,6 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         </div>
       </div>
     </div>
-  </section>
-
-  <section class="card">
-    <div style="display:grid;gap:6px">
-      <h2>Proyección de la cota de Mazar</h2>
-      <p class="note">Puntos: registros diarios reales de Celec Sur. Línea: proyección del escenario elegido. Franja roja: por debajo de 2.115 msnm la central Mazar debe apagarse para proteger sus turbinas de los sedimentos.</p>
-    </div>
-    <div class="chartbox"><svg id="chart" viewBox="0 0 760 340" role="img" aria-label="Gráfico de la cota de Mazar"></svg></div>
-  </section>
-
-  <section class="card">
-    <div style="display:grid;gap:6px">
-      <h2>Cómo se cubre la demanda hoy</h2>
-      <p class="note">Balance en megavatios medios del primer día. Paute cubre el hueco; cada MW que pone Paute sale del embalse cuando el río no alcanza.</p>
-    </div>
-    <div class="bal" id="bal"></div>
-    <div class="legend" id="legend"></div>
   </section>
 
   <section class="card">
