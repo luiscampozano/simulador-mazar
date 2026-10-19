@@ -313,7 +313,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
-<script src="modelo.js?v=20261018c"></script>
+<script src="modelo.js?v=20261019a"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -349,7 +349,7 @@ const ccsMW = q => ModeloMazar.ccsMW(q);
 function contexto(){
   const m = DATA.modelo || {};
   return {cota: COTA_HOY, inicio: START, diaSemana0: m.diaSemana0, amaluzaCota: m.amaluzaCota, amaluzaRitmo: m.amaluzaRitmo,
-          deltaDia: m.deltaDia, cutDias: m.cutDias, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
+          deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
 }
 function simulate(P){
   return ModeloMazar.simular({qMazar:P.qMazar, qCoca:P.qCoca, wPaute:P.wPaute, wCoca:P.wCoca,

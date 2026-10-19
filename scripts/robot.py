@@ -14,7 +14,9 @@ Lo que no se publica como dato (los cortes a empresas) lo fija Claude en el
 bloque "manual" de datos.json. El robot respeta siempre ese bloque:
   cut (MW de ahorro en un día con cortes), cut_dias (domingo a sábado, días con
   cortes en adelante) y cortes_registro ({"AAAA-MM-DD": MW}, lo que se aplicó
-  de verdad cada día pasado; sirve para calcular la demanda de la semana medida).
+  de verdad cada día pasado; sirve para calcular la demanda de la semana medida) y
+  cortes_plan ({"AAAA-MM-DD": MW}, cortes ya anunciados o de emergencia para hoy y días
+  siguientes; mandan sobre cut_dias en esas fechas).
 Si una fuente falla, el robot conserva el valor anterior de lo que depende de
 ella y sigue con el resto.
 """
@@ -83,6 +85,9 @@ def corte_del_dia(manual, cut, fecha):
     3) si tampoco hay cut_dias, se asume cut todos los días."""
     reg = manual.get("cortes_registro") or {}
     v = reg.get(fecha.isoformat()) if isinstance(reg, dict) else None
+    if v is None:
+        pl = manual.get("cortes_plan") or {}
+        v = pl.get(fecha.isoformat()) if isinstance(pl, dict) else None
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(clamp(v, 0, 700))
     cd = manual.get("cut_dias")
@@ -435,7 +440,12 @@ def simular_py(P, ctx, par, horizonte=60):
         qin = perfil_py(P["wPaute"], t, P["qMazar"], 66, ctx["serieMazar"])
         qc = perfil_py(P["wCoca"], t, P["qCoca"], 280, ctx["serieCoca"])
         rf = min(1.35, max(0.8, qc / P["qCoca"]))
-        cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
+        plan = (ctx.get("cutPlan") or [])
+        kd = int(math.floor(t))
+        if kd < len(plan) and isinstance(plan[kd], (int, float)) and not isinstance(plan[kd], bool):
+            cut = plan[kd]
+        else:
+            cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
         demanda = P["demanda"] + ctx["deltaDia"][dia] - cut
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1)
         req = demanda - ccs - P["other"] * rf - P["therm"] - P["imp"]
@@ -558,6 +568,21 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     mod["deltaDia"] = [round((x - 1) * p7, 1) for x in js]
     cd = manual.get("cut_dias")
     mod["cutDias"] = cd if (isinstance(cd, list) and len(cd) == 7) else None
+    # Cortes ya anunciados o de emergencia por fecha (manual.cortes_plan, y cortes_registro para hoy):
+    # mandan sobre el patrón semanal en esos días.
+    plan_m = manual.get("cortes_plan") or {}
+    reg_m = manual.get("cortes_registro") or {}
+    cplan = []
+    for k in range(61):
+        fk = (hoy_d + timedelta(days=k)).isoformat()
+        v = plan_m.get(fk) if isinstance(plan_m, dict) else None
+        if v is None and isinstance(reg_m, dict):
+            v = reg_m.get(fk)
+        cplan.append(float(clamp(v, 0, 1500)) if isinstance(v, (int, float)) and not isinstance(v, bool) else None)
+    mod["cutPlan"] = cplan if any(x is not None for x in cplan) else None
+    if mod["cutPlan"]:
+        log("Cortes por fecha: " + ", ".join(f"{(hoy_d + timedelta(days=k)).isoformat()} {x:.0f} MW"
+                                             for k, x in enumerate(cplan) if x is not None))
     # Pronóstico de caudales
     serieM = serieC = None
     try:
@@ -604,7 +629,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
          "therm": hoy["therm"], "other": hoy["other"]}
     ctx = {"cota": datos["cota"], "diaSemana0": mod["diaSemana0"], "amaluzaCota": mod["amaluzaCota"],
            "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
-           "serieMazar": serieM, "serieCoca": serieC}
+           "cutPlan": mod.get("cutPlan"), "serieMazar": serieM, "serieCoca": serieC}
     diarios, cruce = simular_py(P, ctx, par)
     rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]

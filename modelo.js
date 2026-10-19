@@ -40,6 +40,7 @@
          cut, imp, therm, other, ccsFn (opcional)}
      ctx: {cota, inicio (Date), diaSemana0 (0 = domingo, día de la lectura en Ecuador), amaluzaCota, amaluzaRitmo (hm³/día que se saca de Amaluza),
            deltaDia [7] (MW extra de Paute por día de la semana, 0 = domingo), cutDias [7] (true/false),
+           cutPlan [] (MW de cortes ya anunciados o de emergencia por día desde la lectura: 0 = día de la lectura; null = usar cutDias),
            serieMazar, serieCoca (caudal relativo al de hoy, día a día), horizonte} */
   function simular(P, ctx) {
     const dt = 0.25, H = ctx.horizonte || 60;
@@ -62,7 +63,9 @@
       // Las demás hidroeléctricas siguen al caudal de la Amazonía norte (río Coca), no al de Mazar,
       // que parte de un caudal tan bajo que cualquier lluvia lo multiplica.
       const rainF = Math.min(1.35, Math.max(0.8, qcoca / P.qCoca));
-      const cutHoy = (!ctx.cutDias || ctx.cutDias[dia]) ? P.cut : 0;
+      const kd = Math.floor(t);
+      const plan = ctx.cutPlan && ctx.cutPlan[kd];
+      const cutHoy = (plan != null && plan !== false) ? +plan : ((!ctx.cutDias || ctx.cutDias[dia]) ? P.cut : 0);
       const demand = P.demanda + ((ctx.deltaDia && ctx.deltaDia[dia]) || 0) - cutHoy;
       const ccsT = ccs(qcoca);
       const other = P.other * rainF;
