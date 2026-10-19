@@ -11,7 +11,10 @@ hidráulicas menos Coca Codo y el complejo Paute (Mazar, Molino, Sopladora). Pau
 queda como la central que cubre lo que falta, igual que en la operación real.
 
 Lo que no se publica como dato (los cortes a empresas) lo fija Claude en el
-bloque "manual" de datos.json. El robot respeta siempre ese bloque.
+bloque "manual" de datos.json. El robot respeta siempre ese bloque:
+  cut (MW de ahorro en un día con cortes), cut_dias (domingo a sábado, días con
+  cortes en adelante) y cortes_registro ({"AAAA-MM-DD": MW}, lo que se aplicó
+  de verdad cada día pasado; sirve para calcular la demanda de la semana medida).
 Si una fuente falla, el robot conserva el valor anterior de lo que depende de
 ella y sigue con el resto.
 """
@@ -71,6 +74,27 @@ def clamp(v, lo, hi):
 
 def r10(v):
     return int(round(v / 10.0) * 10)
+
+
+def corte_del_dia(manual, cut, fecha):
+    """MW de ahorro por cortes a empresas en una fecha (date).
+    1) manual["cortes_registro"]["AAAA-MM-DD"]: lo que Claude verificó que se aplicó ese día;
+    2) si no está, manual["cut_dias"] (domingo a sábado) decide si hubo cortes (cut o 0);
+    3) si tampoco hay cut_dias, se asume cut todos los días."""
+    reg = manual.get("cortes_registro") or {}
+    v = reg.get(fecha.isoformat()) if isinstance(reg, dict) else None
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(clamp(v, 0, 700))
+    cd = manual.get("cut_dias")
+    if isinstance(cd, list) and len(cd) == 7:
+        return float(cut) if cd[(fecha.weekday() + 1) % 7] else 0.0
+    return float(cut)
+
+
+def corte_promedio(manual, cut, dias):
+    """Ahorro medio por cortes en una lista de fechas 'AAAA-MM-DD' (la semana medida de Paute)."""
+    vals = [corte_del_dia(manual, cut, datetime.strptime(d, "%Y-%m-%d").date()) for d in dias]
+    return sum(vals) / len(vals) if vals else float(cut)
 
 
 # ---------------------------------------------------------------- Física de Paute (Celec Sur)
@@ -813,12 +837,20 @@ def main():
     if fis is not None:
         ccs0 = min(5 * hoy["qCoca"], 1200)
         dem = fis["paute_prom_mw"] + ccs0 + hoy["other"] + hoy["therm"] + hoy["imp"]
-        hoy["dBase"] = int(clamp(r10(dem + hoy["cut"] - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
+        # Los cortes que de verdad hubo en la semana medida (no el valor de hoy repetido 7 días):
+        # así un día sin cortes en cut_dias no suma dos veces un ahorro que no ocurrió.
+        dias_sem = [x["dia"] for x in fis["detalle"][-fis["dias_p"]:]]
+        cut_sem = corte_promedio(manual, hoy["cut"], dias_sem)
+        robot["cortes_semana_medida"] = {"desde": dias_sem[0], "hasta": dias_sem[-1], "mw_promedio": round(cut_sem)}
+        log(f"Cortes en la semana medida ({dias_sem[0]} a {dias_sem[-1]}): {cut_sem:.0f} MW en promedio")
+        hoy["dBase"] = int(clamp(r10(dem + cut_sem - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
         notas["demanda"] = (f"Equivale a la última semana: Paute generó en promedio {fis['paute_prom_mw']} MW del "
-                            f"{fis['detalle'][-fis['dias_p']]['dia']} al {fis['hasta']} (Celec Sur)."
+                            f"{fis['detalle'][-fis['dias_p']]['dia']} al {fis['hasta']} (Celec Sur), con "
+                            f"~{cut_sem:.0f} MW medios de cortes a empresas."
                             + (f" Demanda atendida en las últimas 24 h: {D:.0f} MW (Cenace)." if D is not None else ""))
     elif D is not None:
-        hoy["dBase"] = int(clamp(r10(D + hoy["cut"] - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
+        hoy["dBase"] = int(clamp(r10(D + corte_del_dia(manual, hoy["cut"], ahora.date())
+                                     - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
         notas["demanda"] = (f"Demanda atendida en las últimas 24 h: {D:.0f} MW medios (Cenace). Sin cortes ni calor "
                             f"extra sería ~{hoy['dBase']} MW.")
 
