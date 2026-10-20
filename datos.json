@@ -91,7 +91,7 @@
     "lluviaCoca": "Cuenca del Coca: 77 mm en los últimos 7 días y 54 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "demanda": "Equivale a la última semana: Paute generó en promedio 856 MW del 2026-10-13 al 2026-10-19 (Celec Sur), con ~171 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4187 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1278 MW (día completo 2026-10-17, Cenace, automático). El complejo Paute generó 685 MW en ese mismo periodo.",
-    "cortes": "19 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL, vía Expreso 17/10 y Prensa Latina 19/10); ~300 MW/día. Hogares: sin cortes anunciados"
+    "cortes": "20 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL; Expreso 17 y 19/10, Prensa Latina 19/10); ~300 MW/día. Hogares: sin cortes anunciados"
   },
   "robot": {
     "ultima_lectura": "2026-10-20T09:00:00-05:00",
@@ -119,16 +119,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-20T09:47-05:00",
+    "ultima_ejecucion": "2026-10-20T09:52-05:00",
     "registro": [
+      "Cortes por fecha: 2026-10-20 300 MW",
       "Caudal Mazar previsto: 24 → 37 m³/s en 7 días, 37 en 30 (lluvia prevista 7 días 50 mm)",
       "Río Coca (GloFAS): ×0.93 en 7 días, ×1.04 en 30",
       "Autoajuste por aciertos: la realidad bajó 1.18 veces lo predicho; se corrige 1.042 (con 3 días)",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.316, '14': 0.632, '30': 0.632}, semana seca {'7': 0.632, '14': 0.842, '30': 0.842}",
       "Zona crítica (2.116): 6.972225912351817; ventana hasta 11.324657759724468; mínimo {'t': 8.0, 'cota': 2115.0}",
       "Modelo: 7.9 días hasta 2.115 (rango 6.7858925453272985–38.52941468454989); hoy -0.69 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 2 comparaciones nuevas; última a 1 día: dijo 2121.81 y fue 2121.59 (+0.22 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2121.81 y fue 2121.59 (+0.22 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-13",
@@ -258,7 +258,7 @@
         "salida": 86.0
       }
     ],
-    "actualizado": "2026-10-20T09:47-05:00"
+    "actualizado": "2026-10-20T09:52-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -691,7 +691,7 @@
     "ajuste_info": {
       "factor": 1.042,
       "dias": 3,
-      "casos": 23,
+      "casos": 25,
       "ratio_mediana": 1.182,
       "nota": "la realidad bajó 1.18 veces lo predicho; se corrige 1.042 (con 3 días)"
     },
