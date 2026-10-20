@@ -326,7 +326,9 @@ F_PARAM = "parametros_modelo.json"
 F_HIST = os.path.join("historial", "celec_diario.json")
 F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
 F_REG = os.path.join("registro", "predicciones.json")
-F_VER = os.path.join("registro", "verificacion.json")   # cada predicción comparada con la cota real a la misma hora
+F_VER = os.path.join("registro", "verificacion.json")
+F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
+F_COCA_OBS = os.path.join("registro", "coca_observado.json")       # caudal equivalente de Coca Codo (Cenace) en cada corrida   # cada predicción comparada con la cota real a la misma hora
 HORIZ_VER = (1, 2, 3, 5, 7, 10, 14)
 
 
@@ -649,6 +651,62 @@ def resumen_aciertos(ver):
     return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes}
 
 
+
+def ajuste_coca(hoy_d):
+    """Corrección gradual del pronóstico GloFAS del río Coca según cómo le fue de verdad (análisis interno, no se
+    muestra en las páginas). Compara cada pronóstico guardado con el caudal equivalente de Coca Codo (Cenace) 1–3
+    días después a la misma hora (±1,5 h) y estima una deriva diaria a = mediana(ln(real/predicho)/k).
+    Se acerca a 0 con pocos días (cada día distinto cuenta como un caso), se limita a ±5 %/día y se aplica hasta 7 días."""
+    preds = _leer_json(F_COCA_PRED, [])
+    obs = [(datetime.fromisoformat(o["ts"]), o["q"]) for o in _leer_json(F_COCA_OBS, []) if o.get("q")]
+    desde = hoy_d - timedelta(days=21)
+    tasas, dias, pares = [], set(), []
+    for p in preds:
+        t0 = datetime.fromisoformat(p["ts"])
+        if t0.date() < desde or not p.get("q0") or not p.get("serie"):
+            continue
+        for k in (1, 2, 3):
+            if k >= len(p["serie"]):
+                continue
+            obj = t0 + timedelta(days=k)
+            cand = [o for o in obs if abs((o[0] - obj).total_seconds()) <= 5400]
+            if not cand:
+                continue
+            real = min(cand, key=lambda o: abs((o[0] - obj).total_seconds()))[1]
+            pred = p["q0"] * p["serie"][k]
+            if pred > 0 and real > 0:
+                tasas.append(math.log(real / pred) / k); dias.add(t0.date().isoformat())
+                pares.append((k, pred, real))
+    n = len(dias)
+    if n < 3 or not tasas:
+        return {"deriva_dia": 0.0, "dias": n, "casos": len(tasas), "nota": "pocos días; sin corrección"}
+    tasas.sort(); m = tasas[len(tasas) // 2]
+    a = max(-0.05, min(0.05, m * n / (n + 10)))
+    err = {}
+    for k in (1, 2, 3):
+        e = [pr - re for kk, pr, re in pares if kk == k]
+        if e:
+            err[str(k)] = {"n": len(e), "error_medio": round(sum(abs(x) for x in e) / len(e), 1), "sesgo": round(sum(e) / len(e), 1)}
+    return {"deriva_dia": round(a, 4), "deriva_observada": round(m, 4), "dias": n, "casos": len(tasas), "error_glofas": err,
+            "nota": f"el Coca real va {m * 100:+.1f} %/día frente a GloFAS; se corrige {a * 100:+.1f} %/día (con {n} días)"}
+
+
+def guardar_coca(ts, q0, serie_bruta):
+    try:
+        os.makedirs("registro", exist_ok=True)
+        lim = (datetime.fromisoformat(ts) - timedelta(days=45)).isoformat()
+        pr = [p for p in _leer_json(F_COCA_PRED, []) if p["ts"] >= lim and p["ts"] != ts]
+        pr.append({"ts": ts, "q0": q0, "serie": [round(x, 4) for x in serie_bruta[:15]]})
+        ob = [o for o in _leer_json(F_COCA_OBS, []) if o["ts"] >= lim and o["ts"] != ts]
+        ob.append({"ts": ts, "q": q0})
+        with open(F_COCA_PRED, "w", encoding="utf-8") as fo:
+            json.dump(sorted(pr, key=lambda p: p["ts"]), fo, ensure_ascii=False, indent=0)
+        with open(F_COCA_OBS, "w", encoding="utf-8") as fo:
+            json.dump(sorted(ob, key=lambda o: o["ts"]), fo, ensure_ascii=False, indent=0)
+    except Exception as e:
+        log(f"Registro del río Coca: {e}")
+
+
 def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     if not os.path.exists(F_PARAM):
         log("Modelo: falta parametros_modelo.json; se usa el modelo simple")
@@ -731,15 +789,32 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             serieM = [round(x / base, 4) for x in s] + [round(s[-1] / base, 4)] * dias_previo
             mod["serieMazar"] = serieM
             log(f"Se conserva el pronóstico de caudal anterior ({previo.get('serie_fecha')})")
+    serieC_bruta = None
     try:
         serieC = serie_caudal_coca()
-        mod["serieCoca"] = serieC
+        serieC_bruta = list(serieC)
         log(f"Río Coca (GloFAS): ×{serieC[7]:.2f} en 7 días, ×{serieC[30]:.2f} en 30")
     except Exception as e:
         log(f"GloFAS Coca falló: {e}")
-        if previo.get("serieCoca"):
-            serieC = previo["serieCoca"]; mod["serieCoca"] = serieC
+        serieC = None
+        prev_b = previo.get("serieCocaBruta") or previo.get("serieCoca")
+        if prev_b:
+            serieC = list(prev_b); serieC_bruta = list(prev_b)
             log("Se conserva el pronóstico anterior del río Coca")
+    if serieC_bruta:
+        # Autoajuste interno del río Coca según los aciertos de GloFAS (no se muestra en las páginas)
+        try:
+            ac = ajuste_coca(hoy_d)
+            a = ac["deriva_dia"]
+            serieC = [x * math.exp(a * min(k, 7)) for k, x in enumerate(serieC_bruta)]
+            mod["ajuste_coca"] = ac
+            log(f"Autoajuste río Coca: {ac['nota']}")
+        except Exception as e:
+            log(f"Autoajuste río Coca: {e}")
+            serieC = list(serieC_bruta)
+        mod["serieCoca"] = [round(x, 4) for x in serieC]
+        mod["serieCocaBruta"] = [round(x, 4) for x in serieC_bruta]
+        guardar_coca(ahora.isoformat(timespec="minutes"), hoy.get("qCoca"), serieC_bruta)
     mod["serie_fecha"] = hoy_d.isoformat() if serieM is not None and fuentes.get("pronostico_caudal", {}).get("ok") else previo.get("serie_fecha")
     # Escenario automático = pronóstico calibrado (salvo que Claude haya fijado otro)
     hoy_txt = ahora.date().isoformat()
