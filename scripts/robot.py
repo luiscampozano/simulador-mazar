@@ -326,6 +326,8 @@ F_PARAM = "parametros_modelo.json"
 F_HIST = os.path.join("historial", "celec_diario.json")
 F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
 F_REG = os.path.join("registro", "predicciones.json")
+F_VER = os.path.join("registro", "verificacion.json")   # cada predicción comparada con la cota real a la misma hora
+HORIZ_VER = (1, 2, 3, 5, 7, 10, 14)
 
 
 def _json_url(url, timeout=60, intentos=4):
@@ -433,6 +435,7 @@ def simular_py(P, ctx, par, horizonte=60):
     kms, beta, eta = par["k_molino_sopladora"], par["beta_cuenca_intermedia"], par["eficiencia_mazar"]
     amC = ctx["amaluzaCota"]; am_rest = _vol_amaluza(amC, par["amaluza"]); am_ritmo = max(0.0, ctx["amaluzaRitmo"])
     V = vol(ctx["cota"] - 2115); VMAX = vol(2153 - 2115); Vv = V
+    kA = float(ctx.get("ajuste") or 1.0)
     diarios, cruce = [], None
     for step in range(int(horizonte / dt) + 1):
         t = step * dt
@@ -455,11 +458,17 @@ def simular_py(P, ctx, par, horizonte=60):
         inter = beta * qin + saque / dt / 0.0864
         pv = min(max(req, 0), 1757)
         kmzv = 0.00981 * eta * max(20.0, 2115 + (xo(Vv) if Vv > 0 else Vv / a) - amC)
-        Vv = min(VMAX, Vv + (qin - max(0.0, (pv - kms * inter) / (kmzv + kms))) * 86400 * dt / 1e6)
+        dqv = qin - max(0.0, (pv - kms * inter) / (kmzv + kms))
+        if dqv < 0:
+            dqv *= kA
+        Vv = min(VMAX, Vv + dqv * 86400 * dt / 1e6)
         if V > 0:
             paute = min(max(req, 0), 1757)
             qt = max(0.0, (paute - kms * inter) / (kmz + kms))
-            Vp = V; V += (qin - qt) * 86400 * dt / 1e6
+            dq = qin - qt
+            if dq < 0:
+                dq *= kA                      # autoajuste: corrige la bajada según los aciertos recientes
+            Vp = V; V += dq * 86400 * dt / 1e6
             V = min(V, VMAX)
             if V <= 0 and cruce is None:
                 cruce = t + dt * (Vp / (Vp - V)); V = 0.0
@@ -549,6 +558,95 @@ def probabilidades_py(diarios, perc, cota0, umbral, horizontes=(7, 14, 30)):
                 tc = diarios[k - 1]["t"] + (c0 - umbral) / max(1e-6, c0 - c1)
         tiempos.append(tc)
     return {str(H): round(sum(1 for t in tiempos if t is not None and t <= H) / n, 3) for H in horizontes}
+
+
+
+def _leer_json(ruta, defecto):
+    try:
+        return json.load(open(ruta, encoding="utf-8"))
+    except Exception:
+        return defecto
+
+
+def autoajuste(ver, hoy_d):
+    """Factor que corrige la bajada del modelo según cómo le fue de verdad (verificaciones a 1 y 2 días de los
+    últimos 21 días). Se acerca a 1 cuando hay pocos datos (cada día distinto cuenta como un caso), y se limita
+    a 0,80–1,30. Con menos de 3 días distintos no corrige."""
+    desde = (hoy_d - timedelta(days=21)).isoformat()
+    rat, dias = [], set()
+    for v in ver:
+        if v["h"] in (1, 2) and v["pred_ts"][:10] >= desde and v.get("cota0") is not None:
+            cp = v["cota0"] - v["pred"]; cr = v["cota0"] - v["real"]
+            if cp > 0.2:
+                rat.append(cr / cp); dias.add(v["pred_ts"][:10])
+    n = len(dias)
+    if n < 3 or not rat:
+        return {"factor": 1.0, "dias": n, "casos": len(rat), "ratio_mediana": None,
+                "nota": "todavía pocos días comparados; sin corrección"}
+    rat.sort(); med = rat[len(rat) // 2] if len(rat) % 2 else (rat[len(rat) // 2 - 1] + rat[len(rat) // 2]) / 2
+    f = 1 + (med - 1) * n / (n + 10)
+    f = max(0.80, min(1.30, f))
+    return {"factor": round(f, 3), "dias": n, "casos": len(rat), "ratio_mediana": round(med, 3),
+            "nota": f"la realidad bajó {med:.2f} veces lo predicho; se corrige {f:.3f} (con {n} días)"}
+
+
+def verificar(ahora_lectura, cota_ahora):
+    """Compara cada predicción guardada con la cota REAL de Celec Sur a la misma hora, 1–14 días después.
+    Lee los puntos horarios de hoy y de los 2 días anteriores, así recupera lo que no alcanzó a ver antes."""
+    reg = _leer_json(F_REG, [])
+    ver = _leer_json(F_VER, [])
+    hechas = {(v["pred_ts"], v["h"]) for v in ver}
+    pts = {}
+    d0 = ahora_lectura.date()
+    for k in range(0, 3):
+        try:
+            for ts, val in _celec_puntos(30031, d0 - timedelta(days=k)):
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(ahora_lectura.tzinfo)
+                pts[t.strftime("%Y-%m-%dT%H")] = val
+        except Exception as e:
+            log(f"Verificación: no se pudieron leer las cotas horarias ({e})")
+    pts[ahora_lectura.strftime("%Y-%m-%dT%H")] = cota_ahora
+    nuevas = 0
+    for e in reg:
+        ts = e.get("ts") or f"{e['fecha']}T{e.get('hora', '07:00')}:00-05:00"
+        t0 = datetime.fromisoformat(ts)
+        for h in HORIZ_VER:
+            if (ts, h) in hechas:
+                continue
+            if e.get("traj") and len(e["traj"]) >= h:
+                pred = e["traj"][h - 1]
+            elif e.get("cota_pred", {}).get(str(h)) is not None:
+                pred = e["cota_pred"][str(h)]
+            else:
+                continue
+            obj = t0 + timedelta(days=h)
+            real = pts.get(obj.strftime("%Y-%m-%dT%H"))
+            if real is None:
+                continue
+            ver.append({"pred_ts": ts, "h": h, "obj_ts": obj.isoformat(timespec="minutes"), "cota0": e.get("cota"),
+                        "pred": round(pred, 2), "real": round(real, 2), "err": round(pred - real, 2),
+                        "origen": e.get("origen", "robot")})
+            hechas.add((ts, h)); nuevas += 1
+    limite = (d0 - timedelta(days=120)).isoformat()
+    ver = sorted([v for v in ver if v["pred_ts"][:10] >= limite], key=lambda v: (v["obj_ts"], v["h"]))
+    with open(F_VER, "w", encoding="utf-8") as fo:
+        json.dump(ver, fo, ensure_ascii=False, indent=0)
+    return ver, nuevas
+
+
+def resumen_aciertos(ver):
+    """Error medio y sesgo por horizonte (sesgo > 0: el modelo dijo más alto de lo que fue, optimista)."""
+    out = {}
+    for h in HORIZ_VER:
+        es = [v["err"] for v in ver if v["h"] == h]
+        if es:
+            out[str(h)] = {"n": len(es), "dias": len({v["pred_ts"][:10] for v in ver if v["h"] == h}),
+                           "error_medio_m": round(sum(abs(x) for x in es) / len(es), 2),
+                           "sesgo_m": round(sum(es) / len(es), 2)}
+    ult = [v for v in ver if v["h"] == 1]
+    ultimo = ult[-1] if ult else None
+    recientes = [v for v in ver if v["h"] == 1][-8:]
+    return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes}
 
 
 def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
@@ -658,6 +756,10 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     ctx = {"cota": datos["cota"], "diaSemana0": mod["diaSemana0"], "amaluzaCota": mod["amaluzaCota"],
            "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
            "cutPlan": mod.get("cutPlan"), "serieMazar": serieM, "serieCoca": serieC}
+    aj = autoajuste(_leer_json(F_VER, []), hoy_d)
+    mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
+    ctx["ajuste"] = aj["factor"]
+    log(f"Autoajuste por aciertos: {aj['nota']}")
     diarios, cruce = simular_py(P, ctx, par)
     rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]
@@ -696,24 +798,35 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     log(f"Zona crítica (2.116): {zc['entrada']}; ventana hasta {zc['salida']}; mínimo {zc['minimo']}")
     log(f"Modelo: {('%.1f días' % cruce) if cruce else 'más de 60 días'} hasta 2.115"
         + (f" (rango {rg[0]}–{rg[1]})" if rg else "") + f"; hoy {-ritmo:+.2f} m/día")
-    # Registro de predicciones: una por día (la primera lectura desde las 06:00)
+    # Registro de predicciones: una por corrida (cada 2 h), con la trayectoria de los próximos 14 días,
+    # para comparar después lo que dijo con lo que pasó a la misma hora.
     try:
         os.makedirs("registro", exist_ok=True)
-        reg = json.load(open(F_REG, encoding="utf-8")) if os.path.exists(F_REG) else []
+        reg = _leer_json(F_REG, [])
         hora = datetime.fromisoformat(datos["fecha"])
-        previa = next((e for e in reg if e["fecha"] == hoy_d.isoformat()), None)
-        if hora.hour >= 6 and (previa is None or previa.get("hora", "00:00") < "06:00"):
-            reg = [e for e in reg if e["fecha"] != hoy_d.isoformat()]
-            reg.append({"fecha": hoy_d.isoformat(), "hora": hora.strftime("%H:%M"), "cota": datos["cota"],
+        ts = hora.isoformat(timespec="minutes")
+        if not any(e.get("ts") == ts for e in reg):
+            reg.append({"ts": ts, "fecha": hoy_d.isoformat(), "hora": hora.strftime("%H:%M"), "cota": datos["cota"],
                         "dias": mod["prediccion"]["dias"], "rango": mod["prediccion"]["rango"],
-                        "dias_critica": mod["prediccion"].get("dias_critica"),
-                        "cota_pred": {str(h): round(diarios[h]["cota"], 2) for h in (1, 3, 7, 14)}})
-            reg = sorted(reg, key=lambda e: e["fecha"])[-400:]
+                        "dias_critica": mod["prediccion"].get("dias_critica"), "ajuste": aj["factor"],
+                        "cota_pred": {str(h): round(diarios[h]["cota"], 2) for h in (1, 3, 7, 14)},
+                        "traj": [round(diarios[h]["cota"], 2) for h in range(1, 15)]})
+            limite = (hoy_d - timedelta(days=45)).isoformat()
+            reg = sorted([e for e in reg if e["fecha"] >= limite], key=lambda e: e.get("ts") or e["fecha"])
             with open(F_REG, "w", encoding="utf-8") as fo:
-                json.dump(reg, fo, ensure_ascii=False, indent=1)
-            log("Predicción del día guardada en registro/predicciones.json")
+                json.dump(reg, fo, ensure_ascii=False, indent=0)
+            log("Predicción guardada en registro/predicciones.json")
     except Exception as e:
         log(f"Registro de predicciones: {e}")
+    # Verificación: lo que el modelo dijo antes frente a la cota real a la misma hora
+    try:
+        ver, nuevas = verificar(datetime.fromisoformat(datos["fecha"]), datos["cota"])
+        mod["aciertos"] = resumen_aciertos(ver)
+        u = mod["aciertos"]["ultimo_1d"]
+        log(f"Verificación: {nuevas} comparaciones nuevas; " + (f"última a 1 día: dijo {u['pred']} y fue {u['real']} "
+            f"({u['err']:+.2f} m)" if u else "aún sin comparaciones a 1 día"))
+    except Exception as e:
+        log(f"Verificación: {e}")
     # Texto de control
     real7 = None
     hist = datos.get("historico", [])

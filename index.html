@@ -288,6 +288,16 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     </div>
   </div>
 
+  <section class="card" id="acCard" hidden>
+    <div style="display:grid;gap:6px">
+      <h2>¿Acertó el modelo?</h2>
+      <p class="note">Cada 2 horas el robot guarda lo que el modelo dice para los próximos días y después lo compara con la cota real de Celec Sur a la misma hora.</p>
+    </div>
+    <div id="acHoy" class="ventana" style="border-left-color:var(--water);background:color-mix(in srgb,var(--water) 10%,transparent)"></div>
+    <div class="tbl"><table id="acTbl"></table></div>
+    <p class="note" id="acResumen"></p>
+  </section>
+
   <section class="card">
     <h2>Los siguientes 10 días, uno por uno</h2>
     <div class="tbl"><table id="tbl"></table></div>
@@ -326,7 +336,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
-<script src="modelo.js?v=20261020a"></script>
+<script src="modelo.js?v=20261020b"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -362,7 +372,7 @@ const ccsMW = q => ModeloMazar.ccsMW(q);
 function contexto(){
   const m = DATA.modelo || {};
   return {cota: COTA_HOY, inicio: START, diaSemana0: m.diaSemana0, amaluzaCota: m.amaluzaCota, amaluzaRitmo: m.amaluzaRitmo,
-          deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
+          deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, ajuste: m.ajuste, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
 }
 function simulate(P){
   return ModeloMazar.simular({qMazar:P.qMazar, qCoca:P.qCoca, wPaute:P.wPaute, wCoca:P.wCoca,
@@ -513,10 +523,29 @@ function render(){
   el("kCut").textContent = cutTxt;
 
   drawProb(P);
+  drawAciertos();
   drawGauge(R);
   drawChart(R);
   drawBalance(f);
   drawTable(R);
+}
+
+function drawAciertos(){
+  const M = DATA.modelo || {}, ac = M.aciertos, aj = M.ajuste_info;
+  if(!ac || !ac.ultimo_1d){ el("acCard").hidden = true; return; }
+  el("acCard").hidden = false;
+  const c2 = v => fmt(v,2), cm = v => (v>=0?"+":"−")+fmt(Math.abs(v)*100)+" cm";
+  const fh = s => { const d=new Date(s); return dlabel(d)+" "+String(d.getHours()).padStart(2,"0")+":00"; };
+  const u = ac.ultimo_1d;
+  const tono = Math.abs(u.err)<0.15 ? "acertó" : (u.err>0 ? "fue optimista" : "fue pesimista");
+  el("acHoy").innerHTML = "<b>Hace 24 horas</b> ("+fh(u.pred_ts)+") el modelo dijo que a las "+fh(u.obj_ts).split(" ").pop()+" de hoy Mazar estaría en <b>"+c2(u.pred)+" m</b>. Fue <b>"+c2(u.real)+" m</b>: diferencia "+cm(u.err)+", "+tono+".";
+  const filas = (ac.recientes_1d||[]).slice().reverse().map(v => `<tr><td>${fh(v.pred_ts)}</td><td>${fh(v.obj_ts)}</td><td class="num">${c2(v.pred)}</td><td class="num">${c2(v.real)}</td><td class="num">${cm(v.err)}</td></tr>`).join("");
+  el("acTbl").innerHTML = "<thead><tr><th>Dijo el</th><th>Para el</th><th>Predijo (m)</th><th>Real (m)</th><th>Diferencia</th></tr></thead><tbody>"+filas+"</tbody>";
+  const ph = ac.por_horizonte || {};
+  const txt = Object.keys(ph).map(h => `a ${h} día${h==="1"?"":"s"}: error medio ${fmt(ph[h].error_medio_m*100)} cm, sesgo ${cm(ph[h].sesgo_m)} (${ph[h].n} comparaciones, ${ph[h].dias} días)`).join(" · ");
+  el("acResumen").innerHTML = "Resumen — " + txt + ". Sesgo positivo = el modelo dijo más alto de lo que fue (optimista)." +
+    (aj ? "<br><b>Autoajuste:</b> " + (aj.factor!==1 ? "la realidad bajó "+fmt(aj.ratio_mediana,2)+" veces lo predicho; el modelo corrige su bajada ×"+fmt(aj.factor,3)+" (con "+aj.dias+" días; la corrección crece a medida que se acumulan días)." : "todavía pocos días comparados; sin corrección.") : "") +
+    "<br>Las comparaciones del 17 al 20 de octubre se reconstruyeron con los datos que el robot tenía en cada momento.";
 }
 
 function drawProb(P){

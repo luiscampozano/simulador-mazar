@@ -41,7 +41,8 @@
      ctx: {cota, inicio (Date), diaSemana0 (0 = domingo, día de la lectura en Ecuador), amaluzaCota, amaluzaRitmo (hm³/día que se saca de Amaluza),
            deltaDia [7] (MW extra de Paute por día de la semana, 0 = domingo), cutDias [7] (true/false),
            cutPlan [] (MW de cortes ya anunciados o de emergencia por día desde la lectura: 0 = día de la lectura; null = usar cutDias),
-           serieMazar, serieCoca (caudal relativo al de hoy, día a día), horizonte} */
+           serieMazar, serieCoca (caudal relativo al de hoy, día a día), horizonte,
+           ajuste (factor que corrige la bajada según los aciertos recientes; 1 = sin corrección)} */
   function simular(P, ctx) {
     const dt = 0.25, H = ctx.horizonte || 60;
     const kms = PAR.k_molino_sopladora, beta = PAR.beta_cuenca_intermedia, eta = PAR.eficiencia_mazar;
@@ -54,6 +55,7 @@
     let V = volOf(ctx.cota - COTA_CRIT);
     let Vv = V;   // volumen "virtual": sigue bajando como si hubiera agua bajo 2.115 (sirve para el rango)
     const VMAX = volOf(COTA_MAX - COTA_CRIT);
+    const kA = +(ctx.ajuste || 1);   // factor de autoajuste (robot: comparaciones con la cota real)
     const daily = []; let crossDay = null, firstDay = null;
     for (let step = 0; step <= H / dt; step++) {
       const t = step * dt;
@@ -78,13 +80,17 @@
       let paute, deficit = 0, qturb;
       { const pv = Math.min(Math.max(req, 0), PAUTE_MAX);
         const kmzv = 0.00981 * eta * Math.max(20, COTA_CRIT + (Vv > 0 ? xOf(Vv) : Vv / A()) - amC);
-        Vv = Math.min(VMAX, Vv + (qin - Math.max(0, (pv - kms * intermedio) / (kmzv + kms))) * 86400 * dt / 1e6); }
+        let dqv = qin - Math.max(0, (pv - kms * intermedio) / (kmzv + kms));
+        if (dqv < 0) dqv *= kA;
+        Vv = Math.min(VMAX, Vv + dqv * 86400 * dt / 1e6); }
       if (V > 0) {
         paute = Math.min(Math.max(req, 0), PAUTE_MAX);
         deficit = Math.max(0, req - PAUTE_MAX);
         qturb = Math.max(0, (paute - kms * intermedio) / (kmz + kms));
         const Vprev = V;
-        V += (qin - qturb) * 86400 * dt / 1e6;
+        let dq = qin - qturb;
+        if (dq < 0) dq *= kA;                                   // autoajuste según los aciertos recientes
+        V += dq * 86400 * dt / 1e6;
         if (V > VMAX) V = VMAX;
         if (V <= 0 && crossDay === null) { crossDay = t + dt * (Vprev / (Vprev - V)); V = 0; }
       } else {

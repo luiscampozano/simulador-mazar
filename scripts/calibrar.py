@@ -263,19 +263,17 @@ def main():
     print("Prueba retrospectiva (caudal bajo):", metr_seco)
     print("Prueba retrospectiva:", metr)
 
-    # 6) Evaluación del registro diario de predicciones del robot
+    # 6) Evaluación de las predicciones del robot: registro/verificacion.json compara cada predicción con la
+    #    cota real de Celec Sur a la misma hora (lo llena el robot en cada corrida)
     aciertos = {}
-    if os.path.exists(F_REG):
-        reg = json.load(open(F_REG, encoding="utf-8"))
-        for h in ("1", "3", "7", "14"):
-            errs = []
-            for e in reg:
-                d_obj = (date.fromisoformat(e["fecha"]) + timedelta(days=int(h))).isoformat()
-                if d_obj in H and e.get("cota_pred", {}).get(h) is not None:
-                    errs.append(e["cota_pred"][h] - H[d_obj]["c"])
-            if errs:
-                aciertos[h] = {"n": len(errs), "error_medio_m": round(float(np.mean(np.abs(errs))), 2),
-                               "sesgo_m": round(float(np.mean(errs)), 2)}
+    f_ver = os.path.join(RAIZ, "registro", "verificacion.json")
+    if os.path.exists(f_ver):
+        ver = json.load(open(f_ver, encoding="utf-8"))
+        for h in sorted({v["h"] for v in ver}):
+            errs = [v["err"] for v in ver if v["h"] == h]
+            aciertos[str(h)] = {"n": len(errs), "dias": len({v["pred_ts"][:10] for v in ver if v["h"] == h}),
+                                "error_medio_m": round(float(np.mean(np.abs(errs))), 2),
+                                "sesgo_m": round(float(np.mean(errs)), 2)}
     par = {
         "calibrado": hoy.isoformat(),
         "historial": {"desde": ds[0], "hasta": ds[-1], "dias": n},
