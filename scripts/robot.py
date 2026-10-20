@@ -502,6 +502,29 @@ def date_from(txt):
     return _d.fromisoformat(txt)
 
 
+
+def zona_critica_py(diarios, cruce, cota0, umbral=2116.0):
+    """Mismo cálculo que modelo.js → zonaCritica(): entrada y salida de la zona crítica (2.116 m),
+    punto más bajo de ese episodio y si la parada (2.115 m) ocurre dentro de él."""
+    entrada = 0.0 if cota0 <= umbral else None
+    salida = None
+    for k in range(1, len(diarios)):
+        a, b = diarios[k - 1], diarios[k]
+        if entrada is None:
+            if b["cota"] <= umbral:
+                entrada = a["t"] + (a["cota"] - umbral) / max(1e-6, a["cota"] - b["cota"])
+        elif b["cota"] > umbral:
+            salida = a["t"] + (umbral - a["cota"]) / max(1e-6, b["cota"] - a["cota"])
+            break
+    minimo = None
+    if entrada is not None:
+        for r in diarios:
+            if r["t"] >= math.floor(entrada) and (salida is None or r["t"] <= math.ceil(salida)) \
+                    and (minimo is None or r["cota"] < minimo["cota"]):
+                minimo = {"t": r["t"], "cota": round(r["cota"], 2)}
+    en_ventana = cruce is not None and entrada is not None and (salida is None or cruce <= salida)
+    return {"entrada": entrada, "salida": salida, "parada": cruce, "parada_en_ventana": en_ventana, "minimo": minimo}
+
 def probabilidades_py(diarios, perc, cota0, umbral, horizontes=(7, 14, 30)):
     """Mismo cálculo que modelo.js → probabilidades()."""
     if not perc:
@@ -648,14 +671,24 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                          "dias": round(cruce, 1) if cruce is not None else None,
                          "rango": [(round(x, 1) if x is not None else None) for x in rg] if rg else None,
                          "ritmo_hoy_m_dia": round(-ritmo, 2)}
+    # Zona crítica (2.116 m): número principal de las páginas; la parada (2.115 m) es "dias"
+    zc = zona_critica_py(diarios, cruce, datos["cota"])
+    rgc = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"], 2116)
+    r1 = lambda v: round(v, 1) if v is not None else None
+    mod["prediccion"].update({"dias_critica": r1(zc["entrada"]),
+                              "rango_critica": [r1(x) for x in rgc] if rgc else None,
+                              "salida_critica": r1(zc["salida"]),
+                              "parada_en_ventana": zc["parada_en_ventana"],
+                              "minimo_critica": zc["minimo"]})
     # Probabilidades (con la lluvia pronosticada y si la semana fuera seca), para dos umbrales
     probs = {}
     ctx_seco = dict(ctx, serieMazar=mod.get("serieMazarSeca") or serieM)
     di_seco, _ = simular_py(P, ctx_seco, par)
     for nombre, di in (("pronostico", diarios), ("semana_seca", di_seco)):
-        probs[nombre] = {str(u): probabilidades_py(di, mod.get("ratios_percentiles"), datos["cota"], u) for u in (2120, 2115)}
+        probs[nombre] = {str(u): probabilidades_py(di, mod.get("ratios_percentiles"), datos["cota"], u) for u in (2120, 2116, 2115)}
     mod["probabilidades"] = probs
     log(f"Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {probs['pronostico']['2115']}, semana seca {probs['semana_seca']['2115']}")
+    log(f"Zona crítica (2.116): {zc['entrada']}; ventana hasta {zc['salida']}; mínimo {zc['minimo']}")
     log(f"Modelo: {('%.1f días' % cruce) if cruce else 'más de 60 días'} hasta 2.115"
         + (f" (rango {rg[0]}–{rg[1]})" if rg else "") + f"; hoy {-ritmo:+.2f} m/día")
     # Registro de predicciones: una por día (la primera lectura desde las 06:00)
@@ -668,6 +701,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             reg = [e for e in reg if e["fecha"] != hoy_d.isoformat()]
             reg.append({"fecha": hoy_d.isoformat(), "hora": hora.strftime("%H:%M"), "cota": datos["cota"],
                         "dias": mod["prediccion"]["dias"], "rango": mod["prediccion"]["rango"],
+                        "dias_critica": mod["prediccion"].get("dias_critica"),
                         "cota_pred": {str(h): round(diarios[h]["cota"], 2) for h in (1, 3, 7, 14)}})
             reg = sorted(reg, key=lambda e: e["fecha"])[-400:]
             with open(F_REG, "w", encoding="utf-8") as fo:

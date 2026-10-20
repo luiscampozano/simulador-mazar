@@ -5,7 +5,7 @@
    y llegan en datos.json → "modelo". Si faltan, se usan los valores de respaldo de abajo. */
 (function (global) {
   "use strict";
-  const COTA_CRIT = 2115, COTA_MAX = 2153, PAUTE_MAX = 1757;
+  const COTA_CRIT = 2115, COTA_MAX = 2153, PAUTE_MAX = 1757, COTA_ZC = 2116;   // COTA_ZC: inicio de la zona crítica
   const RESPALDO = {
     curva_mazar: { a: 3.665, b: 0.1248 },     // hm³ por metro = a + b·(cota − 2115)
     eficiencia_mazar: 0.845,
@@ -153,5 +153,25 @@
     return out;
   }
 
-  global.ModeloMazar = { probabilidades, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
+
+  /* Zona crítica (2.116 msnm por defecto): cuándo entra la curva, cuándo vuelve a salir, el punto más bajo
+     de ese episodio y si Mazar llega a pararse (2.115) dentro de él. Es más estable que el cruce exacto de
+     2.115, que puede saltar decenas de días si la curva solo roza el mínimo. */
+  function zonaCritica(R, cota0, umbral) {
+    const U = umbral == null ? COTA_ZC : umbral, d = R.daily;
+    let entrada = cota0 <= U ? 0 : null, salida = null;
+    for (let k = 1; k < d.length; k++) {
+      const a = d[k - 1], b = d[k];
+      if (entrada === null) { if (b.cota <= U) entrada = a.t + (a.cota - U) / Math.max(1e-6, a.cota - b.cota); }
+      else if (b.cota > U) { salida = a.t + (U - a.cota) / Math.max(1e-6, b.cota - a.cota); break; }
+    }
+    let minimo = null;
+    if (entrada !== null) for (const r of d)
+      if (r.t >= Math.floor(entrada) && (salida === null || r.t <= Math.ceil(salida)) && (minimo === null || r.cota < minimo.cota)) minimo = { t: r.t, cota: r.cota };
+    const parada = R.crossDay;
+    const paradaEnVentana = parada !== null && entrada !== null && (salida === null || parada <= salida);
+    return { entrada, salida, parada, paradaEnVentana, minimo };
+  }
+
+  global.ModeloMazar = { probabilidades, zonaCritica, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_ZC, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -32,7 +32,7 @@
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
-.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}.split .col{display:grid;gap:20px;min-width:0;align-content:start}.split .groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split .group{gap:10px}.split .card{padding:16px;gap:12px}.split .ctrl .src{font-size:12px;line-height:1.35}@media (max-width:900px){.split{grid-template-columns:1fr}}@media (max-width:560px){.split .groups{grid-template-columns:1fr}}.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}.split .col{display:grid;gap:20px;min-width:0;align-content:start}.split .groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split .group{gap:10px}.split .card{padding:16px;gap:12px}.split .ctrl .src{font-size:12px;line-height:1.35}@media (max-width:900px){.split{grid-template-columns:1fr}}@media (max-width:560px){.split .groups{grid-template-columns:1fr}}.duo{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px}.duo-main{display:grid;gap:6px}.duo-stop{display:grid;gap:6px;padding:12px 16px;border:1px solid var(--crit);border-radius:12px;min-width:180px}#paradaDias{font-family:var(--f-display);font-weight:800;font-stretch:75%;font-size:clamp(34px,8vw,54px);line-height:.95;color:var(--crit)}#paradaDias small{font-size:.4em;font-stretch:100%;font-weight:600;margin-left:5px}.duo-sub{font-size:14px;font-weight:500;line-height:1.35;max-width:34ch}.duo-sub .m{color:var(--muted);font-weight:400;font-size:13px}.ventana{font-size:14px;line-height:1.4;padding:8px 12px;border-radius:10px;border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
 h1{font-size:clamp(28px,6vw,46px);font-stretch:85%;font-weight:800;letter-spacing:-.01em;line-height:1.05}
 h2{font-size:20px;font-stretch:90%;font-weight:700}
@@ -132,12 +132,19 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
 
   <section class="hero" aria-label="Resultado">
     <div class="readout">
-      <span class="eyebrow">Días hasta el nivel mínimo · 2.115 msnm</span>
-      <div class="big num" id="days">–</div>
-      <div id="dateLine" style="font-size:16px;font-weight:500"></div>
-      <div id="rangeLine" style="font-size:13px;color:var(--muted);max-width:52ch;line-height:1.4"></div>
-      <p class="explica" style="max-width:52ch">A 2.115 msnm Mazar se queda sin reserva: Paute solo podría generar con el agua que trae el río y faltaría energía.</p>
-      <p class="explica" id="refZona" style="max-width:52ch"></p>
+      <div class="duo">
+        <div class="duo-main">
+          <span class="eyebrow">Días hasta la zona crítica · 2.116 msnm</span>
+          <div class="big num" id="days" style="color:var(--warn)">–</div>
+          <div id="dateLine" class="duo-sub"></div>
+        </div>
+        <div class="duo-stop">
+          <span class="eyebrow" style="color:var(--crit)">Parada de Mazar · 2.115 msnm</span>
+          <div class="num" id="paradaDias">–</div>
+          <div id="paradaFecha" class="duo-sub"></div>
+        </div>
+      </div>
+      <div id="ventana" class="ventana"></div>
       <span class="status" id="status">calculando</span>
       <div class="kpis">
         <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
@@ -179,7 +186,8 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
         <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
           <h2 style="margin:0">Probabilidad de que Mazar llegue a…</h2>
           <select id="probUmbral" aria-label="Umbral" style="font:inherit;font-size:14px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)">
-            <option value="2115">2.115 m · nivel mínimo</option>
+            <option value="2116">2.116 m · zona crítica</option>
+            <option value="2115">2.115 m · parada de Mazar</option>
             <option value="2120">2.120 m · referencia de 2023–2024</option>
           </select>
         </div>
@@ -318,7 +326,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </section>
 </div>
 
-<script src="modelo.js?v=20261019a"></script>
+<script src="modelo.js?v=20261020a"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -451,38 +459,48 @@ function render(){
   const f = R.firstDay;
   const drop = (f.qturb - f.qin)*86400/1e6 / ModeloMazar.areaEn(COTA_HOY);
 
-  // Lectura principal: días hasta 2.115 msnm
+  // Lectura principal: zona crítica (2.116 msnm) y parada de Mazar (2.115 msnm)
   const M0 = DATA.modelo || {};
   const st = el("status");
   const nDias = t => t<10 ? fmt(t,1) : fmt(t);
-  if(R.crossDay!==null){
-    el("days").innerHTML = nDias(R.crossDay)+"<small>días</small>";
-    const d = addDays(R.crossDay);
-    el("dateLine").textContent = "Mazar llegaría a 2.115 msnm alrededor del "+dlabel(d)+" de "+d.getFullYear();
-    const rg = ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY);
-    el("rangeLine").textContent = rg ? ("Rango probable: entre " + fmt(rg[0]) + " y " + (rg[1]!=null ? fmt(rg[1])+" días" : "más de 60 días") +
-      " · así de lejos cayó la realidad en la mitad de las pruebas con fechas pasadas (2023–2026), si Paute sigue generando como la última semana") : "";
-    if(R.crossDay<10){st.className="status st-crit";st.textContent="atención: menos de 10 días";}
-    else if(R.crossDay<25){st.className="status st-warn";st.textContent="seguimiento: menos de 25 días";}
-    else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
+  const Z = ModeloMazar.zonaCritica(R, COTA_HOY);
+  const fch = t => dlabel(addDays(t));
+  if(Z.entrada===0){
+    el("days").innerHTML = "0<small>días</small>";
+    el("dateLine").innerHTML = "Mazar ya está en la zona crítica";
+  } else if(Z.entrada!==null){
+    el("days").innerHTML = nDias(Z.entrada)+"<small>días</small>";
+    const rg = ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY, ModeloMazar.COTA_ZC);
+    el("dateLine").innerHTML = "Entraría alrededor del <b>"+fch(Z.entrada)+"</b>" +
+      (rg && rg[0]!=null ? '<br><span class="m">probable: '+fmt(rg[0])+" a "+(rg[1]!=null ? fmt(rg[1])+" días" : "más de 60 días")+"</span>" : "");
   } else {
     el("days").innerHTML = "+60<small>días</small>";
-    const last=R.daily[R.daily.length-1];
-    el("dateLine").textContent = "No toca 2.115 en 60 días · cota final "+fmt(last.cota,2)+" msnm";
-    const rg = ModeloMazar.rango(R, M0.rango_cuantiles, COTA_HOY);
-    el("rangeLine").textContent = (rg && rg[0]!=null) ? ("Rango probable: desde " + fmt(rg[0]) + " días hasta más de 60 · según las pruebas con fechas pasadas (2023–2026)") : "";
-    st.className="status st-ok"; st.textContent="el embalse aguanta el horizonte";
+    el("dateLine").innerHTML = "No entra en la zona crítica en 60 días";
   }
-  // Referencia secundaria: 2.120 msnm (no es un umbral oficial)
-  let tz = null;
-  if (COTA_HOY <= COTA_ZONA) tz = 0;
-  for (let k=1; k<R.daily.length && tz===null; k++){
-    const a=R.daily[k-1], b=R.daily[k];
-    if (b.cota <= COTA_ZONA) tz = a.t + (a.cota-COTA_ZONA)/Math.max(1e-6, a.cota-b.cota);
+  // Parada de Mazar: cruce real de 2.115; si la curva solo roza el mínimo, se dice
+  const roza = Z.minimo && !Z.paradaEnVentana && Z.minimo.cota < 2115.5;
+  if(Z.parada!==null){
+    el("paradaDias").innerHTML = nDias(Z.parada)+"<small>días</small>";
+    el("paradaFecha").innerHTML = "Pararía el <b>"+fch(Z.parada)+"</b>" +
+      (roza ? '<br><span class="m">antes roza '+fmt(Z.minimo.cota,2)+" m el "+fch(Z.minimo.t)+"</span>" : "");
+  } else {
+    el("paradaDias").innerHTML = "+60<small>días</small>";
+    el("paradaFecha").innerHTML = roza ? "No para en 60 días<br><span class=\"m\">roza "+fmt(Z.minimo.cota,2)+" m el "+fch(Z.minimo.t)+"</span>" : "No para en 60 días";
   }
-  el("refZona").textContent = (tz===0 ? "Referencia: Mazar ya está bajo 2.120 msnm. " : tz===null ? "Referencia: no bajaría de 2.120 msnm en 60 días. " :
-    ("Referencia: bajaría de 2.120 msnm en ≈ " + nDias(tz) + " días (" + dlabel(addDays(tz)) + "). ")) +
-    "En 2023 y 2024 el racionamiento fuerte empezó entre 2.118 y 2.121 msnm, pero no es un umbral oficial.";
+  // Ventana crítica: de la entrada a 2.116 hasta la parada (o hasta que vuelve a subir)
+  const vt = el("ventana");
+  if(Z.entrada!==null){
+    vt.hidden = false;
+    const ini = Z.entrada===0 ? "hoy" : "el "+fch(Z.entrada);
+    vt.innerHTML = "<b>Ventana crítica</b> (2.116 → 2.115 m): " + (Z.paradaEnVentana
+      ? "desde "+ini+" hasta la parada el "+fch(Z.parada)+" · "+nDias(Math.max(0,Z.parada-Z.entrada))+" días"
+      : (Z.salida!==null ? "desde "+ini+" hasta el "+fch(Z.salida)+", sin llegar a parar, si llueve lo previsto"
+                         : "desde "+ini+", sin llegar a parar en 60 días"));
+  } else vt.hidden = true;
+  const tz0 = Z.entrada===null ? 99 : Z.entrada;
+  if(tz0<10){st.className="status st-crit";st.textContent="atención: menos de 10 días";}
+  else if(tz0<25){st.className="status st-warn";st.textContent="seguimiento: menos de 25 días";}
+  else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
   el("kPaute").textContent = fmt(f.paute);
   // déficit al tocar 2.115: primer día posterior al cruce
