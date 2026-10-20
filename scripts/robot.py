@@ -583,7 +583,12 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         mod["amaluzaVolumen"] = round(_vol_amaluza(am_hoy, par["amaluza"]), 2)
     except Exception as e:
         log(f"Amaluza: {e}")
-        mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
+        if previo.get("amaluzaCota") and previo.get("amaluzaCota") != 1980.0:
+            mod["amaluzaCota"] = previo["amaluzaCota"]; mod["amaluzaRitmo"] = previo.get("amaluzaRitmo", 0.0)
+            mod["amaluzaVolumen"] = previo.get("amaluzaVolumen")
+            log("Se conserva la última lectura buena de Amaluza")
+        else:
+            mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
     # Paute según el día de la semana (MW sobre o bajo su promedio)
     p7 = (fis or {}).get("paute_prom_mw") or 900
     f = par["factor_dia_semana_lun_dom"]
@@ -888,6 +893,16 @@ def main():
     except Exception as e:
         fuentes["celec_energia"] = {"ok": False, "error": str(e)[:200], "intento": ahora.isoformat(timespec='minutes')}
         log(f"Física Paute falló: {e}")
+        # Si Celec Sur no responde, se usa la física de la última lectura buena (hasta 3 días), para que una
+        # caída momentánea de la fuente no cambie de golpe la demanda ni la predicción.
+        prev = datos.get("fisica") or {}
+        try:
+            edad = (ahora.date() - datetime.fromisoformat(prev["actualizado"]).date()).days
+        except Exception:
+            edad = 99
+        if prev.get("paute_prom_mw") and prev.get("detalle") and edad <= 3:
+            fis = prev
+            log(f"Se usa la física de Paute de la última lectura buena ({prev.get('actualizado')})")
     k = (datos.get("fisica") or {}).get("k_mw_por_m3s", 9.0)
 
     # --- Demanda: equivalente a la última semana, para que un fin de semana no distorsione la proyección.
