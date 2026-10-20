@@ -179,5 +179,20 @@
     return { entrada, salida, parada, paradaEnVentana, minimo };
   }
 
-  global.ModeloMazar = { probabilidades, zonaCritica, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_ZC, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
+
+  /* Cortes si Mazar llega a 2.115: déficit del primer día completo después de la parada (lo peor) y promedio
+     de la semana siguiente (con el caudal pronosticado). horas = déficit ÷ demanda × 24. */
+  function cortesTrasParada(R, dias) {
+    if (!R || R.crossDay === null) return null;
+    const N = dias || 7, d = R.daily;
+    const tras = d.filter(r => r.t > R.crossDay && r.t <= R.crossDay + N);
+    if (!tras.length) return null;
+    const h = r => r.demand > 0 ? r.deficit / r.demand * 24 : 0;
+    const p = tras[0];
+    const mw = tras.reduce((s, r) => s + r.deficit, 0) / tras.length;
+    const hs = tras.reduce((s, r) => s + h(r), 0) / tras.length;
+    return { dia: R.crossDay, primerMW: p.deficit, primerH: h(p), semanaMW: mw, semanaH: hs };
+  }
+
+  global.ModeloMazar = { probabilidades, zonaCritica, cortesTrasParada, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_ZC, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
 })(typeof window !== "undefined" ? window : globalThis);

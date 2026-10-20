@@ -32,7 +32,7 @@
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
-.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}.split .col{display:grid;gap:20px;min-width:0;align-content:start}.split .groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split .group{gap:10px}.split .card{padding:16px;gap:12px}.split .ctrl .src{font-size:12px;line-height:1.35}@media (max-width:900px){.split{grid-template-columns:1fr}}@media (max-width:560px){.split .groups{grid-template-columns:1fr}}.duo{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px}.duo-main{display:grid;gap:6px}.duo-stop{display:grid;gap:6px;padding:12px 16px;border:1px solid var(--crit);border-radius:12px;min-width:180px}#paradaDias{font-family:var(--f-display);font-weight:800;font-stretch:75%;font-size:clamp(34px,8vw,54px);line-height:.95;color:var(--crit)}#paradaDias small{font-size:.4em;font-stretch:100%;font-weight:600;margin-left:5px}.duo-sub{font-size:14px;font-weight:500;line-height:1.35;max-width:34ch}.duo-sub .m{color:var(--muted);font-weight:400;font-size:13px}.ventana{font-size:14px;line-height:1.4;padding:8px 12px;border-radius:10px;border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;align-items:start}.split .col{display:grid;gap:20px;min-width:0;align-content:start}.split .groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split .group{gap:10px}.split .card{padding:16px;gap:12px}.split .ctrl .src{font-size:12px;line-height:1.35}@media (max-width:900px){.split{grid-template-columns:1fr}}@media (max-width:560px){.split .groups{grid-template-columns:1fr}}.duo{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 28px}.duo-main{display:grid;gap:6px}.duo-stop{display:grid;gap:6px;padding:12px 16px;border:1px solid var(--crit);border-radius:12px;min-width:180px}#paradaDias{font-family:var(--f-display);font-weight:800;font-stretch:75%;font-size:clamp(34px,8vw,54px);line-height:.95;color:var(--crit)}#paradaDias small{font-size:.4em;font-stretch:100%;font-weight:600;margin-left:5px}.duo-sub{font-size:14px;font-weight:500;line-height:1.35;max-width:34ch}.duo-sub .m{color:var(--muted);font-weight:400;font-size:13px}.ventana{font-size:14px;line-height:1.4;padding:8px 12px;border-radius:10px;border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent)}.autor{font-size:14px;color:var(--muted);font-weight:500}.pie{text-align:center;font-size:13px;color:var(--muted);padding:8px 0 4px;border-top:1px solid var(--line)}.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
 h1{font-size:clamp(28px,6vw,46px);font-stretch:85%;font-weight:800;letter-spacing:-.01em;line-height:1.05}
 h2{font-size:20px;font-stretch:90%;font-weight:700}
@@ -127,6 +127,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     <span class="eyebrow" id="asof">Ecuador · Sistema Nacional Interconectado · datos al viernes 16 oct 2026, 09:00</span>
     <span class="fuentes" id="fuentesTxt" hidden></span>
     <h1>Monitoreo del sistema eléctrico del Ecuador: Mazar y generación</h1>
+    <span class="autor">por Ing. Luis Campozano, MBA</span>
     <p class="lede">Mueve las variables y el modelo recalcula, día por día, cuánta agua debe sacar el complejo Paute (Mazar, Molino y Sopladora) para cubrir lo que el resto del sistema no alcanza a generar. Los valores iniciales reproducen la caída real más reciente de Mazar.</p>
   </header>
 
@@ -149,7 +150,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <div class="kpis">
         <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
         <div class="kpi"><div class="v" id="kPaute">–</div><div class="l">MW que se le piden a Paute</div></div>
-        <div class="kpi"><div class="v" id="kCut">–</div><div class="l">racionamiento estimado al tocar 2.115</div></div>
+        <div class="kpi"><div class="v" id="kCut">–</div><div class="l">cortes estimados al tocar 2.115</div></div>
       </div>
     </div>
     <div class="gauge" aria-label="Regla de nivel del embalse">
@@ -334,9 +335,10 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <li><a href="https://www.primicias.ec/economia/embalse-mazar-paute-agosto-compra-electricidad-colombia-estiaje-130124/" target="_blank" rel="noopener">Primicias: 300 millones de m³ útiles en Mazar</a></li>
     </ul>
   </section>
+  <footer class="pie">Simulador desarrollado por <b>Ing. Luis Campozano, MBA</b> · datos de Celec Sur, Cenace, Open-Meteo y GloFAS · se actualiza cada 2 horas</footer>
 </div>
 
-<script src="modelo.js?v=20261020b"></script>
+<script src="modelo.js?v=20261020c"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -513,14 +515,9 @@ function render(){
   else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
   el("kPaute").textContent = fmt(f.paute);
-  // déficit al tocar 2.115: primer día posterior al cruce
-  let cutTxt="no aplica";
-  if(R.crossDay!==null){
-    const after = R.daily.find(r=>r.t>R.crossDay) || R.daily[R.daily.length-1];
-    const h = after.deficit/after.demand*24;
-    cutTxt = fmt(after.deficit)+" MW · ≈"+fmt(h,1)+" h/día";
-  }
-  el("kCut").textContent = cutTxt;
+  // cortes al tocar 2.115 (mismo cálculo que el otro simulador): primer día y promedio de la semana siguiente
+  const CT = ModeloMazar.cortesTrasParada(R);
+  el("kCut").innerHTML = CT ? ("≈"+fmt(CT.primerH,1)+" h/día<span style=\"display:block;font:12px/1.35 var(--f-body);color:var(--muted);margin-top:2px\">"+fmt(CT.primerMW)+" MW el primer día · ≈"+fmt(CT.semanaH,1)+" h/día promedio la semana siguiente</span>") : "no aplica";
 
   drawProb(P);
   drawAciertos();
