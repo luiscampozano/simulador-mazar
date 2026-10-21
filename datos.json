@@ -95,17 +95,18 @@
     "lluviaCoca": "Cuenca del Coca: 88 mm en los últimos 7 días y 41 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "demanda": "Equivale a la última semana: Paute generó en promedio 832 MW del 2026-10-14 al 2026-10-20 (Celec Sur), con ~214 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4114 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1268 MW (día completo 2026-10-19, Cenace, automático). El complejo Paute generó 827 MW en ese mismo periodo.",
-    "cortes": "20 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL; Expreso 17 y 19/10, Prensa Latina 19/10); ~300 MW/día. Hogares: sin cortes anunciados"
+    "cortes": "21 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL; Expreso 17 y 19/10). Sin cifra de MW: se usa 300. Semana del 26/10 sin anunciar. Hogares: sin cortes anunciados"
   },
   "robot": {
     "ultima_lectura": "2026-10-21T09:00:00-05:00",
-    "caudal_entrada_24h": 31,
-    "variacion_cota_24h": -0.44,
+    "caudal_entrada_24h": null,
+    "variacion_cota_24h": null,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
-        "ok": true,
-        "lectura": "2026-10-21T09:00:00-05:00"
+        "ok": false,
+        "error": "HTTP Error 503: ",
+        "intento": "2026-10-21T09:52-05:00"
       },
       "cenace": {
         "ok": true,
@@ -118,23 +119,23 @@
       },
       "celec_energia": {
         "ok": false,
-        "error": "HTTP Error 503: ",
-        "intento": "2026-10-21T09:46-05:00"
+        "error": "The read operation timed out",
+        "intento": "2026-10-21T09:52-05:00"
       },
       "pronostico_caudal": {
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-21T09:46-05:00",
+    "ultima_ejecucion": "2026-10-21T09:52-05:00",
     "registro": [
-      "Autoajuste río Coca: el Coca real va -4.7 %/día frente a GloFAS; se corrige -1.3 %/día (con 4 días)",
       "Autoajuste por aciertos: la realidad bajó 1.11 veces lo predicho; se corrige 1.031 (con 4 días)",
-      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.053, '14': 0.105, '30': 0.368}, semana seca {'7': 0.211, '14': 0.632, '30': 0.895}",
-      "Zona crítica (2.116): 27.945623520904117; ventana hasta 46.203915156314196; mínimo {'t': 30.0, 'cota': 2115.0}",
-      "Modelo: 29.7 días hasta 2.115 (rango 27.77927049608942–33.16963263856032); hoy -0.57 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: no se pudieron leer las cotas horarias (The read operation timed out)",
-      "Verificación: 3 comparaciones nuevas; última a 1 día: dijo 2120.78 y fue 2121.15 (-0.37 m)"
+      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.053, '14': 0.105, '30': 0.316}, semana seca {'7': 0.211, '14': 0.579, '30': 0.789}",
+      "Zona crítica (2.116): 29.848064826450923; ventana hasta 45.859354438670266; mínimo {'t': 31.0, 'cota': 2115.0}",
+      "Modelo: 31.2 días hasta 2.115 (rango 29.59221976654588–34.341494468980414); hoy -0.57 m/día",
+      "Verificación: no se pudieron leer las cotas horarias (<urlopen error timed out>)",
+      "Verificación: no se pudieron leer las cotas horarias (<urlopen error timed out>)",
+      "Verificación: no se pudieron leer las cotas horarias (<urlopen error timed out>)",
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2120.78 y fue 2121.15 (-0.37 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-14",
@@ -567,91 +568,91 @@
       1.5168
     ],
     "ajuste_coca": {
-      "deriva_dia": -0.0133,
-      "deriva_observada": -0.0467,
+      "deriva_dia": -0.0115,
+      "deriva_observada": -0.0402,
       "dias": 4,
-      "casos": 79,
+      "casos": 86,
       "error_glofas": {
         "1": {
-          "n": 44,
-          "error_medio": 7.0,
-          "sesgo": 6.6
+          "n": 46,
+          "error_medio": 6.8,
+          "sesgo": 6.2
         },
         "2": {
-          "n": 28,
-          "error_medio": 15.0,
-          "sesgo": 15.0
+          "n": 29,
+          "error_medio": 14.7,
+          "sesgo": 14.7
         },
         "3": {
-          "n": 7,
-          "error_medio": 25.7,
-          "sesgo": 25.7
+          "n": 11,
+          "error_medio": 20.5,
+          "sesgo": 20.5
         }
       },
-      "nota": "el Coca real va -4.7 %/día frente a GloFAS; se corrige -1.3 %/día (con 4 días)"
+      "nota": "el Coca real va -4.0 %/día frente a GloFAS; se corrige -1.1 %/día (con 4 días)"
     },
     "serieCoca": [
       1.0,
-      1.09,
-      1.0831,
-      1.0763,
-      1.0645,
-      1.0312,
-      0.9943,
-      0.9654,
-      0.9346,
-      0.9239,
-      0.9834,
-      1.1264,
-      1.166,
-      1.1589,
-      1.3806,
-      1.5213,
-      1.4102,
-      1.2993,
-      1.2306,
-      1.1611,
-      1.1075,
-      1.0588,
-      1.0255,
-      1.0026,
-      0.9831,
-      0.9729,
-      0.9614,
-      0.9569,
-      0.9464,
-      0.9318,
-      0.906,
-      0.874,
-      0.8718,
-      0.8681,
-      0.8778,
-      0.926,
-      0.9461,
-      0.9376,
-      0.9383,
-      0.9425,
-      0.9446,
-      0.9314,
-      0.9376,
-      0.9467,
-      1.1948,
-      1.1935,
-      1.2185,
-      1.1783,
-      1.1161,
-      1.1399,
-      1.141,
-      1.1139,
-      1.0779,
-      1.059,
-      1.0503,
-      1.039,
-      1.0254,
-      1.0045,
-      0.9839,
-      0.9863,
-      0.9895
+      1.092,
+      1.087,
+      1.0821,
+      1.0722,
+      1.0405,
+      1.0051,
+      0.9776,
+      0.9465,
+      0.9356,
+      0.9959,
+      1.1407,
+      1.1808,
+      1.1736,
+      1.3981,
+      1.5406,
+      1.4281,
+      1.3158,
+      1.2462,
+      1.1758,
+      1.1216,
+      1.0722,
+      1.0385,
+      1.0153,
+      0.9955,
+      0.9852,
+      0.9736,
+      0.9691,
+      0.9584,
+      0.9436,
+      0.9175,
+      0.8851,
+      0.8829,
+      0.8791,
+      0.889,
+      0.9378,
+      0.9581,
+      0.9495,
+      0.9502,
+      0.9545,
+      0.9566,
+      0.9432,
+      0.9495,
+      0.9587,
+      1.21,
+      1.2087,
+      1.234,
+      1.1933,
+      1.1303,
+      1.1543,
+      1.1554,
+      1.128,
+      1.0916,
+      1.0724,
+      1.0636,
+      1.0522,
+      1.0384,
+      1.0172,
+      0.9964,
+      0.9988,
+      1.0021
     ],
     "serieCocaBruta": [
       1.0,
@@ -721,31 +722,31 @@
     "ajuste_info": {
       "factor": 1.031,
       "dias": 4,
-      "casos": 48,
+      "casos": 50,
       "ratio_mediana": 1.107,
       "nota": "la realidad bajó 1.11 veces lo predicho; se corrige 1.031 (con 4 días)"
     },
     "prediccion": {
-      "dias_zona_2120": 3.2,
+      "dias_zona_2120": 3.3,
       "rango_zona_2120": [
-        2.7,
-        3.9
+        2.8,
+        4.0
       ],
-      "dias": 29.7,
+      "dias": 31.2,
       "rango": [
-        27.8,
-        33.2
+        29.6,
+        34.3
       ],
       "ritmo_hoy_m_dia": -0.57,
-      "dias_critica": 27.9,
+      "dias_critica": 29.8,
       "rango_critica": [
-        27.0,
-        31.7
+        28.3,
+        33.1
       ],
-      "salida_critica": 46.2,
+      "salida_critica": 45.9,
       "parada_en_ventana": true,
       "minimo_critica": {
-        "t": 30.0,
+        "t": 31.0,
         "cota": 2115.0
       }
     },
@@ -757,14 +758,14 @@
           "30": 1.0
         },
         "2116": {
-          "7": 0.158,
-          "14": 0.211,
-          "30": 0.526
+          "7": 0.105,
+          "14": 0.158,
+          "30": 0.368
         },
         "2115": {
           "7": 0.053,
           "14": 0.105,
-          "30": 0.368
+          "30": 0.316
         }
       },
       "semana_seca": {
@@ -775,13 +776,13 @@
         },
         "2116": {
           "7": 0.368,
-          "14": 0.789,
-          "30": 0.947
+          "14": 0.737,
+          "30": 0.895
         },
         "2115": {
           "7": 0.211,
-          "14": 0.632,
-          "30": 0.895
+          "14": 0.579,
+          "30": 0.789
         }
       }
     },
