@@ -63,6 +63,7 @@ p{margin:0}
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-top:1px solid var(--line);padding-top:12px}
 .kpi .v{font-family:var(--f-mono);font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}
 .kpi .l{font-size:12px;color:var(--muted);line-height:1.3}
+.kpi .v-esc{font-size:13px;display:grid;gap:1px;margin-bottom:2px}.esc{display:flex;justify-content:space-between;gap:8px;max-width:260px;line-height:1.35;white-space:nowrap}.esc-l{font:12px/1.35 var(--f-body);color:var(--muted)}.esc-d{color:var(--ink)}.esc-v{font-weight:600}.esc-c{color:var(--crit)}.esc-w{color:var(--warn)}.esc-o{color:var(--ok)}
 
 /* regla de nivel */
 .gauge{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:8px}
@@ -118,7 +119,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   .facts{grid-template-columns:1fr}
   .sources{columns:1}
 }
-@media (max-width:420px){ .kpis{grid-template-columns:1fr 1fr} }
+@media (max-width:420px){ .kpis{grid-template-columns:1fr 1fr} .kpi-esc{grid-column:1 / -1} }
 @media (prefers-reduced-motion:no-preference){ .bar span{transition:width .25s ease} }
 .tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .tabs button{font:600 14px var(--f-body);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer}
@@ -163,7 +164,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <div class="kpis">
         <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
         <div class="kpi"><div class="v" id="kPaute">–</div><div class="l">MW que se le piden a Paute</div></div>
-        <div class="kpi"><div class="v" id="kCut">–</div><div class="l">cortes estimados al tocar 2.115</div></div>
+        <div class="kpi kpi-esc"><div class="v v-esc" id="kCut">–</div><div class="l">horas de corte al tocar 2.115</div></div>
       </div>
     </div>
     <div class="gauge" aria-label="Regla de nivel del embalse">
@@ -380,7 +381,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   <footer class="pie">Simulador desarrollado por <b>Ing. Luis Campozano, MBA</b> · datos de Celec Sur, Cenace, Inamhi, Open-Meteo y GloFAS · se actualiza cada 2 horas</footer>
 </div>
 
-<script src="modelo.js?v=20261021m"></script>
+<script src="modelo.js?v=20261022b"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -575,9 +576,10 @@ function render(){
   else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
   el("kDrop").textContent = (drop>0?"−":"+")+fmt(Math.abs(drop),2);
   el("kPaute").textContent = fmt(f.paute);
-  // cortes al tocar 2.115 (mismo cálculo que el otro simulador): primer día y promedio de la semana siguiente
-  const CT = ModeloMazar.cortesTrasParada(R);
-  el("kCut").innerHTML = CT ? ("≈"+fmt(CT.primerH,1)+" h/día<span style=\"display:block;font:12px/1.35 var(--f-body);color:var(--muted);margin-top:2px\">"+fmt(CT.primerMW)+" MW el primer día · ≈"+fmt(CT.semanaH,1)+" h/día promedio la semana siguiente</span>") : "no aplica";
+  // cortes al tocar 2.115 en 3 escenarios: pesimista, el del simulador y optimista (mismo cálculo que el otro simulador)
+  window._R_ACT = R;
+  window._DIA_ACT = oficial ? (NUM.parada.dias>=59 ? null : NUM.parada.dias) : R.crossDay;
+  pintarCortes();
 
   drawProb(P);
   drawAciertos();
@@ -586,6 +588,27 @@ function render(){
   drawBalance(f);
   drawTable(R);
 }
+
+/* Horas de corte (primer día tras tocar 2.115) en el escenario pesimista, el del simulador y el optimista.
+   Pesimista y optimista salen de los escenarios de la pestaña "Región de proyección" (pestanas.js). */
+function pintarCortes(){
+  const R = window._R_ACT; if(!R) return;
+  // el escenario del simulador usa la misma fecha de parada que el número grande
+  const act = {R, dia: window._DIA_ACT !== undefined ? window._DIA_ACT : R.crossDay};
+  const todos = [act].concat((window.ESC_CORTES || []).map(x => ({R:x, dia:x.crossDay})));
+  const cruce = x => x.dia===null ? Infinity : x.dia;
+  const ord = todos.slice().sort((a,b) => cruce(a)-cruce(b));
+  const fila = (lbl, x) => {
+    const CT = x.dia===null ? null : ModeloMazar.cortesDesde(x.R, x.dia);
+    const v = CT ? "≈"+fmt(CT.primerH,1)+" h" : "sin cortes";
+    const d = CT ? (()=>{ const t=addDays(CT.dia); return t.getDate()+" "+MON[t.getMonth()]; })() : "no llega";
+    const tip = CT ? lbl+": desde el "+dlabel(addDays(CT.dia))+" faltarían ≈"+fmt(CT.primerMW)+" MW el primer día (≈"+fmt(CT.primerH,1)+" h de corte) y ≈"+fmt(CT.semanaH,1)+" h/día en promedio la semana siguiente"
+                   : lbl+": Mazar no llega a 2.115 m en 60 días";
+    return '<div class="esc" title="'+tip+'"><span class="esc-l">'+lbl+' <span class="esc-d">'+d+'</span></span><span class="esc-v'+(CT?(CT.primerH>=4?' esc-c':' esc-w'):' esc-o')+'">'+v+'</span></div>';
+  };
+  el("kCut").innerHTML = fila("pesimista", ord[0]) + fila("simulador", act) + fila("optimista", ord[ord.length-1]);
+}
+window.pintarCortes = pintarCortes;
 
 function drawAciertos(){
   const M = DATA.modelo || {}, ac = M.aciertos, aj = M.ajuste_info;
@@ -739,7 +762,7 @@ fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
 </style>
 <script>window.GEN_CFG = { nav: ".tabs", despues: "#tab-region", panel: "card", h2: "", lede: "lede" };</script>
 <script src="generacion.js?v=20261022a"></script>
-<script src="pestanas.js?v=20261022a"></script>
+<script src="pestanas.js?v=20261022b"></script>
 
 </body>
 </html>
