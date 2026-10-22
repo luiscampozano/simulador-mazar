@@ -106,7 +106,8 @@
         qturb = Math.max(0, (paute - kms * intermedio) / (kmz + kms));
         V += Math.max(0, qin - qturb) * 86400 * dt / 1e6;
       }
-      const rec = { t, cota: COTA_CRIT + xOf(V), cotaV: COTA_CRIT + (Vv > 0 ? xOf(Vv) : Vv / A()), qin, qcoca, demand, ccs: ccsT, other, therm: P.therm, imp: P.imp, paute, deficit, req, qturb };
+      const filoC = qin * (0.00981 * eta * Math.max(20, COTA_CRIT - amC) + kms) + kms * intermedio;   // lo que Paute daría solo con el río si Mazar estuviera en 2.115
+      const rec = { t, cota: COTA_CRIT + xOf(V), cotaV: COTA_CRIT + (Vv > 0 ? xOf(Vv) : Vv / A()), qin, qcoca, demand, ccs: ccsT, other, therm: P.therm, imp: P.imp, paute, deficit, req, qturb, filo: filoC };
       if (step === 0) firstDay = rec;
       if (Math.abs(t - Math.round(t)) < 1e-9) daily.push(rec);
     }
@@ -200,5 +201,17 @@
     return { dia: R.crossDay, primerMW: p.deficit, primerH: h(p), semanaMW: mw, semanaH: hs };
   }
 
-  global.ModeloMazar = { probabilidades, zonaCritica, cortesTrasParada, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_ZC, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
+  // Igual que cortesTrasParada, pero suponiendo que Mazar toca 2.115 el día "dia" (p. ej. la fecha del número grande)
+  function cortesDesde(R, dia, dias) {
+    if (!R || dia === null || dia === undefined) return null;
+    const N = dias || 7, d = R.daily;
+    const tras = d.filter(r => r.t > dia && r.t <= dia + N);
+    if (!tras.length) return null;
+    const def = r => r.filo === undefined ? r.deficit : Math.max(0, r.req - Math.min(Math.max(r.filo, 0), PAUTE_MAX));
+    const h = r => r.demand > 0 ? def(r) / r.demand * 24 : 0;
+    const p = tras[0];
+    return { dia, primerMW: def(p), primerH: h(p), semanaMW: tras.reduce((s, r) => s + def(r), 0) / tras.length, semanaH: tras.reduce((s, r) => s + h(r), 0) / tras.length };
+  }
+
+  global.ModeloMazar = { probabilidades, zonaCritica, cortesTrasParada, cortesDesde, configurar, simular, rango, perfil, ccsMW, volOf, xOf, areaEn, COTA_CRIT, COTA_ZC, COTA_MAX, PAUTE_MAX, parametros: () => PAR };
 })(typeof window !== "undefined" ? window : globalThis);
