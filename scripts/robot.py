@@ -861,6 +861,43 @@ def ccs_prom(cache, fin, horas=24):
     return sum(ccs_mw_rio(x) for x in v) / len(v) if len(v) >= 0.6 * horas else None
 
 
+F_CCS_REND = os.path.join("registro", "ccs_rendimiento.json")   # Coca Codo: lo que generó (Cenace) frente a lo que su río permitía
+
+
+def rendimiento_ccs(cache, hoy_d):
+    """Rendimiento de Coca Codo: generación real (Cenace, días completos) ÷ lo que permitía el río (fórmula).
+    Se guarda cada día (con el río medio, para separar más adelante río normal y crecido). El factor es el promedio
+    ponderado (la mitad cada 3 días) de los últimos 21 días, con freno n/(n+10) como el ajuste de GloFAS, entre 0,6 y 1."""
+    reg = _leer_json(F_CCS_REND, {})
+    serie = _leer_json(SERIE, {})
+    for dia, v in (serie.get("plantas") or {}).items():
+        if dia in reg or float(v.get("horas") or 0) < 24 or not v.get("Coca Codo"):
+            continue
+        d0 = datetime.strptime(dia, "%Y-%m-%d").replace(tzinfo=EC)
+        q = [cache[k] for k in (f"{d0 + timedelta(hours=i):%Y-%m-%dT%H}" for i in range(24)) if cache.get(k) is not None]
+        if len(q) < 18:
+            continue
+        cap = sum(ccs_mw_rio(x) for x in q) / len(q)
+        real = float(v["Coca Codo"]) / 24.0
+        if cap > 50:
+            reg[dia] = {"real_mw": round(real), "rio_mw": round(cap), "rio_m3s": round(sum(q) / len(q), 1),
+                        "rendimiento": round(real / cap, 3)}
+    limite = (hoy_d - timedelta(days=150)).isoformat()
+    reg = {k: v for k, v in sorted(reg.items()) if k >= limite}
+    with open(F_CCS_REND, "w", encoding="utf-8") as fo:
+        json.dump(reg, fo, ensure_ascii=False, indent=1)
+    usa = [(k, v) for k, v in reg.items() if k >= (hoy_d - timedelta(days=21)).isoformat()]
+    if len(usa) < 3:
+        return 1.0, {"factor": 1.0, "dias": len(usa), "nota": "pocos días; sin corrección"}
+    w = [0.5 ** ((hoy_d - datetime.strptime(k, "%Y-%m-%d").date()).days / 3.0) for k, _ in usa]
+    m = sum(wi * math.log(max(0.3, min(1.3, v["rendimiento"]))) for wi, (_, v) in zip(w, usa)) / sum(w)
+    n = len(usa)
+    f = max(0.6, min(1.0, math.exp(m * n / (n + 10))))
+    return f, {"factor": round(f, 3), "observado": round(math.exp(m), 3), "dias": n,
+               "nota": f"Coca Codo rindió {math.exp(m) * 100:.0f} % de lo que permitía su río (promedio ponderado de {n} días); "
+                       f"se aplica {f * 100:.1f} %"}
+
+
 def coca_base(cache, fin):
     """Caudal esperado del río Coca para los días 1..10 y, en la posición 11, el nivel normal al que vuelve (sin pronóstico de lluvia)."""
     ult = _horas_rio(cache, fin, 2)
@@ -1269,12 +1306,19 @@ def main():
             q24, g24 = rio_prom(RIO, ahora), ccs_prom(RIO, ahora)
             ult = max(RIO) if RIO else None
             if q24 and g24:
-                hoy["qCoca"] = int(clamp(round(g24 / 5), 80, 450))
+                try:
+                    f_ccs, info_ccs = rendimiento_ccs(RIO, ahora.date())
+                except Exception as e:
+                    f_ccs, info_ccs = 1.0, {"factor": 1.0, "nota": f"sin dato: {e}"}
+                robot["ccs_rendimiento"] = info_ccs
+                log(f"Rendimiento de Coca Codo: {info_ccs.get('nota')}")
+                hoy["qCoca"] = int(clamp(round(g24 * f_ccs / 5), 80, 450))
                 hu = datetime.strptime(ult, "%Y-%m-%dT%H")
                 notas["coca"] = (f"Río Coca en Coca Codo Sinclair (Celec, cada hora): {q24:.0f} m³/s en promedio de 24 h; "
                                  f"a las {hu:%H}:00 iba en {RIO[ult]:.0f} m³/s. Con ese río Coca Codo puede generar ~{g24:.0f} MW "
                                  f"(tope continuo 1.200 MW desde ~250 m³/s)" + (f"; Cenace midió {ccs_mw:.0f} MW de promedio hoy." if base else ".")
-                                 + f" En el modelo equivale a {hoy['qCoca']} m³/s.")
+                                 + f" En el modelo equivale a {hoy['qCoca']} m³/s"
+                                 + (f" (rendimiento aplicado {f_ccs * 100:.1f} %)." if f_ccs < 0.999 else "."))
                 fuentes["coca_rio"] = {"ok": True}
                 log(f"Río Coca real (Celec): 24 h {q24:.0f} m³/s, último {RIO[ult]:.0f} ({ult}); Coca Codo ~{g24:.0f} MW")
         except Exception as e:
