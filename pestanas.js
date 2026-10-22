@@ -17,14 +17,13 @@
   let D = null, HISTD = null, listo = { comp: false, region: false };
 
   /* ---------- pestañas ---------- */
-  const PANELES = { sim: null, comp: "tab-comp", region: "tab-region" };
   function mostrar(tab) {
-    if (!PANELES.hasOwnProperty(tab)) tab = "sim";
+    if (tab !== "sim" && !document.getElementById("tab-" + tab)) tab = "sim";
     const wrap = document.querySelector(".wrap");
     [...wrap.children].forEach(n => {
       if (n.tagName === "HEADER" || n.tagName === "FOOTER" || n.classList.contains("tabs")) return;
-      const esPanel = n.id === "tab-comp" || n.id === "tab-region";
-      n.classList.toggle("fuera", tab === "sim" ? esPanel : n.id !== PANELES[tab]);
+      const esPanel = !!n.id && n.id.startsWith("tab-");
+      n.classList.toggle("fuera", tab === "sim" ? esPanel : n.id !== "tab-" + tab);
     });
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"));
     dibujar(tab);
@@ -32,6 +31,7 @@
   function dibujar(tab) {
     if (tab === "comp" && D && HISTD) comparacion();
     if (tab === "region" && D) region();
+    if (window.GEN) window.GEN.dibujar(tab);   // pestañas de generación y clima (generacion.js)
   }
   function actual() { return (location.hash || "").replace("#", "") || "sim"; }
 
