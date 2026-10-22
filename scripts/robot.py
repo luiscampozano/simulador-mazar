@@ -347,11 +347,12 @@ MRID_COCA = 100037
 # generación diaria de Cenace y el caudal de Celec (18–20 oct 2026); coincide con "240–250 m³/s para 1.200 MW".
 CCS_K, CCS_E, CCS_CAP = 5.25, 21.0, 1200.0
 RIO = None   # caché de caudales reales del río Coca (se llena en main)
-# Cuánto se parece el río de los próximos días al caudal de AHORA (el resto lo pone el promedio de las últimas 72 h).
-# Aprendido con el caudal horario de Celec 2023–2026 (16.523 casos; 191 crecidas súbitas): con río normal el caudal
-# actual dura ~2 días; tras una crecida súbita el día siguiente sigue alto y desde el segundo día vuelve a su nivel.
-W_RIO_NORMAL = [1.0, 1.0, 0.55, 0.45, 0.45, 0.45, 0.3, 0.3, 0.3, 0.15]
-W_RIO_CRECIDA = [0.7, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
+# Cuánto se parece el río de los próximos días al caudal de AHORA; el resto lo pone su nivel NORMAL = mediana de los
+# últimos 7 días (una crecida no la infla, a diferencia del promedio de 72 h). Desde el día 11 el río vuelve a ese nivel.
+# Aprendido con el caudal horario de Celec (400 días, 1.448 casos; 597 tras crecidas): frente a la regla anterior
+# (promedio de 72 h fijo) el sesgo optimista tras una crecida baja de +77/+75/+116 a +36/+14/+56 MW (días 4–10/11–20/21–30)
+# y en días normales queda en ~0. Tras una crecida súbita los pesos aprendidos son casi iguales, así que no hace falta otra regla.
+W_RIO = [0.565, 0.235, 0.158, 0.12, 0.147, 0.117, 0.084, 0.101, 0.108, 0.183]
 F_COCA_OBS = os.path.join("registro", "coca_observado.json")       # caudal equivalente de Coca Codo (Cenace) en cada corrida   # cada predicción comparada con la cota real a la misma hora
 HORIZ_VER = (1, 2, 3, 5, 7, 10, 14, 20, 30)
 
@@ -861,17 +862,19 @@ def ccs_prom(cache, fin, horas=24):
 
 
 def coca_base(cache, fin):
-    """Caudal esperado del río Coca para los días 1..10 según su comportamiento histórico (sin pronóstico de lluvia)."""
+    """Caudal esperado del río Coca para los días 1..10 y, en la posición 11, el nivel normal al que vuelve (sin pronóstico de lluvia)."""
     ult = _horas_rio(cache, fin, 2)
-    v24, v72 = _horas_rio(cache, fin, 24), _horas_rio(cache, fin, 72)
-    if not ult or len(v72) < 40:
+    v24, v72, v7d = _horas_rio(cache, fin, 24), _horas_rio(cache, fin, 72), _horas_rio(cache, fin, 168)
+    if not ult or len(v72) < 40 or len(v7d) < 100:
         return None, None
-    ahora_q, q72 = ult[-1], sum(v72) / len(v72)
+    ahora_q, q72 = sum(ult) / len(ult), sum(v72) / len(v72)
+    s7 = sorted(v7d); n7 = len(s7)
+    m7 = s7[n7 // 2] if n7 % 2 else (s7[n7 // 2 - 1] + s7[n7 // 2]) / 2
     prev = sorted(v24[:-1]) or [ahora_q]
     med = prev[len(prev) // 2]
-    crecida = ahora_q >= 2.5 * med and med < 300
-    W = W_RIO_CRECIDA if crecida else W_RIO_NORMAL
-    return [w * ahora_q + (1 - w) * q72 for w in W], {"ahora": round(ahora_q, 1), "q72": round(q72, 1), "crecida": crecida}
+    crecida = ahora_q >= 2.5 * med and med < 300          # solo informativo
+    return [w * ahora_q + (1 - w) * m7 for w in W_RIO] + [m7], {"ahora": round(ahora_q, 1), "q72": round(q72, 1),
+                                                                  "mediana7": round(m7, 1), "crecida": crecida}
 
 
 def guardar_coca(ts, q0, serie_bruta):
@@ -1023,7 +1026,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                     mod["coca_rio"] = {"q24": round(q24, 1), "mw24": round(g24), "k": CCS_K, "e": CCS_E, "tope": CCS_CAP, **info,
                                        "mw_1d": round(ccs_mw_rio(qd[1] * serieC_rio[1])), "mw_3d": round(ccs_mw_rio(qd[3] * serieC_rio[3])),
                                        "mw_7d": round(ccs_mw_rio(qd[7] * serieC_rio[7]))}
-                    log(f"Río Coca real: ahora {info['ahora']:.0f} m³/s, 72 h {info['q72']:.0f}" + (" (crecida súbita)" if info["crecida"] else "")
+                    log(f"Río Coca real: ahora {info['ahora']:.0f} m³/s, 72 h {info['q72']:.0f}, nivel normal (mediana 7 días) {info['mediana7']:.0f}" + (" (crecida súbita)" if info["crecida"] else "")
                         + f" → Coca Codo {g24:.0f} MW (24 h); día 1 {mod['coca_rio']['mw_1d']} MW, día 3 {mod['coca_rio']['mw_3d']} MW, "
                           f"día 7 {mod['coca_rio']['mw_7d']} MW")
         except Exception as e:
