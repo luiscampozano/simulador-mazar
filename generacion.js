@@ -352,14 +352,27 @@
     if (!G) { cargar(); return; }
     try { DIBUJA[tab](); } catch (e) { console.error("generacion.js", tab, e); }
   }
+  const espera = [];
   function cargar() {
     if (cargando) return; cargando = true;
     fetch(CFG.url + (CFG.url.includes("?") ? "&" : "?") + "t=" + Date.now(), { cache: "no-store" })
-      .then(r => r.ok ? r.json() : null).then(j => { if (j) { G = j; if (ultimo) dibujar(ultimo); } })
+      .then(r => r.ok ? r.json() : null).then(j => { if (j) { G = j; if (ultimo) dibujar(ultimo); espera.splice(0).forEach(f => f()); } })
       .catch(() => { }).finally(() => { cargando = false; });
   }
+  // Último dato real de Cenace para comparar con lo simulado: Coca Codo (último bloque horario) e importación de Colombia
+  function real(cb) {
+    const fin = () => { try {
+      const dias = Object.keys(G.plantas || {}).sort(), d = dias[dias.length - 1];
+      const b = d ? bloques(d).slice(-1)[0] : null;
+      const P = PUNTOS().filter(p => p.imp != null), p = P[P.length - 1];
+      const hh = h => String(Math.floor(h)).padStart(2, "0") + ":" + (h % 1 ? "30" : "00");
+      cb({ ccs: b ? { mw: Math.round(b.mw["Coca Codo"]), txt: hh(b.h0) + "–" + hh(b.h1), dia: d } : null,
+           col: p ? { mw: Math.round(p.imp), txt: p.k.slice(11, 16) } : null });
+    } catch (e) { } };
+    if (G) fin(); else { espera.push(fin); cargar(); }
+  }
   if (montar()) {
-    window.GEN = { dibujar };
+    window.GEN = { dibujar, real };
     let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (ultimo && $("tab-" + ultimo) && !$("tab-" + ultimo).classList.contains("fuera")) dibujar(ultimo); }, 150); });
   }
 })();
