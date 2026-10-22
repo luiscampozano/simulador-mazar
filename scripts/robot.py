@@ -1150,10 +1150,12 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     if len(hist) >= 8:
         real7 = (hist[-1][1] - hist[-8][1]) / 7
     c2 = lambda v: f"{v:.2f}".replace(".", ",")
+    # positivo = baja; negativo = sube (se muestra el valor absoluto con el verbo correcto)
+    rit = lambda v: (f"baja ≈ {c2(v)}" if v >= 0 else f"sube ≈ {c2(-v)}")
     txt = (f"Con los valores de \"Hoy\", Paute debe aportar ≈ {d0['paute']:.0f} MW y para eso Mazar suelta "
-           f"≈ {d0['qturb']:.0f} m³/s mientras le entran {d0['qin']:.0f}: hoy baja ≈ {c2(ritmo)} m/día.")
+           f"≈ {d0['qturb']:.0f} m³/s mientras le entran {d0['qin']:.0f}: hoy {rit(ritmo)} m/día.")
     if real7 is not None:
-        txt += f" Promedio real de los últimos 7 días: {c2(-real7)} m/día"
+        txt += f" Promedio real de los últimos 7 días: {rit(-real7).replace(' ≈', '')} m/día"
         if mod.get("amaluzaVolumen") is not None and mod["amaluzaVolumen"] < 1:
             txt += (f", cuando Amaluza todavía aportaba agua; hoy Amaluza está en {mod['amaluzaCota']:.1f}".replace(".", ",") + " m, "
                     "su nivel mínimo, y ya no puede ayudar.")
