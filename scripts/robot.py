@@ -1415,6 +1415,12 @@ def main():
     with open("datos.json", "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
         f.write("\n")
+    # Pestañas Hidroeléctricas, Térmicas, Otras fuentes y Clima (no tocan el modelo; si fallan, no pasa nada)
+    try:
+        import generacion
+        generacion.actualizar(ahora, get, CENACE)
+    except Exception as e:
+        print(f"Pestañas de generación y clima: {e}")
     return 0
 
 
