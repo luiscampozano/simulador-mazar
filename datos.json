@@ -130,16 +130,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-22T09:42-05:00",
+    "ultima_ejecucion": "2026-10-22T09:51-05:00",
     "registro": [
-      "Autoajuste por aciertos: la realidad bajó 0.84 veces lo predicho; se corrige 0.945 (con 5 días)",
+      "Río Coca real: ahora 250 m³/s, 72 h 225, nivel normal (mediana 7 días) 166 → Coca Codo 1115 MW (24 h); día 1 1059 MW, día 3 874 MW, día 7 776 MW",
+      "Autoajuste por aciertos: la realidad bajó 0.82 veces lo predicho; se corrige 0.941 (con 5 días)",
       "Memoria: 27 corridas de las últimas 48 h; sin memoria la zona crítica sería en 26.1 días",
       "Número grande (promedio ponderado de 27 corridas): zona crítica 40.4 días [6.9, 59.8], parada 41.0 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.0, '30': 0.0}, semana seca {'7': 0.0, '14': 0.0, '30': 0.0}",
       "Zona crítica (2.116): None; ventana hasta None; mínimo None",
       "Modelo: más de 60 días hasta 2.115 (rango None–None); hoy +1.17 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 3 comparaciones nuevas; última a 1 día: dijo 2120.66 y fue 2122.13 (-1.47 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2120.66 y fue 2122.13 (-1.47 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-12",
@@ -283,7 +283,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-10-22T09:42-05:00"
+    "actualizado": "2026-10-22T09:51-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -814,13 +814,13 @@
       "mw_7d": 776
     },
     "serie_fecha": "2026-10-22",
-    "ajuste": 0.945,
+    "ajuste": 0.941,
     "ajuste_info": {
-      "factor": 0.945,
+      "factor": 0.941,
       "dias": 5,
-      "casos": 73,
-      "ratio_mediana": 0.836,
-      "nota": "la realidad bajó 0.84 veces lo predicho; se corrige 0.945 (con 5 días)"
+      "casos": 75,
+      "ratio_mediana": 0.824,
+      "nota": "la realidad bajó 0.82 veces lo predicho; se corrige 0.941 (con 5 días)"
     },
     "prediccion_foto": {
       "dias_critica": 26.1,
@@ -830,16 +830,16 @@
     "memoria": [
       -11.55,
       10.07,
-      14.91,
+      14.86,
       -1.68,
-      2.96,
-      4.1,
-      -3.47,
-      -2.64,
+      2.91,
+      4.06,
+      -3.42,
+      -2.69,
       -14.64,
       -18.27,
       3.24,
-      33.93,
+      33.88,
       40.0,
       40.0,
       40.0,
@@ -847,47 +847,47 @@
       40.0,
       40.0,
       40.0,
-      39.84,
-      30.14,
-      31.88,
-      29.7,
-      29.41,
-      24.02,
-      25.22,
-      20.49,
-      14.09,
-      13.38,
-      8.51,
-      8.37,
-      5.26,
-      10.21,
-      11.1,
-      9.26,
-      13.55,
-      13.83,
-      16.78,
-      13.6,
-      16.83,
-      14.74,
-      14.51,
-      19.85,
-      19.4,
-      23.94,
-      21.12,
-      29.3,
-      26.79,
-      18.15,
-      21.45,
+      39.64,
+      30.07,
+      31.78,
+      29.57,
+      29.26,
+      23.87,
+      25.03,
+      20.35,
+      13.98,
+      13.27,
+      8.4,
+      8.22,
+      5.15,
+      10.02,
+      10.99,
+      9.19,
+      13.48,
+      13.76,
+      16.66,
+      13.48,
+      16.71,
+      14.58,
+      14.47,
+      19.82,
+      19.41,
+      23.91,
+      21.13,
+      29.23,
+      26.72,
+      18.12,
+      21.46,
       21.99,
-      23.85,
-      19.63,
-      22.42,
-      16.92,
+      23.74,
+      19.56,
+      22.35,
+      16.78,
       8.8,
-      10.22,
-      10.73,
-      14.09,
-      9.66
+      10.18,
+      10.69,
+      13.94,
+      9.58
     ],
     "memoria_info": {
       "corridas": 27,
@@ -958,12 +958,12 @@
         "2120": {
           "7": 0.053,
           "14": 0.158,
-          "30": 0.842
+          "30": 0.789
         },
         "2116": {
           "7": 0.0,
           "14": 0.0,
-          "30": 0.158
+          "30": 0.105
         },
         "2115": {
           "7": 0.0,
