@@ -86,15 +86,15 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 48 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Coca Codo generó en promedio 848 MW (2026-10-21, Cenace, automático), equivalente a ~170 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
+    "coca": "Coca Codo generó en promedio 852 MW (2026-10-21, Cenace, automático), equivalente a ~170 m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.",
     "importacion": "Promedio de las últimas 24 h: 9 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 777 MW y para eso Mazar suelta ≈ 52 m³/s mientras le entran 48: hoy baja ≈ 0,08 m/día. Promedio real de los últimos 7 días: 0,50 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1974,2 m, su nivel mínimo, y ya no puede ayudar.",
-    "termica": "Promedio de las últimas 24 h: 1253 MW térmicos + 15 MW renovables no convencionales (Cenace, automático).",
+    "termica": "Promedio de las últimas 24 h: 1254 MW térmicos + 15 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-10-22: 31.7 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 36 mm en los últimos 7 días y 54 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 88 mm en los últimos 7 días y 53 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a los últimos días: Paute generó 842 MW en promedio ponderado del 2026-10-11 al 2026-10-20 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~189 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 3861 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1484 MW (hoy, 22 h, Cenace, automático). El complejo Paute generó 181 MW en ese mismo periodo.",
+    "demanda": "Equivale a los últimos días: Paute generó 842 MW en promedio ponderado del 2026-10-11 al 2026-10-20 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~189 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 3848 MW (Cenace).",
+    "otras": "Generación medida de las demás hidroeléctricas: 1481 MW (hoy, 22 h, Cenace, automático). El complejo Paute generó 187 MW en ese mismo periodo.",
     "cortes": "21 oct: AV1 a 0 MW lun 19–mié 21 y MV mié 21–vie 23 (CNEL; Expreso 17 y 19/10). Sin cifra de MW: se usa 300. Semana del 26/10 sin anunciar. Hogares: sin cortes anunciados"
   },
   "robot": {
@@ -109,7 +109,7 @@
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-21T21:00",
+        "ultimo_dato": "2026-10-21T21:30",
         "medias_horas_propias": 48,
         "completadas_con_dia": null
       },
@@ -123,16 +123,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-21T21:28-05:00",
+    "ultima_ejecucion": "2026-10-21T21:44-05:00",
     "registro": [
+      "Río Coca (GloFAS): ×0.93 en 7 días, ×0.93 en 30",
       "Autoajuste río Coca: el Coca real va -3.7 %/día frente a GloFAS; se corrige -1.1 %/día (con 4 días)",
-      "Autoajuste por aciertos: la realidad bajó 1.02 veces lo predicho; se corrige 1.006 (con 4 días)",
+      "Autoajuste por aciertos: la realidad bajó 1.00 veces lo predicho; se corrige 1.000 (con 4 días)",
       "Memoria: 26 corridas de las últimas 48 h; sin memoria la zona crítica sería en 7.9 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.211, '14': 0.263, '30': 0.421}, semana seca {'7': 0.421, '14': 0.526, '30': 0.684}",
-      "Zona crítica (2.116): 26.68671921881145; ventana hasta 44.3542972032651; mínimo {'t': 29.0, 'cota': 2115.0}",
-      "Modelo: 28.3 días hasta 2.115 (rango 7.318226916630367–35.43495326580708); hoy -0.08 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 3 comparaciones nuevas; última a 1 día: dijo 2120.34 y fue 2121.49 (-1.15 m)"
+      "Zona crítica (2.116): 26.6876681482799; ventana hasta 44.35401537731091; mínimo {'t': 29.0, 'cota': 2115.0}",
+      "Modelo: 28.3 días hasta 2.115 (rango 7.317288539075562–35.43868103319696); hoy -0.08 m/día",
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2120.34 y fue 2121.49 (-1.15 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-11",
@@ -274,7 +274,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-10-21T21:28-05:00"
+    "actualizado": "2026-10-21T21:44-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -586,17 +586,17 @@
         "1": {
           "n": 53,
           "error_medio": 8.8,
-          "sesgo": 2.5
+          "sesgo": 2.4
         },
         "2": {
           "n": 36,
-          "error_medio": 14.6,
-          "sesgo": 9.3
+          "error_medio": 14.7,
+          "sesgo": 9.2
         },
         "3": {
           "n": 20,
-          "error_medio": 16.5,
-          "sesgo": 7.0
+          "error_medio": 16.8,
+          "sesgo": 6.7
         }
       },
       "nota": "el Coca real va -3.7 %/día frente a GloFAS; se corrige -1.1 %/día (con 4 días)"
@@ -728,80 +728,80 @@
       1.0321
     ],
     "serie_fecha": "2026-10-21",
-    "ajuste": 1.006,
+    "ajuste": 1.0,
     "ajuste_info": {
-      "factor": 1.006,
+      "factor": 1.0,
       "dias": 4,
-      "casos": 60,
-      "ratio_mediana": 1.019,
-      "nota": "la realidad bajó 1.02 veces lo predicho; se corrige 1.006 (con 4 días)"
+      "casos": 62,
+      "ratio_mediana": 1.0,
+      "nota": "la realidad bajó 1.00 veces lo predicho; se corrige 1.000 (con 4 días)"
     },
     "prediccion_foto": {
       "dias_critica": 7.9,
-      "cota_3d": 2120.56,
-      "cota_5d": 2119.22
+      "cota_3d": 2120.57,
+      "cota_5d": 2119.23
     },
     "memoria": [
-      -12.97,
-      -8.16,
-      -14.17,
-      -10.13,
-      -12.71,
-      4.42,
-      22.72,
-      26.66,
-      35.39,
-      24.48,
-      19.38,
-      4.4,
+      -13.02,
+      -8.26,
+      -14.27,
+      -10.37,
+      -12.89,
+      4.13,
+      22.32,
+      26.44,
+      35.3,
+      24.45,
+      19.34,
+      4.39,
       -20.7,
-      -34.88,
-      -29.03,
-      -29.07,
-      -19.57,
-      -3.7,
-      -6.6,
-      7.55,
-      21.5,
-      15.19,
-      14.68,
-      15.2,
-      24.6,
-      16.25,
-      19.29,
-      20.66,
-      7.2,
-      5.53,
-      3.02,
-      8.29,
-      -0.24,
-      4.8,
-      11.72,
-      4.8,
-      4.25,
-      2.01,
-      7.83,
-      0.7,
-      7.6,
-      14.03,
-      -6.99,
+      -34.9,
+      -29.0,
+      -29.08,
+      -19.55,
+      -3.71,
+      -6.65,
+      7.4,
+      21.31,
+      15.08,
+      14.58,
+      15.03,
+      24.34,
+      16.04,
+      19.03,
+      20.33,
+      7.03,
+      5.28,
+      2.74,
+      7.96,
+      -0.56,
+      4.47,
+      11.47,
+      4.64,
+      4.13,
+      1.81,
+      7.58,
+      0.54,
+      7.31,
+      13.79,
+      -7.03,
       -3.78,
       -0.1,
       8.33,
       3.73,
-      8.07,
-      13.23,
-      5.88,
+      8.03,
+      13.19,
+      5.84,
       6.32,
       4.14,
-      9.3,
-      1.35,
-      9.01,
-      16.2,
-      7.22,
-      5.22,
-      4.62,
-      12.84
+      9.22,
+      1.31,
+      8.84,
+      16.03,
+      7.18,
+      5.14,
+      4.49,
+      12.68
     ],
     "memoria_info": {
       "corridas": 26,
