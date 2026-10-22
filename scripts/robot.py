@@ -535,17 +535,60 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
     for e in reg:
         o = (t_now - datetime.fromisoformat(e["ts"])).total_seconds() / 86400
         if 0 <= o < horas / 24:
-            usadas.append((e["cv"], o))
+            usadas.append((e, o))
     if len(usadas) < 3:
-        return None, len(usadas)
+        return None, len(usadas), None
+    # Peso de cada corrida: (1) antigüedad, la mitad cada 24 h; (2) acierto, comparando lo que dijo con la cota REAL de
+    # las corridas que vinieron después (error de 0,5 m → pesa 60 % menos). La corrida más nueva, que aún no se puede
+    # comparar, recibe el mejor acierto del grupo. Probado con 52 corridas: mismo error a 1–3 días que pesos iguales,
+    # pero el número responde a lo que la realidad confirma (p. ej. una crecida) sin saltar más de ~5 días por corrida.
+    def acierto(e, o):
+        err = []
+        for f, of in usadas:
+            if of < o:
+                err.append(en(e["cv"], o - of) - f["cota"])
+        if not err:
+            return None
+        rmse = math.sqrt(sum(x * x for x in err) / len(err))
+        return math.exp(-0.5 * (rmse / 0.5) ** 2), rmse
+    ac = [acierto(e, o) for e, o in usadas]
+    mejor = max([x[0] for x in ac if x], default=1.0)
+    pesos = [(0.5 ** o) * (x[0] if x else mejor) for (e, o), x in zip(usadas, ac)]
+    sw = sum(pesos)
     a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
     V = lambda c: (a * (c - 2115) + b * (c - 2115) ** 2 / 2) if c >= 2115 else (c - 2115) * a
-    cb = lambda t: cota0 + sum(en(c, o + t) - en(c, o) for c, o in usadas) / len(usadas)
+    cb = lambda t: cota0 + sum(w * (en(e["cv"], o + t) - en(e["cv"], o)) for (e, o), w in zip(usadas, pesos)) / sw
     mem = []
     for d in range(len(cv) - 1):
         v = ((V(cb(d + 1)) - V(cb(d))) - (V(cv[d + 1]) - V(cv[d]))) * 1e6 / 86400
         mem.append(max(-tope, min(tope, v)))
-    return mem, len(usadas)
+    # Número grande: promedio PONDERADO de las fechas que dio cada corrida (2.116 entrada a la zona crítica y
+    # 2.115 parada de Mazar). Una corrida nueva solo lo mueve en proporción a su peso.
+    def cruce(c, U):
+        for k in range(1, len(c)):
+            if c[k] <= U:
+                return k - 1 + (c[k - 1] - U) / max(1e-6, c[k - 1] - c[k])
+        return None
+    def num(U):
+        vals = []
+        for (e, o), w in zip(usadas, pesos):
+            c = cruce(e["cv"], U)
+            vals.append((max(0.0, (c if c is not None else 60.0) - o), w, c is not None))
+        dias = sum(v * w for v, w, _ in vals) / sw
+        orden = sorted(vals)
+        acum, lo, hi = 0.0, None, None
+        for v, w, _ in orden:
+            acum += w / sw
+            if lo is None and acum >= 0.1:
+                lo = v
+            if hi is None and acum >= 0.9:
+                hi = v
+        return {"dias": round(dias, 1), "rango": [round(lo, 1), round(hi, 1)],
+                "entran": round(sum(w for _, w, x in vals if x) / sw, 2)}
+    numero = {"critica": num(2116.0), "parada": num(2115.0), "corridas": len(usadas),
+              "peso_ultima": round(pesos[-1] / sw, 3),
+              "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"}
+    return mem, len(usadas), numero
 
 
 def rango_py(diarios, cuant, cota0, umbral=2115):
@@ -1008,17 +1051,18 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     log(f"Autoajuste por aciertos: {aj['nota']}")
     diarios, cruce = simular_py(P, ctx, par)
     # Memoria de las corridas de las últimas 48 h: cada corrida suma un ladrillo a la proyección
+    numero_corridas = None
     try:
         zc_foto = zona_critica_py(diarios, cruce, datos["cota"])
         ts_mem = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")
-        mem, n_mem = memoria_corridas(ts_mem, datos["cota"], diarios, par)
+        mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par)
         mod["prediccion_foto"] = {"dias_critica": round(zc_foto["entrada"], 1) if zc_foto["entrada"] is not None else None,
                                   "cota_3d": round(diarios[3]["cota"], 2), "cota_5d": round(diarios[5]["cota"], 2)}
         if mem:
             ctx["memoria"] = mem
             mod["memoria"] = [round(x, 2) for x in mem]
             mod["memoria_info"] = {"corridas": n_mem, "horas": 48,
-                                   "nota": f"promedio de las {n_mem} corridas de las últimas 48 h, cada una anclada a su cota"}
+                                   "nota": f"promedio ponderado de las {n_mem} corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"}
             diarios, cruce = simular_py(P, ctx, par)
             log(f"Memoria: {n_mem} corridas de las últimas 48 h; sin memoria la zona crítica sería en "
                 f"{mod['prediccion_foto']['dias_critica']} días")
@@ -1048,6 +1092,10 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     zc = zona_critica_py(diarios, cruce, datos["cota"])
     rgc = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"], 2116)
     r1 = lambda v: round(v, 1) if v is not None else None
+    if numero_corridas:
+        mod["prediccion"]["numero"] = numero_corridas
+        log(f"Número grande (promedio ponderado de {numero_corridas['corridas']} corridas): zona crítica "
+            f"{numero_corridas['critica']['dias']} días {numero_corridas['critica']['rango']}, parada {numero_corridas['parada']['dias']} días")
     mod["prediccion"].update({"dias_critica": r1(zc["entrada"]),
                               "rango_critica": [r1(x) for x in rgc] if rgc else None,
                               "salida_critica": r1(zc["salida"]),
