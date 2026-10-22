@@ -162,6 +162,10 @@
     }
     return out;
   }
+  // Escenarios para el panel de cortes (pesimista / optimista) de la pestaña principal
+  function publicarEscenarios() {
+    try { if (!D || !window.ModeloMazar) return; window.ESC_CORTES = escenarios().map(e => e.R); if (window.pintarCortes) window.pintarCortes(); } catch (e) { }
+  }
   function region() {
     const E = escenarios(), hoy = new Date(D.fecha), cota = D.cota;
     const fecha = t => { const d = new Date(hoy.getTime() + t * 86400000); return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`; };
@@ -248,7 +252,7 @@
     try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redibujar); } catch (e) { }
     new MutationObserver(redibujar).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     mostrar(actual());
-    fetch("datos.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => { if (j && j.cota) { D = j; redibujar(); } }).catch(() => { });
+    fetch("datos.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => { if (j && j.cota) { D = j; redibujar(); publicarEscenarios(); } }).catch(() => { });
     fetch("historial/celec_diario.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => { if (j) { HISTD = j; redibujar(); } }).catch(() => { });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
