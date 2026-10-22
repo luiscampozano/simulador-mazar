@@ -341,6 +341,17 @@ F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
 F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
+F_COCA_RIO = os.path.join("registro", "coca_rio.json")             # caudal REAL horario del río Coca en Coca Codo Sinclair (Celec, punto 100037)
+MRID_COCA = 100037
+# Coca Codo Sinclair: MW ≈ 5,25 × (caudal − 21 m³/s), con tope continuo de 1.200 MW (≈ 250 m³/s). Ajustado con la
+# generación diaria de Cenace y el caudal de Celec (18–20 oct 2026); coincide con "240–250 m³/s para 1.200 MW".
+CCS_K, CCS_E, CCS_CAP = 5.25, 21.0, 1200.0
+RIO = None   # caché de caudales reales del río Coca (se llena en main)
+# Cuánto se parece el río de los próximos días al caudal de AHORA (el resto lo pone el promedio de las últimas 72 h).
+# Aprendido con el caudal horario de Celec 2023–2026 (16.523 casos; 191 crecidas súbitas): con río normal el caudal
+# actual dura ~2 días; tras una crecida súbita el día siguiente sigue alto y desde el segundo día vuelve a su nivel.
+W_RIO_NORMAL = [1.0, 1.0, 0.55, 0.45, 0.45, 0.45, 0.3, 0.3, 0.3, 0.15]
+W_RIO_CRECIDA = [0.7, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
 F_COCA_OBS = os.path.join("registro", "coca_observado.json")       # caudal equivalente de Coca Codo (Cenace) en cada corrida   # cada predicción comparada con la cota real a la misma hora
 HORIZ_VER = (1, 2, 3, 5, 7, 10, 14, 20, 30)
 
@@ -711,6 +722,19 @@ def ajuste_coca(hoy_d):
     Se acerca a 0 con pocos días (cada día distinto cuenta como un caso), se limita a ±5 %/día y se aplica hasta 7 días."""
     preds = _leer_json(F_COCA_PRED, [])
     obs = [(datetime.fromisoformat(o["ts"]), o["q"]) for o in _leer_json(F_COCA_OBS, []) if o.get("q")]
+    if RIO:
+        # Con el caudal REAL del río (Celec): pronóstico anclado al caudal real de las 24 h previas y comparado con
+        # el caudal real de las 24 h previas al día objetivo. Ya no depende de lo que generó la central (que tiene tope).
+        obs = []
+        for p in preds:
+            t0 = datetime.fromisoformat(p["ts"])
+            q0r = rio_prom(RIO, t0)
+            if q0r:
+                p["q0"] = q0r
+                for k in (1, 2, 3):
+                    qk = rio_prom(RIO, t0 + timedelta(days=k))
+                    if qk:
+                        obs.append((t0 + timedelta(days=k), qk))
     desde = hoy_d - timedelta(days=21)
     tasas, dias, pares = [], set(), []
     for p in preds:
@@ -741,6 +765,70 @@ def ajuste_coca(hoy_d):
             err[str(k)] = {"n": len(e), "error_medio": round(sum(abs(x) for x in e) / len(e), 1), "sesgo": round(sum(e) / len(e), 1)}
     return {"deriva_dia": round(a, 4), "deriva_observada": round(m, 4), "dias": n, "casos": len(tasas), "error_glofas": err,
             "nota": f"el Coca real va {m * 100:+.1f} %/día frente a GloFAS; se corrige {a * 100:+.1f} %/día (con {n} días)"}
+
+
+def ccs_mw_rio(q):
+    """MW que Coca Codo puede generar con un caudal real del río Coca."""
+    return max(0.0, min(CCS_CAP, CCS_K * (q - CCS_E)))
+
+
+def coca_rio(ahora, dias_atras=12):
+    """Caudal real horario del río Coca (Celec). Guarda una caché en registro/coca_rio.json (hora local → m³/s):
+    cada corrida vuelve a leer hoy y ayer y completa los días que falten."""
+    cache = _leer_json(F_COCA_RIO, {})
+    hoy_d = ahora.date()
+    for n in range(dias_atras, -1, -1):
+        d = hoy_d - timedelta(days=n)
+        if n <= 1 or sum(1 for k in cache if k.startswith(d.isoformat())) < 20:
+            try:
+                for ts, v in _celec_puntos(MRID_COCA, d):
+                    t = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(EC)
+                    if 0 < v < 6000:
+                        cache[t.strftime("%Y-%m-%dT%H")] = round(v, 1)
+            except Exception as e:
+                log(f"Río Coca (Celec) {d}: {e}")
+    lim = (hoy_d - timedelta(days=400)).isoformat()
+    cache = {k: v for k, v in sorted(cache.items()) if k >= lim}
+    os.makedirs("registro", exist_ok=True)
+    with open(F_COCA_RIO, "w", encoding="utf-8") as fo:
+        json.dump(cache, fo, ensure_ascii=False, separators=(",", ":"))
+    return cache
+
+
+def _horas_rio(cache, fin, horas):
+    ini = fin - timedelta(hours=horas)
+    out = []
+    for k, v in cache.items():
+        t = datetime.strptime(k, "%Y-%m-%dT%H").replace(tzinfo=EC)
+        if ini < t <= fin:
+            out.append(v)
+    return out
+
+
+def rio_prom(cache, fin, horas=24):
+    """Caudal real medio del río Coca en las `horas` anteriores a `fin` (None si faltan muchas horas)."""
+    v = _horas_rio(cache, fin, horas)
+    return sum(v) / len(v) if len(v) >= 0.6 * horas else None
+
+
+def ccs_prom(cache, fin, horas=24):
+    """MW medios que Coca Codo pudo generar con el río de esas horas (hora por hora, respetando el tope)."""
+    v = _horas_rio(cache, fin, horas)
+    return sum(ccs_mw_rio(x) for x in v) / len(v) if len(v) >= 0.6 * horas else None
+
+
+def coca_base(cache, fin):
+    """Caudal esperado del río Coca para los días 1..10 según su comportamiento histórico (sin pronóstico de lluvia)."""
+    ult = _horas_rio(cache, fin, 2)
+    v24, v72 = _horas_rio(cache, fin, 24), _horas_rio(cache, fin, 72)
+    if not ult or len(v72) < 40:
+        return None, None
+    ahora_q, q72 = ult[-1], sum(v72) / len(v72)
+    prev = sorted(v24[:-1]) or [ahora_q]
+    med = prev[len(prev) // 2]
+    crecida = ahora_q >= 2.5 * med and med < 300
+    W = W_RIO_CRECIDA if crecida else W_RIO_NORMAL
+    return [w * ahora_q + (1 - w) * q72 for w in W], {"ahora": round(ahora_q, 1), "q72": round(q72, 1), "crecida": crecida}
 
 
 def guardar_coca(ts, q0, serie_bruta):
@@ -874,6 +962,29 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             serieC = list(serieC_bruta)
         mod["serieCoca"] = [round(x, 4) for x in serieC]
         mod["serieCocaBruta"] = [round(x, 4) for x in serieC_bruta]
+        # Con el caudal real: el pronóstico es del RÍO; lo que importa al sistema es lo que Coca Codo puede generar con
+        # ese río (tope de 1.200 MW). Se convierte día a día y se expresa relativo a lo de las últimas 24 h.
+        try:
+            if RIO:
+                ahora_l = datetime.fromisoformat(datos["fecha"])
+                q24 = rio_prom(RIO, ahora_l); g24 = ccs_prom(RIO, ahora_l)
+                base, info = coca_base(RIO, ahora_l)
+                if q24 and g24 and g24 > 50 and base:
+                    serieC_rio = list(serieC)
+                    # día d: nivel esperado por la historia del río (base) × cambio que pronostica GloFAS (lluvia)
+                    qd = [base[min(d, len(base)) - 1] if d >= 1 else q24 for d in range(len(serieC_rio))]
+                    qd = [(base[-1] if d > len(base) else qd[d]) for d in range(len(serieC_rio))]
+                    serieC = [1.0] + [round(ccs_mw_rio(qd[d] * serieC_rio[d]) / g24, 4) for d in range(1, len(serieC_rio))]
+                    mod["serieCoca"] = serieC
+                    mod["serieCocaRio"] = [round(x, 4) for x in serieC_rio]
+                    mod["coca_rio"] = {"q24": round(q24, 1), "mw24": round(g24), "k": CCS_K, "e": CCS_E, "tope": CCS_CAP, **info,
+                                       "mw_1d": round(ccs_mw_rio(qd[1] * serieC_rio[1])), "mw_3d": round(ccs_mw_rio(qd[3] * serieC_rio[3])),
+                                       "mw_7d": round(ccs_mw_rio(qd[7] * serieC_rio[7]))}
+                    log(f"Río Coca real: ahora {info['ahora']:.0f} m³/s, 72 h {info['q72']:.0f}" + (" (crecida súbita)" if info["crecida"] else "")
+                        + f" → Coca Codo {g24:.0f} MW (24 h); día 1 {mod['coca_rio']['mw_1d']} MW, día 3 {mod['coca_rio']['mw_3d']} MW, "
+                          f"día 7 {mod['coca_rio']['mw_7d']} MW")
+        except Exception as e:
+            log(f"Conversión río → generación de Coca Codo: {e}")
         guardar_coca(ahora.isoformat(timespec="minutes"), hoy.get("qCoca"), serieC_bruta)
     mod["serie_fecha"] = hoy_d.isoformat() if serieM is not None and fuentes.get("pronostico_caudal", {}).get("ok") else previo.get("serie_fecha")
     # Escenario automático = pronóstico calibrado (salvo que Claude haya fijado otro)
@@ -1098,6 +1209,24 @@ def main():
             hoy["qCoca"] = int(clamp(round(ccs_mw / 5), 80, 450))
             notas["coca"] = (f"Coca Codo generó en promedio {ccs_mw:.0f} MW ({base[0]}, Cenace, automático), "
                              f"equivalente a ~{hoy['qCoca']} m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.")
+        # Caudal REAL del río Coca (Celec, cada hora): reemplaza al equivalente por generación, que nunca pasa del tope
+        global RIO
+        try:
+            RIO = coca_rio(ahora)
+            q24, g24 = rio_prom(RIO, ahora), ccs_prom(RIO, ahora)
+            ult = max(RIO) if RIO else None
+            if q24 and g24:
+                hoy["qCoca"] = int(clamp(round(g24 / 5), 80, 450))
+                hu = datetime.strptime(ult, "%Y-%m-%dT%H")
+                notas["coca"] = (f"Río Coca en Coca Codo Sinclair (Celec, cada hora): {q24:.0f} m³/s en promedio de 24 h; "
+                                 f"a las {hu:%H}:00 iba en {RIO[ult]:.0f} m³/s. Con ese río Coca Codo puede generar ~{g24:.0f} MW "
+                                 f"(tope continuo 1.200 MW desde ~250 m³/s)" + (f"; Cenace midió {ccs_mw:.0f} MW de promedio hoy." if base else ".")
+                                 + f" En el modelo equivale a {hoy['qCoca']} m³/s.")
+                fuentes["coca_rio"] = {"ok": True}
+                log(f"Río Coca real (Celec): 24 h {q24:.0f} m³/s, último {RIO[ult]:.0f} ({ult}); Coca Codo ~{g24:.0f} MW")
+        except Exception as e:
+            fuentes["coca_rio"] = {"ok": False, "error": str(e)[:200]}
+            log(f"Río Coca real (Celec): {e}")
         # Otras hidroeléctricas: hoy si ya hay 12 h de datos; si no, el último día completo de Cenace
         horas_hoy = len(puntos) / 2.0
         if "hoy" in energia and horas_hoy >= 12:
@@ -1178,7 +1307,24 @@ def main():
     #     su promedio real de los últimos 7 días.
     if fis is not None:
         ccs0 = min(5 * hoy["qCoca"], 1200)
-        dem = fis["paute_prom_mw"] + ccs0 + hoy["other"] + hoy["therm"] + hoy["imp"]
+        # Coca Codo de los MISMOS días en que se midió Paute (con los mismos pesos): así, si hoy el Coca trae más
+        # agua que esos días, Paute debe generar menos desde ya (y no se esconde en una demanda más alta).
+        ccs_ref = ccs0
+        try:
+            if RIO and all("peso" in x for x in fis["detalle"]):
+                pares = []
+                for x in fis["detalle"]:
+                    fin_d = datetime.strptime(x["dia"], "%Y-%m-%d").replace(tzinfo=EC) + timedelta(days=1)
+                    g = ccs_prom(RIO, fin_d)
+                    if g is not None:
+                        pares.append((g, x["peso"]))
+                if len(pares) >= 0.7 * len(fis["detalle"]):
+                    ccs_ref = sum(g * w for g, w in pares) / sum(w for _, w in pares)
+                    log(f"Coca Codo en los días de Paute: {ccs_ref:.0f} MW (hoy {ccs0:.0f} MW)")
+        except Exception as e:
+            log(f"Coca Codo de referencia: {e}")
+        robot["ccs_referencia_mw"] = round(ccs_ref)
+        dem = fis["paute_prom_mw"] + ccs_ref + hoy["other"] + hoy["therm"] + hoy["imp"]
         # Los cortes que de verdad hubo en la semana medida (no el valor de hoy repetido 7 días):
         # así un día sin cortes en cut_dias no suma dos veces un ahorro que no ocurrió.
         if all("peso" in x for x in fis["detalle"]):
