@@ -328,9 +328,9 @@ F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
 F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
-F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 24 h)
+F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
 F_COCA_OBS = os.path.join("registro", "coca_observado.json")       # caudal equivalente de Coca Codo (Cenace) en cada corrida   # cada predicción comparada con la cota real a la misma hora
-HORIZ_VER = (1, 2, 3, 5, 7, 10, 14)
+HORIZ_VER = (1, 2, 3, 5, 7, 10, 14, 20, 30)
 
 
 def _json_url(url, timeout=60, intentos=4):
@@ -474,7 +474,7 @@ def simular_py(P, ctx, par, horizonte=60):
             dq = qin - qt
             if dq < 0:
                 dq *= kA                      # autoajuste: corrige la bajada según los aciertos recientes
-            dq += mem_at(t)                   # memoria de las corridas de las últimas 24 h
+            dq += mem_at(t)                   # memoria de las corridas de las últimas 48 h
             Vp = V; V += dq * 86400 * dt / 1e6
             V = min(V, VMAX)
             if V <= 0 and cruce is None:
@@ -490,7 +490,7 @@ def simular_py(P, ctx, par, horizonte=60):
     return diarios, cruce
 
 
-def memoria_corridas(ts, cota0, diarios, par, horas=24, tope=40.0):
+def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
     """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
     el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
     como caudal de corrección diario (m³/s) para que ningún dato suelto mueva sola la proyección."""
@@ -498,7 +498,7 @@ def memoria_corridas(ts, cota0, diarios, par, horas=24, tope=40.0):
     cv = [round(d["cotaV"], 3) for d in diarios]
     reg = [e for e in _leer_json(F_TRAY, []) if e.get("ts") != ts]
     reg.append({"ts": ts, "cota": cota0, "cv": cv})
-    reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 48 * 3600]
+    reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 72 * 3600]
     reg.sort(key=lambda e: e["ts"])
     os.makedirs("registro", exist_ok=True)
     with open(F_TRAY, "w", encoding="utf-8") as fo:
@@ -633,7 +633,7 @@ def autoajuste(ver, hoy_d):
 
 
 def verificar(ahora_lectura, cota_ahora):
-    """Compara cada predicción guardada con la cota REAL de Celec Sur a la misma hora, 1–14 días después.
+    """Compara cada predicción guardada con la cota REAL de Celec Sur a la misma hora, 1–30 días después.
     Lee los puntos horarios de hoy y de los 2 días anteriores, así recupera lo que no alcanzó a ver antes."""
     reg = _leer_json(F_REG, [])
     ver = _leer_json(F_VER, [])
@@ -669,7 +669,7 @@ def verificar(ahora_lectura, cota_ahora):
                         "pred": round(pred, 2), "real": round(real, 2), "err": round(pred - real, 2),
                         "origen": e.get("origen", "robot")})
             hechas.add((ts, h)); nuevas += 1
-    limite = (d0 - timedelta(days=120)).isoformat()
+    limite = (d0 - timedelta(days=200)).isoformat()
     ver = sorted([v for v in ver if v["pred_ts"][:10] >= limite], key=lambda v: (v["obj_ts"], v["h"]))
     with open(F_VER, "w", encoding="utf-8") as fo:
         json.dump(ver, fo, ensure_ascii=False, indent=0)
@@ -884,7 +884,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     ctx["ajuste"] = aj["factor"]
     log(f"Autoajuste por aciertos: {aj['nota']}")
     diarios, cruce = simular_py(P, ctx, par)
-    # Memoria de las corridas de las últimas 24 h: cada corrida suma un ladrillo a la proyección
+    # Memoria de las corridas de las últimas 48 h: cada corrida suma un ladrillo a la proyección
     try:
         zc_foto = zona_critica_py(diarios, cruce, datos["cota"])
         ts_mem = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")
@@ -894,13 +894,13 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         if mem:
             ctx["memoria"] = mem
             mod["memoria"] = [round(x, 2) for x in mem]
-            mod["memoria_info"] = {"corridas": n_mem, "horas": 24,
-                                   "nota": f"promedio de las {n_mem} corridas de las últimas 24 h, cada una anclada a su cota"}
+            mod["memoria_info"] = {"corridas": n_mem, "horas": 48,
+                                   "nota": f"promedio de las {n_mem} corridas de las últimas 48 h, cada una anclada a su cota"}
             diarios, cruce = simular_py(P, ctx, par)
-            log(f"Memoria: {n_mem} corridas de las últimas 24 h; sin memoria la zona crítica sería en "
+            log(f"Memoria: {n_mem} corridas de las últimas 48 h; sin memoria la zona crítica sería en "
                 f"{mod['prediccion_foto']['dias_critica']} días")
         else:
-            log(f"Memoria: solo {n_mem} corridas en 24 h; todavía sin memoria")
+            log(f"Memoria: solo {n_mem} corridas en 48 h; todavía sin memoria")
     except Exception as e:
         log(f"Memoria de corridas: {e}")
         ctx.pop("memoria", None)
@@ -953,8 +953,8 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                         "dias": mod["prediccion"]["dias"], "rango": mod["prediccion"]["rango"],
                         "dias_critica": mod["prediccion"].get("dias_critica"), "ajuste": aj["factor"],
                         "cota_pred": {str(h): round(diarios[h]["cota"], 2) for h in (1, 3, 7, 14)},
-                        "traj": [round(diarios[h]["cota"], 2) for h in range(1, 15)]})
-            limite = (hoy_d - timedelta(days=45)).isoformat()
+                        "traj": [round(diarios[h]["cota"], 2) for h in range(1, 41)]})
+            limite = (hoy_d - timedelta(days=200)).isoformat()
             reg = sorted([e for e in reg if e["fecha"] >= limite], key=lambda e: e.get("ts") or e["fecha"])
             with open(F_REG, "w", encoding="utf-8") as fo:
                 json.dump(reg, fo, ensure_ascii=False, indent=0)
