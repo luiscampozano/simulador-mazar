@@ -43,7 +43,7 @@
            cutPlan [] (MW de cortes ya anunciados o de emergencia por día desde la lectura: 0 = día de la lectura; null = usar cutDias),
            serieMazar, serieCoca (caudal relativo al de hoy, día a día), horizonte,
            ajuste (factor que corrige la bajada según los aciertos recientes; 1 = sin corrección),
-           memoria [] (m³/s por día: lo que las corridas de las últimas 24 h dicen distinto a la de ahora;
+           memoria [] (m³/s por día: lo que las corridas de las últimas 48 h dicen distinto a la de ahora;
                        cada corrida suma un ladrillo y ningún dato suelto mueve sola la proyección)} */
   function simular(P, ctx) {
     const dt = 0.25, H = ctx.horizonte || 60;
@@ -95,7 +95,7 @@
         const Vprev = V;
         let dq = qin - qturb;
         if (dq < 0) dq *= kA;                                   // autoajuste según los aciertos recientes
-        dq += memAt(t);                                         // memoria de las corridas de las últimas 24 h
+        dq += memAt(t);                                         // memoria de las corridas de las últimas 48 h
         V += dq * 86400 * dt / 1e6;
         if (V > VMAX) V = VMAX;
         if (V <= 0 && crossDay === null) { crossDay = t + dt * (Vprev / (Vprev - V)); V = 0; }
