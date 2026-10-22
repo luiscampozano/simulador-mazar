@@ -328,6 +328,7 @@ F_CLIM = os.path.join("historial", "clima_lluvia_paute.json")
 F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
+F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 24 h)
 F_COCA_OBS = os.path.join("registro", "coca_observado.json")       # caudal equivalente de Coca Codo (Cenace) en cada corrida   # cada predicción comparada con la cota real a la misma hora
 HORIZ_VER = (1, 2, 3, 5, 7, 10, 14)
 
@@ -438,6 +439,8 @@ def simular_py(P, ctx, par, horizonte=60):
     amC = ctx["amaluzaCota"]; am_rest = _vol_amaluza(amC, par["amaluza"]); am_ritmo = max(0.0, ctx["amaluzaRitmo"])
     V = vol(ctx["cota"] - 2115); VMAX = vol(2153 - 2115); Vv = V
     kA = float(ctx.get("ajuste") or 1.0)
+    mem = ctx.get("memoria") or None
+    mem_at = (lambda t: float(mem[min(len(mem) - 1, int(math.floor(t)))] or 0.0)) if mem else (lambda t: 0.0)
     diarios, cruce = [], None
     for step in range(int(horizonte / dt) + 1):
         t = step * dt
@@ -463,6 +466,7 @@ def simular_py(P, ctx, par, horizonte=60):
         dqv = qin - max(0.0, (pv - kms * inter) / (kmzv + kms))
         if dqv < 0:
             dqv *= kA
+        dqv += mem_at(t)
         Vv = min(VMAX, Vv + dqv * 86400 * dt / 1e6)
         if V > 0:
             paute = min(max(req, 0), 1757)
@@ -470,6 +474,7 @@ def simular_py(P, ctx, par, horizonte=60):
             dq = qin - qt
             if dq < 0:
                 dq *= kA                      # autoajuste: corrige la bajada según los aciertos recientes
+            dq += mem_at(t)                   # memoria de las corridas de las últimas 24 h
             Vp = V; V += dq * 86400 * dt / 1e6
             V = min(V, VMAX)
             if V <= 0 and cruce is None:
@@ -483,6 +488,41 @@ def simular_py(P, ctx, par, horizonte=60):
             diarios.append({"t": t, "cota": 2115 + xo(V), "cotaV": 2115 + (xo(Vv) if Vv > 0 else Vv / a),
                             "paute": paute, "qturb": qt, "qin": qin})
     return diarios, cruce
+
+
+def memoria_corridas(ts, cota0, diarios, par, horas=24, tope=40.0):
+    """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
+    el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
+    como caudal de corrección diario (m³/s) para que ningún dato suelto mueva sola la proyección."""
+    t_now = datetime.fromisoformat(ts)
+    cv = [round(d["cotaV"], 3) for d in diarios]
+    reg = [e for e in _leer_json(F_TRAY, []) if e.get("ts") != ts]
+    reg.append({"ts": ts, "cota": cota0, "cv": cv})
+    reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 48 * 3600]
+    reg.sort(key=lambda e: e["ts"])
+    os.makedirs("registro", exist_ok=True)
+    with open(F_TRAY, "w", encoding="utf-8") as fo:
+        json.dump(reg, fo, ensure_ascii=False, separators=(",", ":"))
+    def en(a, x):
+        n = len(a) - 1
+        if x >= n:
+            return a[n] + (a[n] - a[n - 1]) * (x - n)
+        i = int(math.floor(x)); return a[i] + (a[i + 1] - a[i]) * (x - i)
+    usadas = []
+    for e in reg:
+        o = (t_now - datetime.fromisoformat(e["ts"])).total_seconds() / 86400
+        if 0 <= o < horas / 24:
+            usadas.append((e["cv"], o))
+    if len(usadas) < 3:
+        return None, len(usadas)
+    a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
+    V = lambda c: (a * (c - 2115) + b * (c - 2115) ** 2 / 2) if c >= 2115 else (c - 2115) * a
+    cb = lambda t: cota0 + sum(en(c, o + t) - en(c, o) for c, o in usadas) / len(usadas)
+    mem = []
+    for d in range(len(cv) - 1):
+        v = ((V(cb(d + 1)) - V(cb(d))) - (V(cv[d + 1]) - V(cv[d]))) * 1e6 / 86400
+        mem.append(max(-tope, min(tope, v)))
+    return mem, len(usadas)
 
 
 def rango_py(diarios, cuant, cota0, umbral=2115):
@@ -744,7 +784,15 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             mod["amaluzaVolumen"] = previo.get("amaluzaVolumen")
             log("Se conserva la última lectura buena de Amaluza")
         else:
-            mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
+            # Sin lectura buena previa: última cota de Amaluza del historial diario (nunca un valor inventado)
+            try:
+                H = json.load(open(F_HIST, encoding="utf-8"))
+                ult = [H[k]["am"] for k in sorted(H) if H[k].get("am")][-1]
+                mod["amaluzaCota"] = round(ult, 2); mod["amaluzaRitmo"] = float(previo.get("amaluzaRitmo") or 0.0)
+                mod["amaluzaVolumen"] = round(_vol_amaluza(ult, par["amaluza"]), 2)
+                log("Amaluza: se usa la última cota del historial diario")
+            except Exception:
+                mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
     # Paute según el día de la semana (MW sobre o bajo su promedio)
     p7 = (fis or {}).get("paute_prom_mw") or 900
     f = par["factor_dia_semana_lun_dom"]
@@ -836,6 +884,26 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     ctx["ajuste"] = aj["factor"]
     log(f"Autoajuste por aciertos: {aj['nota']}")
     diarios, cruce = simular_py(P, ctx, par)
+    # Memoria de las corridas de las últimas 24 h: cada corrida suma un ladrillo a la proyección
+    try:
+        zc_foto = zona_critica_py(diarios, cruce, datos["cota"])
+        ts_mem = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")
+        mem, n_mem = memoria_corridas(ts_mem, datos["cota"], diarios, par)
+        mod["prediccion_foto"] = {"dias_critica": round(zc_foto["entrada"], 1) if zc_foto["entrada"] is not None else None,
+                                  "cota_3d": round(diarios[3]["cota"], 2), "cota_5d": round(diarios[5]["cota"], 2)}
+        if mem:
+            ctx["memoria"] = mem
+            mod["memoria"] = [round(x, 2) for x in mem]
+            mod["memoria_info"] = {"corridas": n_mem, "horas": 24,
+                                   "nota": f"promedio de las {n_mem} corridas de las últimas 24 h, cada una anclada a su cota"}
+            diarios, cruce = simular_py(P, ctx, par)
+            log(f"Memoria: {n_mem} corridas de las últimas 24 h; sin memoria la zona crítica sería en "
+                f"{mod['prediccion_foto']['dias_critica']} días")
+        else:
+            log(f"Memoria: solo {n_mem} corridas en 24 h; todavía sin memoria")
+    except Exception as e:
+        log(f"Memoria de corridas: {e}")
+        ctx.pop("memoria", None)
     rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]
     ritmo = (d0["qturb"] - d0["qin"]) * 0.0864 / (par["curva_mazar"]["a"] + par["curva_mazar"]["b"] * (datos["cota"] - 2115))
