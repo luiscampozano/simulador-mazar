@@ -380,7 +380,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   <footer class="pie">Simulador desarrollado por <b>Ing. Luis Campozano, MBA</b> · datos de Celec Sur, Cenace, Open-Meteo y GloFAS · se actualiza cada 2 horas</footer>
 </div>
 
-<script src="modelo.js?v=20261020d"></script>
+<script src="modelo.js?v=20261021m"></script>
 <script>
 /* Datos del día: se reemplazan con datos.json si existe junto a la página */
 let DATA = {
@@ -416,7 +416,7 @@ const ccsMW = q => ModeloMazar.ccsMW(q);
 function contexto(){
   const m = DATA.modelo || {};
   return {cota: COTA_HOY, inicio: START, diaSemana0: m.diaSemana0, amaluzaCota: m.amaluzaCota, amaluzaRitmo: m.amaluzaRitmo,
-          deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, ajuste: m.ajuste, serieMazar: m.serieMazar, serieCoca: m.serieCoca, horizonte: HORIZON};
+          deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, ajuste: m.ajuste, serieMazar: m.serieMazar, serieCoca: m.serieCoca, memoria: m.memoria, horizonte: HORIZON};
 }
 function simulate(P){
   return ModeloMazar.simular({qMazar:P.qMazar, qCoca:P.qCoca, wPaute:P.wPaute, wCoca:P.wCoca,
@@ -714,7 +714,7 @@ fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
   DATA = j; applyData(); buildPresets(); applyTexts(); setPreset("hoy");
 }).catch(()=>{});
 </script>
-<script src="pestanas.js?v=20261021a"></script>
+<script src="pestanas.js?v=20261021m"></script>
 
 </body>
 </html>
