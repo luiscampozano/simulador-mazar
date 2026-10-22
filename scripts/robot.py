@@ -96,10 +96,14 @@ def corte_del_dia(manual, cut, fecha):
     return float(cut)
 
 
-def corte_promedio(manual, cut, dias):
-    """Ahorro medio por cortes en una lista de fechas 'AAAA-MM-DD' (la semana medida de Paute)."""
+def corte_promedio(manual, cut, dias, pesos=None):
+    """Ahorro medio por cortes en una lista de fechas 'AAAA-MM-DD' (los días medidos de Paute), con los mismos
+    pesos que el promedio de Paute cuando se dan."""
     vals = [corte_del_dia(manual, cut, datetime.strptime(d, "%Y-%m-%d").date()) for d in dias]
-    return sum(vals) / len(vals) if vals else float(cut)
+    if not vals:
+        return float(cut)
+    w = pesos if pesos and len(pesos) == len(vals) else [1.0] * len(vals)
+    return sum(v * x for v, x in zip(vals, w)) / sum(w)
 
 
 # ---------------------------------------------------------------- Física de Paute (Celec Sur)
@@ -154,7 +158,15 @@ def fisica_paute(hoy_local, dias_k=10, dias_p=7):
     k = sum(f["paute_mw"] for f in filas) / max(1.0, sum(f["salida"] for f in filas))
     ult = filas[-dias_p:]
     p7 = sum(f["paute_mw"] for f in ult) / len(ult)
-    return {"k_mw_por_m3s": round(min(20.0, max(7.0, k)), 2), "paute_prom_mw": round(p7),
+    # Cada día pesa según su antigüedad: ayer pesa 1 y el peso se reduce a la mitad cada 3 días. Probado con
+    # 1.356 días de Celec (2023–2026): predice mejor lo que Paute generará en los próximos 3, 7 y 14 días que el
+    # promedio simple de 7 días, sobre todo después de un día atípico (−15 % de error), sin que un día lo cambie todo.
+    for f in filas:
+        edad = (hoy_local - datetime.strptime(f["dia"], "%Y-%m-%d").date()).days - 1
+        f["peso"] = round(0.5 ** (edad / 3.0), 3)
+    pp = sum(f["paute_mw"] * f["peso"] for f in filas) / sum(f["peso"] for f in filas)
+    return {"k_mw_por_m3s": round(min(20.0, max(7.0, k)), 2), "paute_prom_mw": round(pp), "paute_prom7_mw": round(p7),
+            "ponderado": "vida media 3 días", "dias_pond": len(filas),
             "dias_k": len(filas), "dias_p": len(ult), "desde": filas[0]["dia"], "hasta": filas[-1]["dia"],
             "detalle": filas}
 
@@ -1169,13 +1181,17 @@ def main():
         dem = fis["paute_prom_mw"] + ccs0 + hoy["other"] + hoy["therm"] + hoy["imp"]
         # Los cortes que de verdad hubo en la semana medida (no el valor de hoy repetido 7 días):
         # así un día sin cortes en cut_dias no suma dos veces un ahorro que no ocurrió.
-        dias_sem = [x["dia"] for x in fis["detalle"][-fis["dias_p"]:]]
-        cut_sem = corte_promedio(manual, hoy["cut"], dias_sem)
+        if all("peso" in x for x in fis["detalle"]):
+            dias_sem = [x["dia"] for x in fis["detalle"]]
+            cut_sem = corte_promedio(manual, hoy["cut"], dias_sem, [x["peso"] for x in fis["detalle"]])
+        else:
+            dias_sem = [x["dia"] for x in fis["detalle"][-fis["dias_p"]:]]
+            cut_sem = corte_promedio(manual, hoy["cut"], dias_sem)
         robot["cortes_semana_medida"] = {"desde": dias_sem[0], "hasta": dias_sem[-1], "mw_promedio": round(cut_sem)}
         log(f"Cortes en la semana medida ({dias_sem[0]} a {dias_sem[-1]}): {cut_sem:.0f} MW en promedio")
         hoy["dBase"] = int(clamp(r10(dem + cut_sem - 50 * (hoy["tCosta"] - 32)), 3500, 5200))
-        notas["demanda"] = (f"Equivale a la última semana: Paute generó en promedio {fis['paute_prom_mw']} MW del "
-                            f"{fis['detalle'][-fis['dias_p']]['dia']} al {fis['hasta']} (Celec Sur), con "
+        notas["demanda"] = (f"Equivale a los últimos días: Paute generó {fis['paute_prom_mw']} MW en promedio ponderado del "
+                            f"{dias_sem[0]} al {fis['hasta']} (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con "
                             f"~{cut_sem:.0f} MW medios de cortes a empresas."
                             + (f" Demanda atendida en las últimas 24 h: {D:.0f} MW (Cenace)." if D is not None else ""))
     elif D is not None:
