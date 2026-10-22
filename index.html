@@ -551,7 +551,25 @@ function render(){
       : (Z.salida!==null ? "desde "+ini+" hasta el "+fch(Z.salida)+", sin llegar a parar, si llueve lo previsto"
                          : "desde "+ini+", sin llegar a parar en 60 días"));
   } else vt.hidden = true;
-  const tz0 = Z.entrada===null ? 99 : Z.entrada;
+  // Número grande oficial ("Hoy (calibrado)"): promedio PONDERADO de las fechas de las corridas de las últimas 48 h
+  // (cada corrida pesa según su antigüedad y según cuánto acertó a la cota real). Así no salta con cada corrida.
+  const NUM = (M0.prediccion||{}).numero;
+  const bHoy = document.querySelector('.presets button[data-p="hoy"]');
+  const oficial = !!(NUM && bHoy && bHoy.getAttribute("aria-pressed")==="true");
+  let tzNum = null;
+  if(oficial){
+    const c = NUM.critica, p = NUM.parada;
+    const rgT = r => r[1]>=59 ? fmt(r[0])+" a más de 60 días" : fmt(r[0])+" a "+fmt(r[1])+" días";
+    const nota = '<br><span class="m">promedio ponderado de '+NUM.corridas+' corridas (48 h) · rango: '+rgT(c.rango)+'</span>';
+    if(c.dias>=59){ el("days").innerHTML = "+60<small>días</small>"; el("dateLine").innerHTML = "No entra en la zona crítica en 60 días"+nota; }
+    else { el("days").innerHTML = nDias(c.dias)+"<small>días</small>"; el("dateLine").innerHTML = "Entraría alrededor del <b>"+fch(c.dias)+"</b>"+nota; }
+    if(p.dias>=59){ el("paradaDias").innerHTML = "+60<small>días</small>"; el("paradaFecha").innerHTML = "No para en 60 días"; }
+    else { el("paradaDias").innerHTML = nDias(p.dias)+"<small>días</small>"; el("paradaFecha").innerHTML = "Pararía el <b>"+fch(p.dias)+"</b>"; }
+    if(c.dias<59){ vt.hidden = false; vt.innerHTML = "<b>Ventana crítica</b> (2.116 → 2.115 m): desde el "+fch(c.dias)+(p.dias<59 ? " hasta la parada el "+fch(p.dias) : ", sin llegar a parar en 60 días"); }
+    else vt.hidden = true;
+    tzNum = c.dias>=59 ? 99 : c.dias;
+  }
+  const tz0 = tzNum!==null ? tzNum : (Z.entrada===null ? 99 : Z.entrada);
   if(tz0<10){st.className="status st-crit";st.textContent="atención: menos de 10 días";}
   else if(tz0<25){st.className="status st-warn";st.textContent="seguimiento: menos de 25 días";}
   else {st.className="status st-ok";st.textContent="margen de más de 3 semanas";}
@@ -714,7 +732,7 @@ fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
   DATA = j; applyData(); buildPresets(); applyTexts(); setPreset("hoy");
 }).catch(()=>{});
 </script>
-<script src="pestanas.js?v=20261021m"></script>
+<script src="pestanas.js?v=20261021n"></script>
 
 </body>
 </html>
