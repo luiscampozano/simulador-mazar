@@ -468,6 +468,8 @@ def simular_py(P, ctx, par, horizonte=60):
     diarios, cruce = [], None
     for step in range(int(horizonte / dt) + 1):
         t = step * dt
+        # cota al INICIO del paso: el registro del día t es la cota en t (antes quedaba 6 h adelantado)
+        cota_ini, cotaV_ini = 2115 + xo(V), 2115 + (xo(Vv) if Vv > 0 else Vv / a)
         dia = (ctx["diaSemana0"] + int(math.floor(t))) % 7
         qin = perfil_py(P["wPaute"], t, P["qMazar"], 66, ctx["serieMazar"])
         qc = perfil_py(P["wCoca"], t, P["qCoca"], 280, ctx["serieCoca"])
@@ -509,7 +511,7 @@ def simular_py(P, ctx, par, horizonte=60):
             qt = max(0.0, (paute - kms * inter) / (kmz + kms))
             V += max(0.0, qin - qt) * 86400 * dt / 1e6
         if abs(t - round(t)) < 1e-9:
-            diarios.append({"t": t, "cota": 2115 + xo(V), "cotaV": 2115 + (xo(Vv) if Vv > 0 else Vv / a),
+            diarios.append({"t": t, "cota": cota_ini, "cotaV": cotaV_ini,
                             "paute": paute, "qturb": qt, "qin": qin})
     return diarios, cruce
 
@@ -521,7 +523,7 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
     t_now = datetime.fromisoformat(ts)
     cv = [round(d["cotaV"], 3) for d in diarios]
     reg = [e for e in _leer_json(F_TRAY, []) if e.get("ts") != ts]
-    reg.append({"ts": ts, "cota": cota0, "cv": cv})
+    reg.append({"ts": ts, "cota": cota0, "cv": cv, "al": 1})   # al: trayectoria alineada (cv[k] = cota en el día k)
     reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 72 * 3600]
     reg.sort(key=lambda e: e["ts"])
     os.makedirs("registro", exist_ok=True)
@@ -532,6 +534,13 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
         if x >= n:
             return a[n] + (a[n] - a[n - 1]) * (x - n)
         i = int(math.floor(x)); return a[i] + (a[i + 1] - a[i]) * (x - i)
+    def pos(e, x):
+        # Corridas guardadas antes del 23-oct-2026 tienen cv adelantado 6 h (cv[k] = cota en k + 0,25 días)
+        if e.get("al"):
+            return en(e["cv"], x)
+        if x >= 0.25:
+            return en(e["cv"], x - 0.25)
+        return e["cota"] + (e["cv"][0] - e["cota"]) * x / 0.25
     usadas = []
     for e in reg:
         o = (t_now - datetime.fromisoformat(e["ts"])).total_seconds() / 86400
@@ -547,7 +556,7 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
         err = []
         for f, of in usadas:
             if of < o:
-                err.append(en(e["cv"], o - of) - f["cota"])
+                err.append(pos(e, o - of) - f["cota"])
         if not err:
             return None
         rmse = math.sqrt(sum(x * x for x in err) / len(err))
@@ -558,22 +567,25 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
     sw = sum(pesos)
     a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
     V = lambda c: (a * (c - 2115) + b * (c - 2115) ** 2 / 2) if c >= 2115 else (c - 2115) * a
-    cb = lambda t: cota0 + sum(w * (en(e["cv"], o + t) - en(e["cv"], o)) for (e, o), w in zip(usadas, pesos)) / sw
+    cb = lambda t: cota0 + sum(w * (pos(e, o + t) - pos(e, o)) for (e, o), w in zip(usadas, pesos)) / sw
     mem = []
     for d in range(len(cv) - 1):
         v = ((V(cb(d + 1)) - V(cb(d))) - (V(cv[d + 1]) - V(cv[d]))) * 1e6 / 86400
         mem.append(max(-tope, min(tope, v)))
     # Número grande: promedio PONDERADO de las fechas que dio cada corrida (2.116 entrada a la zona crítica y
     # 2.115 parada de Mazar). Una corrida nueva solo lo mueve en proporción a su peso.
-    def cruce(c, U):
+    def cruce(e, U):
+        c, d = e["cv"], (0.0 if e.get("al") else 0.25)
+        if not e.get("al") and c[0] <= U < e["cota"]:
+            return (e["cota"] - U) / max(1e-6, e["cota"] - c[0]) * 0.25
         for k in range(1, len(c)):
             if c[k] <= U:
-                return k - 1 + (c[k - 1] - U) / max(1e-6, c[k - 1] - c[k])
+                return d + k - 1 + (c[k - 1] - U) / max(1e-6, c[k - 1] - c[k])
         return None
     def num(U):
         vals = []
         for (e, o), w in zip(usadas, pesos):
-            c = cruce(e["cv"], U)
+            c = cruce(e, U)
             vals.append((max(0.0, (c if c is not None else 60.0) - o), w, c is not None))
         dias = sum(v * w for v, w, _ in vals) / sw
         orden = sorted(vals)
