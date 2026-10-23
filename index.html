@@ -123,6 +123,20 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){ .bar span{transition:width .25s ease} }
 .tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .tabs button{font:600 14px var(--f-body);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer}
+.subtabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.subtabs button,.subtabs select{font:600 13px var(--f-body);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+.subtabs button:hover,.subtabs select:hover{border-color:var(--water);color:var(--ink)}
+.subtabs button[aria-selected="true"],.subtabs select.on{background:color-mix(in srgb,var(--water) 14%,transparent);border-color:var(--water);color:var(--ink)}
+.subtabs select{background:var(--panel);width:auto;flex:0 0 auto}
+.corte-pt{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--crit);vertical-align:middle;margin-left:4px}
+.cmp-carga{font-size:12px;color:var(--muted)}
+#cmpTbl tr.hoy td{background:color-mix(in srgb,var(--water) 10%,transparent)}
+#cmpTbl td:first-child{white-space:nowrap}
+#cmpTbl tr.extra{display:none}
+#cmpTbl.abierta tr.extra{display:table-row}
+#cmpTbl tr.vermas td{border:0;padding-top:10px}
+#cmpVer{font:600 13px var(--f-body);color:var(--water);background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+#cmpTbl .muted{color:var(--muted);font-size:12px}
 .tabs button:hover{border-color:var(--water);color:var(--ink)}
 .tabs button[aria-selected="true"]{background:var(--water);border-color:var(--water);color:var(--panel)}
 .fuera{display:none!important}
@@ -141,7 +155,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
   </header>
   <nav class="tabs" role="tablist" aria-label="Secciones">
     <button type="button" role="tab" data-tab="sim" aria-selected="true">Simulador</button>
-    <button type="button" role="tab" data-tab="comp" aria-selected="false">2026 vs. 2024</button>
+    <button type="button" role="tab" data-tab="comp" aria-selected="false">2026 vs. años anteriores</button>
     <button type="button" role="tab" data-tab="region" aria-selected="false">Región de proyección</button>
   </nav>
 
@@ -350,17 +364,13 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     </ul>
   </section>
   <section class="card fuera" id="tab-comp" role="tabpanel">
+    <div class="subtabs" id="cmpSub" role="tablist" aria-label="Año de comparación"></div>
     <div style="display:grid;gap:6px">
-      <h2>2026 vs. 2024, el año de los cortes</h2>
+      <h2 id="cmpTit">2026 vs. años anteriores</h2>
       <p id="cmpTxt" style="font-size:16px;max-width:70ch">Cargando el historial de Celec Sur…</p>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)">
-      <span><i style="display:inline-block;width:14px;height:3px;background:var(--water);vertical-align:middle;margin-right:6px"></i>2026</span>
-      <span><i style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--water);vertical-align:middle;margin-right:6px"></i>proyección del simulador</span>
-      <span><i style="display:inline-block;width:14px;height:3px;background:var(--warn);vertical-align:middle;margin-right:6px"></i>2024</span>
-      <span><i style="display:inline-block;width:12px;height:12px;background:color-mix(in srgb,var(--crit) 15%,transparent);vertical-align:middle;margin-right:6px"></i>cortes de luz 2024</span>
-    </div>
-    <div class="chartbox fit"><svg id="cmpChart" viewBox="0 0 760 360" role="img" aria-label="Cota de Mazar en 2026 comparada con 2024"></svg></div>
+    <div id="cmpLey" style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)"></div>
+    <div class="chartbox fit"><svg id="cmpChart" viewBox="0 0 760 360" role="img" aria-label="Cota de Mazar en 2026 comparada con años anteriores"></svg></div>
     <div class="tbl"><table id="cmpTbl"></table></div>
     <p class="note" id="cmpNota"></p>
   </section>
@@ -762,7 +772,7 @@ fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
 </style>
 <script>window.GEN_CFG = { nav: ".tabs", despues: "#tab-region", panel: "card", h2: "", lede: "lede" };</script>
 <script src="generacion.js?v=20261022a"></script>
-<script src="pestanas.js?v=20261022b"></script>
+<script src="pestanas.js?v=20261023a"></script>
 
 </body>
 </html>
