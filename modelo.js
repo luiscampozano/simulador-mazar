@@ -63,6 +63,8 @@
     const daily = []; let crossDay = null, firstDay = null;
     for (let step = 0; step <= H / dt; step++) {
       const t = step * dt;
+      // cota al INICIO del paso: así el registro del día t es la cota en t (no 6 h después)
+      const cotaIni = COTA_CRIT + xOf(V), cotaVIni = COTA_CRIT + (Vv > 0 ? xOf(Vv) : Vv / A());
       const dia = ((ctx.diaSemana0 != null ? ctx.diaSemana0 : inicio.getDay()) + Math.floor(t)) % 7;
       const qin = perfil(P.wPaute, t, P.qMazar, 66, ctx.serieMazar);
       const qcoca = perfil(P.wCoca, t, P.qCoca, 280, ctx.serieCoca);
@@ -107,7 +109,7 @@
         V += Math.max(0, qin - qturb) * 86400 * dt / 1e6;
       }
       const filoC = qin * (0.00981 * eta * Math.max(20, COTA_CRIT - amC) + kms) + kms * intermedio;   // lo que Paute daría solo con el río si Mazar estuviera en 2.115
-      const rec = { t, cota: COTA_CRIT + xOf(V), cotaV: COTA_CRIT + (Vv > 0 ? xOf(Vv) : Vv / A()), qin, qcoca, demand, ccs: ccsT, other, therm: P.therm, imp: P.imp, paute, deficit, req, qturb, filo: filoC };
+      const rec = { t, cota: cotaIni, cotaV: cotaVIni, qin, qcoca, demand, ccs: ccsT, other, therm: P.therm, imp: P.imp, paute, deficit, req, qturb, filo: filoC };
       if (step === 0) firstDay = rec;
       if (Math.abs(t - Math.round(t)) < 1e-9) daily.push(rec);
     }
