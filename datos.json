@@ -111,7 +111,7 @@
     "lluviaCoca": "Cuenca del Coca: 66 mm en los últimos 7 días y 96 mm previstos en los próximos 7 (Open-Meteo) → lluvia sostenida, automático.",
     "demanda": "Equivale a los últimos días: Paute generó 517 MW en promedio ponderado del 2026-10-15 al 2026-10-24 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~269 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 3950 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1575 MW (día completo 2026-10-22, Cenace, automático). El complejo Paute generó 256 MW en ese mismo periodo.",
-    "cortes": "24/10: cronograma MAE+Cenace (Extra 23/10): MV sin luz 24 y 28–30 oct; AV1 25–28 oct; 23/10 MV programado. Sin MW oficiales: 300/día. Meta: sin cortes desde 1 nov"
+    "cortes": "25/10: sin cambios (Extra 23/10, El Diario 23/10): AV1 sin luz 25–28 oct, MV 24 y 28–30; sin MW oficiales: 300/día. Fin previsto 1 nov, según hidrología"
   },
   "robot": {
     "ultima_lectura": "2026-10-25T09:00:00-05:00",
@@ -142,16 +142,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-25T09:42-05:00",
+    "ultima_ejecucion": "2026-10-25T09:49-05:00",
     "registro": [
+      "Río Coca real: ahora 264 m³/s, 72 h 228, nivel normal (mediana 7 días) 204 → Coca Codo 1082 MW (24 h); día 1 1069 MW, día 3 906 MW, día 7 1131 MW",
       "Autoajuste por aciertos: la realidad bajó 0.59 veces lo predicho; se corrige 0.862 (con 5 días)",
       "Memoria: 24 corridas de las últimas 48 h; sin memoria la zona crítica sería en 29.1 días",
       "Número grande (promedio ponderado de 24 corridas): zona crítica 32.4 días [23.7, 56.9], parada 34.7 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.0, '30': 0.368}, semana seca {'7': 0.0, '14': 0.0, '30': 0.526}",
       "Zona crítica (2.116): 29.517427241986358; ventana hasta None; mínimo {'t': 31.0, 'cota': 2115.0}",
       "Modelo: 30.5 días hasta 2.115 (rango 28.848309783328375–38.7423907392813); hoy +0.33 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 5 comparaciones nuevas; última a 1 día: dijo 2123.52 y fue 2123.55 (-0.03 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2123.52 y fue 2123.55 (-0.03 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-15",
@@ -308,7 +308,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-10-25T09:42-05:00"
+    "actualizado": "2026-10-25T09:49-05:00"
   },
   "modelo": {
     "curva_mazar": {
