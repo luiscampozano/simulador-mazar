@@ -389,6 +389,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <div class="cuenta"><span class="eyebrow" style="color:var(--crit)">Lo más pronto · 2.116</span><div class="v num" id="regTemprano" style="color:var(--crit)">–</div><p class="explica" id="regTempranoTxt"></p></div>
       <div class="cuenta"><span class="eyebrow" style="color:var(--water)">Proyección del simulador</span><div class="v num" id="regPrin" style="color:var(--water)">–</div><p class="explica" id="regPrinTxt">Coca según GloFAS y lluvia pronosticada en el Paute</p></div>
       <div class="cuenta" id="regTardeBox"><span class="eyebrow" style="color:var(--ok)">Lo más tarde · 2.116</span><div class="v num" id="regTarde" style="color:var(--ok)">–</div><p class="explica" id="regTardeTxt"></p></div>
+      <div class="cuenta" id="regSombraBox"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px"><span class="eyebrow" style="color:#c084fc">Ajuste Río Coca · 2.116</span><span style="font-size:9px;font-weight:700;color:#e9d5ff;background:rgba(88,28,135,0.6);border:1px solid rgba(126,34,206,0.5);padding:1px 6px;border-radius:999px">Próximo</span></div><div class="v num" id="regSombra" style="color:#c084fc">–</div><p class="explica" id="regSombraTxt" style="color:#e9d5ff">Caudal real del Coca con tope físico de 1.200 MW</p></div>
     </div>
     <div class="chartbox fit"><svg id="regChart" viewBox="0 0 760 360" role="img" aria-label="Región de proyección de la cota de Mazar"></svg></div>
     <div class="tbl"><table id="regTbl"></table></div>
@@ -778,7 +779,7 @@ fetch("datos.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{
 </style>
 <script>window.GEN_CFG = { nav: ".tabs", despues: "#tab-region", panel: "card", h2: "", lede: "lede" };</script>
 <script src="generacion.js?v=20261022a"></script>
-<script src="pestanas.js?v=20261023a"></script>
+<script src="pestanas.js?v=20261028_coca"></script>
 
 </body>
 </html>
