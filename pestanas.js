@@ -312,6 +312,20 @@
     $("regPrinTxt").textContent = "Coca según GloFAS y lluvia pronosticada en el Paute" + (mismo ? ". Hoy es también el escenario más favorable." : "");
     $("regTarde").textContent = tarde ? fecha(tarde.Z.entrada) : "más de 60 días";
     $("regTardeTxt").textContent = tarde ? `Coca ${tarde.coca.txt} y ${tarde.paute.txt}` : "algún escenario no llega a 2.116 en 60 días";
+
+    const e_somb = E.find(e => e.sombra);
+    const boxSomb = $("reg-sombra-box") || $("regSombraBox");
+    if (boxSomb) {
+      if (e_somb && e_somb.Z) {
+        boxSomb.classList.remove("fuera");
+        const elFecha = $("reg-sombra") || $("regSombra");
+        if (elFecha) elFecha.textContent = e_somb.Z.entrada !== null ? fecha(e_somb.Z.entrada) : "más de 60 días";
+        const elTxt = $("reg-sombra-txt") || $("regSombraTxt");
+        if (elTxt) elTxt.textContent = "Caudal real del Coca con tope físico de 1.200 MW";
+      } else {
+        boxSomb.classList.add("fuera");
+      }
+    }
     const NUM = (D.modelo.prediccion || {}).numero;   // mismo número grande que la pestaña principal
     $("regPrin").textContent = NUM ? (NUM.critica.dias >= 59 ? "más de 60 días" : fecha(NUM.critica.dias)) : (pr.Z.entrada !== null ? fecha(pr.Z.entrada) : "no entra");
     if (NUM) { $("regPrinTxt").textContent = "Igual que el número grande: promedio ponderado de las corridas de las últimas 48 h"; $("regTardeBox").classList.remove("fuera"); }
