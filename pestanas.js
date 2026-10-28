@@ -289,6 +289,18 @@
   }
   function region() {
     const E = escenarios(), hoy = new Date(D.fecha), cota = D.cota;
+    if (D.modelo && D.modelo.serieCocaRio) {
+      const q = D.hoy.qCoca;
+      const R_som = correr(q, "auto", { serieCoca: D.modelo.serieCocaRio });
+      E.push({
+        coca: { id: "sombra", txt: "modelo con el ajuste del río Coca (próximo a ser incorporado)", q, w: "auto", ex: { serieCoca: D.modelo.serieCocaRio } },
+        paute: { id: "lluvia", txt: "lluvia pronosticada", ex: {} },
+        R: R_som,
+        Z: ModeloMazar.zonaCritica(R_som, cota),
+        principal: false,
+        sombra: true
+      });
+    }
     const fecha = t => { const d = new Date(hoy.getTime() + t * 86400000); return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`; };
     const conE = E.filter(e => e.Z.entrada !== null).sort((a, b) => a.Z.entrada - b.Z.entrada);
     const pr = E.find(e => e.principal);
@@ -309,7 +321,10 @@
       E.map(e => {
         const z = e.Z, mn = z.minimo;
         const para = e.R.crossDay !== null && z.paradaEnVentana ? fecha(e.R.crossDay) : (mn ? "no (mín. " + f(mn.cota, 1) + ")" : "no");
-        return `<tr${e.principal ? ' style="font-weight:600"' : ""}><td>Coca ${e.coca.txt}<br><span style="color:var(--muted)">Paute: ${e.paute.txt}</span>${e.principal ? "<br><span style='color:var(--water)'>proyección del simulador</span>" : ""}</td><td class="n">${z.entrada === null ? "más de 60 días" : fecha(z.entrada)}</td><td class="n">${para}</td></tr>`;
+        const esSomb = e.sombra;
+        const tit = esSomb ? `<b style="color:#c084fc">${e.coca.txt}</b>` : `Coca ${e.coca.txt}`;
+        const sub = esSomb ? `<br><span style="color:#c084fc;opacity:.85">Paute: ${e.paute.txt} · Caudal real con tope 1.200 MW</span>` : `<br><span style="color:var(--muted)">Paute: ${e.paute.txt}</span>${e.principal ? "<br><span style='color:var(--water)'>proyección del simulador</span>" : ""}`;
+        return `<tr${e.principal ? ' style="font-weight:600"' : (esSomb ? ' style="background:rgba(192,132,252,.08)"' : "")}><td>${tit}${sub}</td><td class="n"${esSomb ? ' style="color:#c084fc;font-weight:600"' : ""}>${z.entrada === null ? "más de 60 días" : fecha(z.entrada)}</td><td class="n"${esSomb ? ' style="color:#c084fc"' : ""}>${para}</td></tr>`;
       }).join("");
 
     // gráfico
@@ -349,7 +364,7 @@
     s += `<text x="${L + 6}" y="${Y(ZC) - 6}" ${F} font-size="11" font-weight="600" fill="${warn}">zona crítica 2.116</text>`;
     s += `<line x1="${L}" x2="${W - R}" y1="${Y(PARADA)}" y2="${Y(PARADA)}" stroke="${crit}" stroke-width="2"/>`;
     s += `<text x="${L + 6}" y="${Y(PARADA) + 16}" ${F} font-size="11" font-weight="600" fill="${crit}">parada de Mazar 2.115</text>`;
-    E.filter(e => !e.principal).forEach(e => { s += `<polyline points="${P(serie(e)).join(" ")}" fill="none" stroke="${ink}" stroke-width="1" stroke-dasharray="2 4" opacity=".35"/>`; });
+    E.filter(e => !e.principal).forEach(e => { s += `<polyline points="${P(serie(e)).join(" ")}" fill="none" stroke="${e.sombra ? '#c084fc' : ink}" stroke-width="${e.sombra ? 2.2 : 1}" stroke-dasharray="${e.sombra ? '5 3' : '2 4'}" opacity="${e.sombra ? 0.95 : .35}"/>`; });
     s += `<polyline points="${P(serie(pr)).join(" ")}" fill="none" stroke="${water}" stroke-width="2.6"/>`;
     s += `<polyline points="${P(hist).join(" ")}" fill="none" stroke="${ink}" stroke-width="1.5" opacity=".5"/>`;
     hist.forEach(p => { s += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3" fill="${ink}"/>`; });
