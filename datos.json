@@ -145,7 +145,9 @@
         "ok": true
       },
       "celec_energia": {
-        "ok": true
+        "ok": false,
+        "error": "<urlopen error timed out>",
+        "intento": "2026-10-28T20:12-05:00"
       },
       "pronostico_caudal": {
         "ok": true
@@ -154,16 +156,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-28T20:09-05:00",
+    "ultima_ejecucion": "2026-10-28T20:12-05:00",
     "registro": [
+      "Coca Codo en PARO: genera 293 MW de 1075 que permite el río (27 %, 2026-10-28); el modelo lo usa hoy y lo recupera en 4 días: [0.485, 0.614, 0.742, 0.871, 1.0]",
       "Autoajuste por aciertos: la realidad bajó 0.64 veces lo predicho; se corrige 0.864 (con 6 días)",
-      "Memoria: 26 corridas de las últimas 48 h; sin memoria la zona crítica sería en 27.6 días",
-      "Número grande (promedio ponderado de 26 corridas): zona crítica 49.0 días [30.6, 59.5], parada 52.7 días",
-      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.0, '30': 0.0}, semana seca {'7': 0.0, '14': 0.0, '30': 0.632}",
+      "Memoria: 26 corridas de las últimas 48 h; sin memoria la zona crítica sería en 23.2 días",
+      "Número grande (promedio ponderado de 26 corridas): zona crítica 48.6 días [30.6, 59.5], parada 52.3 días",
+      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.0, '30': 0.0}, semana seca {'7': 0.0, '14': 0.0, '30': 0.421}",
       "Zona crítica (2.116): None; ventana hasta None; mínimo None",
       "Modelo: más de 60 días hasta 2.115 (rango None–None); hoy -0.57 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 2 comparaciones nuevas; última a 1 día: dijo 2122.92 y fue 2122.59 (+0.33 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2122.92 y fue 2122.59 (+0.33 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-18",
@@ -562,7 +564,7 @@
       null,
       null
     ],
-    "serieMazar": [
+    "serieMazarBruta": [
       1.0,
       1.0916,
       1.2879,
@@ -624,6 +626,76 @@
       1.2108,
       1.2105,
       1.2109
+    ],
+    "ajuste_paute": {
+      "factor": 0.709,
+      "observado": 0.418,
+      "dias": 10,
+      "casos": 397,
+      "nota": "de cada m³/s extra que prometía la lluvia en el Paute llegó 42 % (últimos 10 días, lo reciente pesa más); se aplica 71 %"
+    },
+    "serieMazar": [
+      1.0,
+      1.0649,
+      1.2041,
+      1.3871,
+      1.4956,
+      1.6964,
+      1.6033,
+      1.3421,
+      1.3426,
+      1.27,
+      1.1283,
+      1.0381,
+      1.0055,
+      1.0089,
+      0.9905,
+      0.9779,
+      0.9754,
+      0.977,
+      0.9863,
+      0.9981,
+      1.0072,
+      1.0145,
+      1.0221,
+      1.033,
+      1.0427,
+      1.0512,
+      1.0598,
+      1.0691,
+      1.081,
+      1.0929,
+      1.103,
+      1.1107,
+      1.1186,
+      1.1278,
+      1.1361,
+      1.1434,
+      1.1494,
+      1.1497,
+      1.148,
+      1.1474,
+      1.1448,
+      1.1418,
+      1.1392,
+      1.1373,
+      1.1365,
+      1.1367,
+      1.1365,
+      1.1386,
+      1.1424,
+      1.1456,
+      1.1481,
+      1.1497,
+      1.1509,
+      1.1516,
+      1.1504,
+      1.149,
+      1.1485,
+      1.1488,
+      1.1495,
+      1.1492,
+      1.1495
     ],
     "serieMazarSeca": [
       1.0,
@@ -950,71 +1022,71 @@
       "nota": "la realidad bajó 0.64 veces lo predicho; se corrige 0.864 (con 6 días)"
     },
     "prediccion_foto": {
-      "dias_critica": 27.6,
-      "cota_3d": 2123.36,
-      "cota_5d": 2125.59
+      "dias_critica": 23.2,
+      "cota_3d": 2123.17,
+      "cota_5d": 2124.98
     },
     "memoria": [
-      21.98,
-      13.25,
-      2.81,
-      7.22,
-      -3.35,
-      -2.19,
-      5.72,
-      14.42,
-      9.43,
-      7.2,
-      9.51,
-      12.93,
-      12.28,
-      13.35,
-      15.1,
-      15.1,
-      14.99,
-      12.85,
-      6.87,
-      8.92,
-      10.17,
-      9.62,
-      6.6,
-      4.53,
-      -0.05,
-      -9.75,
-      -8.05,
-      1.03,
-      7.37,
-      11.14,
-      12.45,
-      10.21,
-      5.75,
-      8.81,
-      10.38,
-      4.33,
-      -1.86,
-      11.31,
-      10.68,
-      9.01,
-      11.15,
-      9.83,
-      12.96,
-      15.06,
-      15.1,
-      12.53,
-      6.84,
-      9.18,
-      11.58,
-      12.71,
-      12.3,
-      11.65,
-      10.73,
-      6.72,
+      22.41,
+      15.98,
+      8.97,
+      17.02,
       9.08,
-      10.72,
-      10.77,
-      10.76,
-      12.49,
-      8.37
+      12.83,
+      17.22,
+      22.12,
+      16.64,
+      11.92,
+      11.42,
+      13.48,
+      12.46,
+      13.48,
+      15.13,
+      15.12,
+      15.01,
+      12.86,
+      6.93,
+      8.97,
+      10.34,
+      9.97,
+      7.09,
+      5.28,
+      0.91,
+      -8.61,
+      -6.68,
+      2.59,
+      9.21,
+      13.25,
+      14.76,
+      12.65,
+      8.32,
+      11.67,
+      13.36,
+      7.44,
+      1.41,
+      14.5,
+      13.78,
+      12.05,
+      14.33,
+      12.9,
+      15.98,
+      17.82,
+      17.8,
+      15.22,
+      9.89,
+      11.98,
+      14.56,
+      15.74,
+      15.41,
+      14.85,
+      13.89,
+      9.88,
+      12.31,
+      14.02,
+      14.02,
+      14.04,
+      15.79,
+      11.57
     ],
     "memoria_info": {
       "corridas": 26,
@@ -1022,9 +1094,9 @@
       "nota": "promedio ponderado de las 26 corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"
     },
     "prediccion": {
-      "dias_zona_2120": 29.1,
+      "dias_zona_2120": 28.7,
       "rango_zona_2120": [
-        27.9,
+        27.6,
         null
       ],
       "dias": null,
@@ -1035,7 +1107,7 @@
       "ritmo_hoy_m_dia": -0.57,
       "numero": {
         "critica": {
-          "dias": 49.0,
+          "dias": 48.6,
           "rango": [
             30.6,
             59.5
@@ -1043,7 +1115,7 @@
           "entran": 0.37
         },
         "parada": {
-          "dias": 52.7,
+          "dias": 52.3,
           "rango": [
             32.7,
             59.6
@@ -1068,7 +1140,7 @@
         "2120": {
           "7": 0.0,
           "14": 0.0,
-          "30": 0.368
+          "30": 0.421
         },
         "2116": {
           "7": 0.0,
@@ -1090,12 +1162,12 @@
         "2116": {
           "7": 0.0,
           "14": 0.0,
-          "30": 0.684
+          "30": 0.579
         },
         "2115": {
           "7": 0.0,
           "14": 0.0,
-          "30": 0.632
+          "30": 0.421
         }
       }
     },
