@@ -943,6 +943,54 @@ def paro_ccs(serie, posible_mw):
     return [round(f0 + (1 - f0) * r, 3) for r in PARO_RECUPERA], dict(info, paro=True)
 
 
+F_PAUTE_PRED = os.path.join("registro", "paute_predicciones.json")   # pronósticos de caudal de Mazar de cada corrida
+F_CELEC_DIARIO = os.path.join("historial", "celec_diario.json")
+
+
+def ajuste_paute(hoy_d, dias_atras=21):
+    """Corrige la SUBIDA de caudal que promete la lluvia pronosticada en el Paute según cuánto de esa subida llegó de
+    verdad (caudal diario de entrada a Mazar, Celec Sur). Para cada pronóstico guardado y cada día 1..7:
+    subida prometida = q0·serie[k] − q0, subida real = q_real(día) − q0. Factor c = Σw·real / Σw·prometida
+    (w: la mitad cada 3 días de antigüedad), entre 0 y 1,2, con freno n/(n+10) según los días distintos con datos.
+    Solo se aplica a las subidas (serie > 1): de cada m³/s extra que prometía la lluvia se cuenta c."""
+    preds = _leer_json(F_PAUTE_PRED, [])
+    obs = {k: v.get("q") for k, v in _leer_json(F_CELEC_DIARIO, {}).items() if v.get("q") is not None}
+    desde = hoy_d - timedelta(days=dias_atras)
+    num = den = 0.0; dias = set(); casos = 0
+    for p in preds:
+        t0 = datetime.fromisoformat(p["ts"])
+        if t0.date() < desde or not p.get("q0") or not p.get("serie"):
+            continue
+        edad = (hoy_d - t0.date()).days
+        w = 0.5 ** (edad / 3.0)
+        for k in range(1, min(8, len(p["serie"]))):
+            d = (t0 + timedelta(days=k)).date()
+            if d >= hoy_d or d.isoformat() not in obs:
+                continue
+            prom = p["q0"] * p["serie"][k] - p["q0"]
+            if prom > 2:
+                num += w * (obs[d.isoformat()] - p["q0"]); den += w * prom; casos += 1; dias.add(t0.date())
+    n = len(dias)
+    if n < 3 or den <= 0:
+        return 1.0, {"factor": 1.0, "dias": n, "casos": casos, "nota": "pocos días; sin corrección"}
+    c_obs = max(0.0, min(1.2, num / den))
+    c = 1 + (c_obs - 1) * n / (n + 10)
+    return c, {"factor": round(c, 3), "observado": round(num / den, 3), "dias": n, "casos": casos,
+               "nota": f"de cada m³/s extra que prometía la lluvia en el Paute llegó {max(0, num / den) * 100:.0f} % "
+                       f"(últimos {n} días, lo reciente pesa más); se aplica {c * 100:.0f} %"}
+
+
+def guardar_paute(ts, q0, serie):
+    try:
+        lim = (datetime.fromisoformat(ts) - timedelta(days=45)).isoformat()
+        pr = [p for p in _leer_json(F_PAUTE_PRED, []) if p["ts"] >= lim and p["ts"] != ts]
+        pr.append({"ts": ts, "q0": q0, "serie": [round(x, 4) for x in serie[:15]]})
+        with open(F_PAUTE_PRED, "w", encoding="utf-8") as fo:
+            json.dump(sorted(pr, key=lambda p: p["ts"]), fo, ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        log(f"Registro del caudal del Paute: {e}")
+
+
 def coca_base(cache, fin):
     """Caudal esperado del río Coca para los días 1..10 y, en la posición 11, el nivel normal al que vuelve (sin pronóstico de lluvia)."""
     ult = _horas_rio(cache, fin, 2)
@@ -1047,6 +1095,15 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     serieM = serieC = None
     try:
         serieM, mm7 = serie_caudal_paute(par, hoy["qMazar"], hoy_d)
+        guardar_paute(datetime.fromisoformat(datos["fecha"]).isoformat(), hoy["qMazar"], serieM)
+        try:
+            c_p, info_p = ajuste_paute(hoy_d)
+            mod["serieMazarBruta"] = [round(x, 4) for x in serieM]
+            serieM = [round(1 + (x - 1) * c_p, 4) if x > 1 else x for x in serieM]
+            mod["ajuste_paute"] = info_p
+            log(f"Autoajuste caudal del Paute: {info_p['nota']}")
+        except Exception as e:
+            log(f"Autoajuste caudal del Paute: {e}")
         mod["serieMazar"] = serieM
         try:
             mod["serieMazarSeca"], _ = serie_caudal_paute(par, hoy["qMazar"], hoy_d, semana_seca=True)
