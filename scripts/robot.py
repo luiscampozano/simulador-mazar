@@ -465,6 +465,15 @@ def simular_py(P, ctx, par, horizonte=60):
     kA = float(ctx.get("ajuste") or 1.0)
     mem = ctx.get("memoria") or None
     mem_at = (lambda t: float(mem[min(len(mem) - 1, int(math.floor(t)))] or 0.0)) if mem else (lambda t: 0.0)
+    fac = ctx.get("ccsFactor") or None
+
+    def fac_at(t):   # paro de Coca Codo: fracción de lo que permite el río (igual que modelo.js)
+        if not fac:
+            return 1.0
+        i = int(math.floor(t))
+        if i >= len(fac) - 1:
+            return float(fac[-1])
+        return fac[i] + (fac[i + 1] - fac[i]) * (t - i)
     diarios, cruce = [], None
     for step in range(int(horizonte / dt) + 1):
         t = step * dt
@@ -481,7 +490,7 @@ def simular_py(P, ctx, par, horizonte=60):
         else:
             cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
         demanda = P["demanda"] + ctx["deltaDia"][dia] - cut
-        ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1)
+        ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * fac_at(t)
         req = demanda - ccs - P["other"] * rf - P["therm"] - P["imp"]
         cota_ahora = 2115 + xo(V)
         kmz = 0.00981 * eta * max(20.0, cota_ahora - amC)
@@ -898,7 +907,8 @@ def rendimiento_ccs(cache, hoy_d):
     reg = {k: v for k, v in sorted(reg.items()) if k >= limite}
     with open(F_CCS_REND, "w", encoding="utf-8") as fo:
         json.dump(reg, fo, ensure_ascii=False, indent=1)
-    usa = [(k, v) for k, v in reg.items() if k >= (hoy_d - timedelta(days=21)).isoformat()]
+    # los días de paro (rinde menos de la mitad) los maneja paro_ccs(); aquí solo el rendimiento normal
+    usa = [(k, v) for k, v in reg.items() if k >= (hoy_d - timedelta(days=21)).isoformat() and v["rendimiento"] >= PARO_UMBRAL]
     if len(usa) < 3:
         return 1.0, {"factor": 1.0, "dias": len(usa), "nota": "pocos días; sin corrección"}
     w = [0.5 ** ((hoy_d - datetime.strptime(k, "%Y-%m-%d").date()).days / 3.0) for k, _ in usa]
@@ -908,6 +918,29 @@ def rendimiento_ccs(cache, hoy_d):
     return f, {"factor": round(f, 3), "observado": round(math.exp(m), 3), "dias": n,
                "nota": f"Coca Codo rindió {math.exp(m) * 100:.0f} % de lo que permitía su río (promedio ponderado de {n} días); "
                        f"se aplica {f * 100:.1f} %"}
+
+
+PARO_UMBRAL = 0.5                      # Coca Codo genera menos de la mitad de lo que permite su río → paro (sedimentos, fallas)
+PARO_RECUPERA = [0.0, 0.25, 0.5, 0.75, 1.0]   # vuelta a lo normal día a día (0 = hoy, sigue en paro; 1 = recuperada)
+
+
+def paro_ccs(serie, posible_mw):
+    """Paro de Coca Codo: compara lo que generó hoy (Cenace, energía del día ÷ horas, mínimo 4 h; si no, ayer completo)
+    con lo que su río permite. Si genera menos de la mitad, devuelve el factor día a día (hoy la fracción real, luego
+    vuelve a 1 en 4 días). Así el modelo ve el hueco que Paute está cubriendo sin cambiar el caudal del río."""
+    if not posible_mw or posible_mw < 200:
+        return None, None
+    dias = sorted((serie.get("plantas") or {}).items())
+    base = next(((d, p) for d, p in reversed(dias) if float(p.get("horas") or 0) >= 4 and p.get("Coca Codo") is not None), None)
+    if not base:
+        return None, None
+    real = float(base[1]["Coca Codo"]) / float(base[1]["horas"])
+    frac = real / posible_mw
+    info = {"dia": base[0], "horas": float(base[1]["horas"]), "real_mw": round(real), "posible_mw": round(posible_mw), "fraccion": round(frac, 3)}
+    if frac >= PARO_UMBRAL:
+        return None, dict(info, paro=False)
+    f0 = max(0.05, frac)
+    return [round(f0 + (1 - f0) * r, 3) for r in PARO_RECUPERA], dict(info, paro=True)
 
 
 def coca_base(cache, fin):
@@ -1097,6 +1130,37 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     ctx = {"cota": datos["cota"], "diaSemana0": mod["diaSemana0"], "amaluzaCota": mod["amaluzaCota"],
            "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
            "cutPlan": mod.get("cutPlan"), "serieMazar": serieM, "serieCoca": serieC}
+    # Paro de Coca Codo (sedimentos/fallas): lo que de verdad genera frente a lo que permite su río
+    mod.pop("ccsFactor", None)
+    try:
+        fac, info_paro = paro_ccs(_leer_json(SERIE, {}), min(5 * hoy["qCoca"], 1200))
+        mod["ccs_paro"] = info_paro
+        if fac:
+            # ¿Cuánto del hueco cubre de verdad Paute? (el resto lo cubren térmicas, otras hidroeléctricas o menos demanda)
+            # Se mide con la generación real del complejo Paute de hoy frente a la que el modelo daría sin paro.
+            try:
+                d0, _ = simular_py(P, dict(ctx, ccsFactor=None), par, horizonte=1)
+                p_sin = d0[0]["paute"]
+                pl = (_leer_json(SERIE, {}).get("plantas") or {}).get(info_paro["dia"]) or {}
+                p_real = sum(float(pl.get(c) or 0) for c in ("Paute", "Sopladora", "Mazar")) / max(1.0, float(pl.get("horas") or 0))
+                hueco = info_paro["posible_mw"] - info_paro["real_mw"]
+                cub = max(0.3, min(1.0, (p_real - p_sin) / hueco)) if hueco > 50 and p_real > 0 else 1.0
+            except Exception as e:
+                cub, p_sin, p_real = 1.0, None, None
+                log(f"Paro de Coca Codo: no se pudo medir cuánto cubre Paute ({e})")
+            fac = [round(1 - cub * (1 - x), 3) for x in fac]
+            info_paro.update({"paute_real_mw": round(p_real) if p_real else None, "paute_sin_paro_mw": round(p_sin) if p_sin else None,
+                              "cubre_paute": round(cub, 2), "factor": fac})
+            log(f"Paute real hoy {info_paro['paute_real_mw']} MW frente a {info_paro['paute_sin_paro_mw']} sin paro: cubre el {cub * 100:.0f} % del hueco")
+            mod["ccsFactor"] = fac; ctx["ccsFactor"] = fac
+            log(f"Coca Codo en PARO: genera {info_paro['real_mw']} MW de {info_paro['posible_mw']} que permite el río "
+                f"({info_paro['fraccion'] * 100:.0f} %, {info_paro['dia']}); el modelo lo usa hoy y lo recupera en 4 días: {fac}")
+            notas["coca"] = (notas.get("coca") or "") + (f" ⚠️ Coca Codo está generando solo {info_paro['real_mw']} MW de ~{info_paro['posible_mw']} posibles "
+                             f"(probable paro por sedimentos): Paute cubre ~{info_paro.get('cubre_paute', 1) * 100:.0f} % del hueco. El modelo lo incluye y supone que se recupera en ~4 días.")
+        elif info_paro:
+            log(f"Coca Codo normal: {info_paro['real_mw']} MW de {info_paro['posible_mw']} posibles ({info_paro['fraccion'] * 100:.0f} %)")
+    except Exception as e:
+        log(f"Paro de Coca Codo: {e}")
     aj = autoajuste(_leer_json(F_VER, []), hoy_d)
     mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
     ctx["ajuste"] = aj["factor"]

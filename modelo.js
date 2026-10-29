@@ -14,9 +14,12 @@
     amaluza: { piso: 1971.3, area: [0.0844, 0.1203] },
   };
   let PAR = JSON.parse(JSON.stringify(RESPALDO));
+  let CCSF = null;   // paro de Coca Codo (sedimentos): fracción de lo que permite el río, día a día (robot → modelo.ccsFactor)
 
   function configurar(m) {
     PAR = JSON.parse(JSON.stringify(RESPALDO));
+    CCSF = m && Array.isArray(m.ccsFactor) && m.ccsFactor.length ? m.ccsFactor : null;
+    avisoParo(m && m.ccs_paro);
     if (!m) return;
     for (const k of Object.keys(RESPALDO)) if (m[k] != null) PAR[k] = m[k];
   }
@@ -25,6 +28,23 @@
   const xOf = v => v <= 0 ? 0 : (-A() + Math.sqrt(A() * A() + 2 * B() * v)) / B();
   const areaEn = cota => A() + B() * (cota - COTA_CRIT);
 
+  /* Aviso visible en las páginas cuando Coca Codo está en paro (lo detecta el robot: modelo.ccs_paro). */
+  function avisoParo(p) {
+    if (typeof document === "undefined") return;
+    const pinta = () => {
+      let box = document.getElementById("aviso-paro-ccs");
+      if (!p || !p.paro) { if (box) box.remove(); return; }
+      if (!box) {
+        box = document.createElement("div"); box.id = "aviso-paro-ccs"; box.setAttribute("role", "status");
+        box.style.cssText = "margin:10px 0;padding:12px 14px;border-radius:14px;border:1px solid rgba(251,146,60,.55);background:rgba(251,146,60,.12);color:inherit;font:500 14px/1.45 Inter,system-ui,sans-serif";
+        const ancla = document.querySelector("header") || document.querySelector("main") || document.body.firstElementChild;
+        if (ancla && ancla.parentNode) ancla.parentNode.insertBefore(box, ancla.nextSibling); else document.body.prepend(box);
+      }
+      const cub = p.cubre_paute != null ? ` Paute cubre cerca del ${Math.round(p.cubre_paute * 100)} % del hueco${p.paute_real_mw ? " (genera ~" + p.paute_real_mw + " MW)" : ""}, por eso Mazar baja más rápido.` : "";
+      box.innerHTML = `<b style="color:#ea580c">⚠️ Coca Codo casi parado:</b> genera ~${p.real_mw} MW de ~${p.posible_mw} que permite el río Coca (${Math.round(p.fraccion * 100)} %). Probable paro por sedimentos tras la crecida.${cub} La proyección ya lo incluye y supone que se recupera en unos 4 días.`;
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", pinta, { once: true }); else pinta();
+  }
   function perfil(kind, t, q0, target, serie) {
     if (kind === "auto" && serie && serie.length > 1) {
       const i = Math.min(serie.length - 2, Math.floor(t)), f = Math.min(1, t - i);
@@ -53,6 +73,8 @@
     const volAm = h => h <= piso ? 0 : aa * (h - piso) + ab * ((h - 1971) ** 2 - (piso - 1971) ** 2) / 2;
     let amRestante = volAm(amC), amRitmo = Math.max(0, ctx.amaluzaRitmo || 0);
     const ccs = P.ccsFn || ccsMW;
+    const fac = ctx.ccsFactor !== undefined ? ctx.ccsFactor : CCSF;
+    const facAt = t => { if (!fac) return 1; const i = Math.floor(t); if (i >= fac.length - 1) return +fac[fac.length - 1]; return +fac[i] + (fac[i + 1] - fac[i]) * (t - i); };
     const inicio = ctx.inicio || new Date();
     let V = volOf(ctx.cota - COTA_CRIT);
     let Vv = V;   // volumen "virtual": sigue bajando como si hubiera agua bajo 2.115 (sirve para el rango)
@@ -75,7 +97,7 @@
       const plan = ctx.cutPlan && ctx.cutPlan[kd];
       const cutHoy = (plan != null && plan !== false) ? +plan : ((!ctx.cutDias || ctx.cutDias[dia]) ? P.cut : 0);
       const demand = P.demanda + ((ctx.deltaDia && ctx.deltaDia[dia]) || 0) - cutHoy;
-      const ccsT = ccs(qcoca);
+      const ccsT = ccs(qcoca) * facAt(t);
       const other = P.other * rainF;
       const req = demand - ccsT - other - P.therm - P.imp;
       const cotaAhora = COTA_CRIT + xOf(V);
