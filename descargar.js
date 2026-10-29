@@ -75,20 +75,24 @@
         }
       });
     }).then(function (cv) {
-      var k = cv.width / el.offsetWidth, pie = Math.round(46 * k), pad = Math.round(16 * k);
+      var k = cv.width / el.offsetWidth, pad = Math.round(16 * k), d = new Date();
+      var fecha = "  ·  " + d.getDate() + " " + MES[d.getMonth()] + " " + d.getFullYear() + ", " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      var F1 = "700 " + Math.round(15 * k) + "px Inter, system-ui, sans-serif", F2 = Math.round(12 * k) + "px Inter, system-ui, sans-serif";
+      var m = document.createElement("canvas").getContext("2d");
+      m.font = F1; var w1 = m.measureText("@DataLabEc").width; m.font = F2; var w2 = m.measureText(fecha).width, w3 = m.measureText(CREDITO).width;
+      var dos = w1 + w2 + w3 + 24 * k > cv.width;          // pantalla angosta: créditos en una segunda línea
+      var pie = Math.round((dos ? 66 : 46) * k);
       var out = document.createElement("canvas");
       out.width = cv.width + 2 * pad; out.height = cv.height + pie + 2 * pad;
       var x = out.getContext("2d");
       x.fillStyle = fondo(el); x.fillRect(0, 0, out.width, out.height);
       x.drawImage(cv, pad, pad);
-      var y = pad + cv.height + pie * 0.62, d = new Date();
-      x.textBaseline = "middle";
-      x.font = "700 " + Math.round(15 * k) + "px Inter, system-ui, sans-serif"; x.fillStyle = "#7dd3fc"; x.textAlign = "left";
-      x.fillText("@DataLabEc", pad, y);
-      var ancho = x.measureText("@DataLabEc").width;
-      x.font = Math.round(12 * k) + "px Inter, system-ui, sans-serif"; x.fillStyle = "#8fb3ba";
-      x.fillText("  ·  " + d.getDate() + " " + MES[d.getMonth()] + " " + d.getFullYear() + ", " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"), pad + ancho, y);
-      x.textAlign = "right"; x.fillText(CREDITO, out.width - pad, y);
+      var y = pad + cv.height + Math.round(28 * k);
+      x.textBaseline = "middle"; x.textAlign = "left";
+      x.font = F1; x.fillStyle = "#7dd3fc"; x.fillText("@DataLabEc", pad, y);
+      x.font = F2; x.fillStyle = "#8fb3ba"; x.fillText(fecha, pad + w1, y);
+      if (dos) x.fillText(CREDITO, pad, y + Math.round(22 * k));
+      else { x.textAlign = "right"; x.fillText(CREDITO, out.width - pad, y); }
       out.toBlob(function (b) {
         var a = document.createElement("a");
         a.href = URL.createObjectURL(b); a.download = nombre(el);
