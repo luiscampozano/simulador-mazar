@@ -525,6 +525,11 @@ def simular_py(P, ctx, par, horizonte=60):
     return diarios, cruce
 
 
+# Corte de la memoria: solo se promedian corridas hechas con el modelo vigente. Se mueve cuando cambia la forma de
+# calcular (28-oct-2026 20:50: paro de Coca Codo + autoajuste del caudal del Paute), no por datos raros.
+MEMORIA_DESDE = "2026-10-28T20:00:00-05:00"
+
+
 def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
     """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
     el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
@@ -551,12 +556,13 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
             return en(e["cv"], x - 0.25)
         return e["cota"] + (e["cv"][0] - e["cota"]) * x / 0.25
     usadas = []
+    corte = datetime.fromisoformat(MEMORIA_DESDE)
     for e in reg:
         o = (t_now - datetime.fromisoformat(e["ts"])).total_seconds() / 86400
-        if 0 <= o < horas / 24:
+        if 0 <= o < horas / 24 and datetime.fromisoformat(e["ts"]) >= corte:
             usadas.append((e, o))
-    if len(usadas) < 3:
-        return None, len(usadas), None
+    if not usadas:
+        return None, 0, None
     # Peso de cada corrida: (1) antigüedad, la mitad cada 24 h; (2) acierto, comparando lo que dijo con la cota REAL de
     # las corridas que vinieron después (error de 0,5 m → pesa 60 % menos). La corrida más nueva, que aún no se puede
     # comparar, recibe el mejor acierto del grupo. Probado con 52 corridas: mismo error a 1–3 días que pesos iguales,
