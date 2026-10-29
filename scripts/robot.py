@@ -1125,6 +1125,48 @@ def otras_rios(hoy_d, ts, serie, other_mw, medidos, dias=61):
     return {"frac": round(frac, 3), "serie": [round(m / total0, 4) for m in mw_t]}, dict(info, mw_total=round(total0), other=round(other_mw))
 
 
+F_OTRAS_SOMBRA = os.path.join("registro", "otras_sombra.json")   # prueba en sombra: otras hidro con su propio río vs. siguiendo al Coca
+
+
+def otras_sombra(hoy_d, ts, P, ctx, otr, serie):
+    """Guarda en cada corrida los MW de 'otras hidroeléctricas' que esperan las dos formas para los días 1–7
+    (la nueva: cada central con río propio sigue a su río; la anterior: todas siguen al río Coca) y los compara con lo
+    que de verdad generaron (Cenace, días completos). No cambia el número grande: solo mide cuál acierta más."""
+    reg = _leer_json(F_OTRAS_SOMBRA, {"pred": [], "real": {}})
+    # lo real de cada día completo: toda la hidráulica − Coca Codo − complejo Paute
+    pts = serie.get("puntos") or {}
+    for d, pl in (serie.get("plantas") or {}).items():
+        if float(pl.get("horas") or 0) < 24 or d in reg["real"]: continue
+        hs = [v["h"] for k, v in pts.items() if k.startswith(d) and v.get("h") is not None]
+        if len(hs) < 40: continue
+        cp = sum(float(pl.get(c) or 0) for c in ("Coca Codo", "Paute", "Sopladora", "Mazar")) / 24.0
+        reg["real"][d] = round(sum(hs) / len(hs) - cp)
+    def rf(t):
+        qc = perfil_py(P["wCoca"], t, P["qCoca"], 280, ctx.get("serieCoca"))
+        return min(1.35, max(0.8, qc / P["qCoca"]))
+    se = otr["serie"] if otr else None
+    vieja = [round(P["other"] * rf(k)) for k in range(8)]
+    nueva = [round(P["other"] * ((1 - otr["frac"]) * rf(k) + otr["frac"] * se[min(k, len(se) - 1)])) for k in range(8)] if otr else vieja
+    reg["pred"] = [x for x in reg["pred"] if x["ts"][:13] != ts[:13]] + [{"ts": ts, "nueva": nueva, "vieja": vieja}]
+    lim = (hoy_d - timedelta(days=40)).isoformat()
+    reg["pred"] = [x for x in reg["pred"] if x["ts"][:10] >= lim]
+    reg["real"] = {d: v for d, v in reg["real"].items() if d >= lim}
+    # error medio por forma (días 1–7)
+    err = {"nueva": [], "vieja": []}
+    for x in reg["pred"]:
+        d0 = date_from(x["ts"][:10])
+        for k in range(1, 8):
+            d = (d0 + timedelta(days=k)).isoformat()
+            if d in reg["real"]:
+                for m in err: err[m].append(abs(x[m][k] - reg["real"][d]))
+    res = {m: (round(sum(v) / len(v)) if v else None) for m, v in err.items()}
+    res["casos"] = len(err["nueva"])
+    reg["resumen"] = res
+    with open(F_OTRAS_SOMBRA, "w", encoding="utf-8") as fo:
+        json.dump(reg, fo, ensure_ascii=False, separators=(",", ":"))
+    return res
+
+
 F_PAUTE_PRED = os.path.join("registro", "paute_predicciones.json")   # pronósticos de caudal de Mazar de cada corrida
 F_CELEC_DIARIO = os.path.join("historial", "celec_diario.json")
 
@@ -1437,6 +1479,12 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                                                          for k, v in info_otr.items() if isinstance(v, dict)))
     except Exception as e:
         log(f"Otras hidro con río propio: {e}")
+    try:
+        r_s = otras_sombra(hoy_d, ahora.isoformat(timespec="minutes"), P, ctx, mod.get("otrasRios"), _leer_json(SERIE, {}))
+        mod["otras_sombra"] = r_s
+        log(f"Otras hidro en sombra: error medio a 1–7 días · con su propio río {r_s['nueva']} MW, siguiendo al Coca {r_s['vieja']} MW ({r_s['casos']} casos)")
+    except Exception as e:
+        log(f"Otras hidro en sombra: {e}")
     aj = autoajuste(_leer_json(F_VER, []), hoy_d)
     mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
     ctx["ajuste"] = aj["factor"]

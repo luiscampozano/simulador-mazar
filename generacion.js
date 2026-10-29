@@ -80,7 +80,9 @@
       <p class="${CFG.lede}">Cuánta energía pueden dar hoy los ríos y qué está fallando: el caudal de cada río (medido por Celec y pronosticado por GloFAS) junto a lo que genera su central (Cenace). <a href="https://datalabecuador.com/clima/" style="color:var(--g-ok);font-weight:600">Ver el clima completo →</a></p></div>
       <div class="g-grid" id="g-sem"></div>
       <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair hora a hora</h3><div class="g-sub">Barras: MW generados. Línea: caudal del río Coca (escala de la derecha). Franja roja: horas en paro (genera menos de 100 MW teniendo río).</div></div>
-      <div id="g-cc-alerta"></div><div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
+      <div id="g-cc-alerta"></div>
+      <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados (escala izquierda)</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span><span><i style="background:var(--g-col);height:3px"></i>caudal del río Coca, m³/s (escala derecha)</span></div>
+      <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
       <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
       <div class="g-col" id="g-rios"></div>
@@ -368,8 +370,10 @@
     $("g-rios").innerHTML = CENTRALES.map((c, i) => { const r = RR[c.k]; if (!r) return "";
       const nota = r.ratio ? `GloFAS ${r.ratio < 0.8 ? "exagera" : r.ratio > 1.25 ? "se queda corto" : "acierta"}: lo medido es ${f(r.ratio * 100)} % de lo que dice (últimos ${r.ratio_dias} días); se corrige.` : "Celec no publica el caudal de este río (Agoyán y San Francisco son de otra unidad de Celec): se muestra GloFAS sin corregir.";
       return `<div class="g-box g-col"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;align-items:baseline"><h3 class="g-h3">Río ${esc(c.rio)} → ${esc(c.n)}</h3><span class="g-note">${nota}</span></div>
-        <div class="g-dos"><div class="g-chart"><div class="g-lbl" id="g-rq-t${i}"></div><svg id="g-rq-${i}" role="img" aria-label="Caudal del río ${esc(c.rio)}"></svg></div>
-        <div class="g-chart"><div class="g-lbl">Generación cada 2 h (MW) · capacidad ${f(c.cap)} MW${c.pl.length > 1 ? " · " + c.pl.map(p => `<span style="color:${COLP[p]}">■</span> ${esc(NOMBRE[p] || p)}`).join(" ") : ""}</div><svg id="g-rg-${i}" role="img" aria-label="Generación de ${esc(c.n)}"></svg></div></div></div>`; }).join("");
+        <div class="g-dos"><div class="g-chart"><div class="g-lbl" id="g-rq-t${i}"></div>
+        <div class="g-legend" style="margin:4px 0"><span><i class="s" style="background:var(--g-ink);border-radius:50%;width:8px;height:8px"></i>medido por Celec</span><span><i style="background:var(--g-real);height:3px"></i>${r.ratio ? "pronóstico corregido" : "pronóstico GloFAS"}</span>${r.ratio && (r.ratio < 0.8 || r.ratio > 1.25) && r.ratio > 0.2 ? `<span><i class="d" style="border-top-color:var(--g-muted)"></i>GloFAS sin corregir</span>` : ""}<span><i class="s" style="background:var(--g-real);opacity:.25"></i>rango probable</span></div><svg id="g-rq-${i}" role="img" aria-label="Caudal del río ${esc(c.rio)}"></svg></div>
+        <div class="g-chart"><div class="g-lbl">Generación cada 2 h (MW, Cenace)</div>
+        <div class="g-legend" style="margin:4px 0">${c.pl.map(p => `<span><i class="s" style="background:${COLP[p]}"></i>${esc(NOMBRE[p] || p)}</span>`).join("")}<span><i class="d" style="border-top-color:var(--g-warn)"></i>capacidad ${f(c.cap)} MW</span></div><svg id="g-rg-${i}" role="img" aria-label="Generación de ${esc(c.n)}"></svg></div></div></div>`; }).join("");
     CENTRALES.forEach((c, i) => { const r = RR[c.k]; if (!r) return;
       const n = r.dias.length, ih = r.dias.indexOf(hoy), idx = d => r.dias.indexOf(d);
       const qc = r.q_c || r.q, p25 = r.p25_c || r.p25, p75 = r.p75_c || r.p75;
