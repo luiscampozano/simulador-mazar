@@ -492,7 +492,14 @@ def simular_py(P, ctx, par, horizonte=60):
             cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
         demanda = P["demanda"] + ctx["deltaDia"][dia] - cut
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * fac_at(t)
-        req = demanda - ccs - P["other"] * rf - P["therm"] - P["imp"]
+        otr = ctx.get("otrasRios")
+        if otr and otr.get("serie"):
+            se = otr["serie"]; i = int(math.floor(t))
+            sv = se[-1] if i >= len(se) - 1 else se[i] + (se[i + 1] - se[i]) * (t - i)
+            other = P["other"] * ((1 - otr["frac"]) * rf + otr["frac"] * sv)
+        else:
+            other = P["other"] * rf
+        req = demanda - ccs - other - P["therm"] - P["imp"]
         cota_ahora = 2115 + xo(V)
         kmz = 0.00981 * eta * max(20.0, cota_ahora - amC)
         saque = min(am_ritmo * dt, am_rest); am_rest -= saque
@@ -1022,6 +1029,102 @@ def paro_ccs(serie, posible_mw):
     return [round(f0 + (1 - f0) * r, 3) for r in PARO_RECUPERA], dict(info, paro=True)
 
 
+F_RIOS_MED = os.path.join("registro", "rios_medidos.json")    # caudal diario medido por Celec: Jubones (Minas San Francisco), Zamora (Delsitanisagua)
+F_RIOS_PRED = os.path.join("registro", "rios_predicciones.json")  # pronóstico GloFAS de cada corrida para Pastaza, Zamora y Jubones
+# Otras hidroeléctricas que dependen de un río con pronóstico: río → (punto GloFAS, centrales y su potencia instalada en MW)
+C0_RIOS = 0.5
+RIOS_OTRAS = {"pastaza": ((-1.425, -78.375), {"Agoyán": 156, "San Francisco": 230}),
+              "zamora": ((-3.975, -78.925), {"Delsitanisagua": 180}),
+              "jubones": ((-3.325, -79.475), {"Minas San Francisco": 275})}
+
+
+def rios_medidos(ahora, dias=60):
+    """Caudal que entra a Minas San Francisco (río Jubones) y a Delsitanisagua (río Zamora), un dato por día (Celec).
+    Caché en registro/rios_medidos.json; cada corrida vuelve a leer hoy y ayer y completa lo que falte."""
+    from concurrent.futures import ThreadPoolExecutor
+    cache = _leer_json(F_RIOS_MED, {"jubones": {}, "zamora": {}})
+    hoy_d = ahora.date()
+    falta = [hoy_d - timedelta(days=n) for n in range(dias, -1, -1)
+             if n <= 1 or (hoy_d - timedelta(days=n)).isoformat() not in cache.get("jubones", {})]
+    def leer(d):
+        out = {}
+        f = f"?fecha={d:%d/%m/%Y}%2000:00:00"
+        try:
+            for i in _celec_items(f"{CELEC_ORDS}sardomcsr/repDiaNivQIng{f}"):
+                if i.get("embalse") == "Minas San Francisco" and i.get("q_ingresado") is not None:
+                    out["jubones"] = round(float(i["q_ingresado"]), 1)
+            for i in _celec_items(f"{CELEC_ORDS}sardomgen/repDiaNivQIngDel{f}"):
+                if i.get("q_ingresado") is not None:
+                    out["zamora"] = round(float(i["q_ingresado"]), 1)
+        except Exception:
+            pass
+        return d, out
+    with ThreadPoolExecutor(6) as ex:
+        for d, out in ex.map(leer, falta):
+            for k, v in out.items():
+                cache.setdefault(k, {})[d.isoformat()] = v
+    lim = (hoy_d - timedelta(days=400)).isoformat()
+    cache = {k: {d: v for d, v in sorted(x.items()) if d >= lim} for k, x in cache.items()}
+    with open(F_RIOS_MED, "w", encoding="utf-8") as fo:
+        json.dump(cache, fo, ensure_ascii=False, separators=(",", ":"))
+    return cache
+
+
+def otras_rios(hoy_d, ts, serie, other_mw, medidos, dias=61):
+    """Parte de las 'otras hidroeléctricas' que depende de un río con pronóstico. Para cada central: MW de ayer
+    (Cenace, día completo) × cambio que pronostica GloFAS en su río (corregido según lo que de verdad subió o bajó
+    en días anteriores, como en el Paute), con tope en su potencia instalada. Devuelve la fracción de 'otras' que
+    representan y su serie relativa (1 = como ayer), día a día."""
+    pl = next((p for d, p in sorted((serie.get("plantas") or {}).items(), reverse=True)
+               if float(p.get("horas") or 0) >= 20), None)
+    if not pl or not other_mw:
+        return None, None
+    lat = ",".join(str(v[0][0]) for v in RIOS_OTRAS.values()); lon = ",".join(str(v[0][1]) for v in RIOS_OTRAS.values())
+    f = _json_url(f"https://flood-api.open-meteo.com/v1/flood?latitude={lat}&longitude={lon}"
+                  f"&daily=river_discharge&past_days=1&forecast_days={dias}")
+    preds = _leer_json(F_RIOS_PRED, {})
+    total0 = 0.0; mw_t = [0.0] * dias; info = {}
+    for (rio, (_, plantas)), x in zip(RIOS_OTRAS.items(), f):
+        v = [q for q in x["daily"]["river_discharge"]][1:1 + dias]
+        if not v or not v[0]:
+            continue
+        rel = [min(3.0, max(0.3, (q or v[0]) / v[0])) for q in v]
+        # Aprendizaje: de cada subida o bajada que prometía GloFAS, cuánto pasó de verdad (caudal medido por Celec)
+        c, casos = C0_RIOS, 0   # mientras no haya aprendizaje, prudente: en el Paute llegó ~40 % de lo que prometía
+        med = medidos.get(rio) or {}
+        if med:
+            num = den = 0.0
+            for p in preds.get(rio, []):
+                t0 = date_from(p["ts"][:10]); q0 = med.get(t0.isoformat())
+                if not q0: continue
+                for k in range(1, min(8, len(p["rel"]))):
+                    d = (t0 + timedelta(days=k)).isoformat()
+                    if d >= hoy_d.isoformat() or d not in med: continue
+                    w = 0.5 ** ((hoy_d - t0).days / 3.0)
+                    num += w * (med[d] / q0 - 1) * (p["rel"][k] - 1); den += w * (p["rel"][k] - 1) ** 2; casos += 1
+            if casos >= 10 and den > 0:
+                n = len({p["ts"][:10] for p in preds.get(rio, [])})
+                c = C0_RIOS + (max(0.0, min(1.2, num / den)) - C0_RIOS) * n / (n + 10)
+        preds.setdefault(rio, [])
+        preds[rio] = [p for p in preds[rio] if p["ts"][:10] != hoy_d.isoformat()] + [{"ts": ts, "rel": [round(r, 4) for r in rel[:15]]}]
+        preds[rio] = [p for p in preds[rio] if date_from(p["ts"][:10]) >= hoy_d - timedelta(days=45)]
+        for j in range(dias):
+            w = 1.0 if j <= 10 else max(0.3, 1 - (j - 10) / 20)        # después de 10 días se atenúa, como en el Coca
+            r = 1 + (rel[j] - 1) * c * w
+            for nom, cap in plantas.items():
+                mw0 = float(pl.get(nom) or 0) / float(pl["horas"])
+                mw_t[j] += min(cap, mw0 * r)
+        mw0r = sum(float(pl.get(nom) or 0) / float(pl["horas"]) for nom in plantas)
+        total0 += mw0r
+        info[rio] = {"mw_ayer": round(mw0r), "rel_7d": round(rel[min(7, dias - 1)], 3), "aprendizaje": round(c, 3), "casos": casos}
+    with open(F_RIOS_PRED, "w", encoding="utf-8") as fo:
+        json.dump(preds, fo, ensure_ascii=False, separators=(",", ":"))
+    if total0 < 50:
+        return None, None
+    frac = max(0.0, min(0.9, total0 / other_mw))
+    return {"frac": round(frac, 3), "serie": [round(m / total0, 4) for m in mw_t]}, dict(info, mw_total=round(total0), other=round(other_mw))
+
+
 F_PAUTE_PRED = os.path.join("registro", "paute_predicciones.json")   # pronósticos de caudal de Mazar de cada corrida
 F_CELEC_DIARIO = os.path.join("historial", "celec_diario.json")
 
@@ -1322,6 +1425,18 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                     log("Riesgo de paro por crecida del Coca: ningún día previsto sobre 500 m³/s")
     except Exception as e:
         log(f"Riesgo de paro por crecida: {e}")
+    # Otras hidroeléctricas con río propio (Pastaza, Zamora, Jubones): siguen el pronóstico de su río
+    mod.pop("otrasRios", None)
+    try:
+        med = rios_medidos(ahora)
+        otr, info_otr = otras_rios(hoy_d, ahora.isoformat(timespec="minutes"), _leer_json(SERIE, {}), hoy.get("other"), med)
+        if otr:
+            mod["otrasRios"] = otr; mod["otras_rios_info"] = info_otr; ctx["otrasRios"] = otr
+            log(f"Otras hidro con río propio: {info_otr['mw_total']} MW de {info_otr['other']} ({otr['frac'] * 100:.0f} %); "
+                f"en 7 días ×{otr['serie'][7]:.2f} · " + ", ".join(f"{k} ×{v['rel_7d']:.2f} (aprende {v['aprendizaje']}, {v['casos']} casos)"
+                                                         for k, v in info_otr.items() if isinstance(v, dict)))
+    except Exception as e:
+        log(f"Otras hidro con río propio: {e}")
     aj = autoajuste(_leer_json(F_VER, []), hoy_d)
     mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
     ctx["ajuste"] = aj["factor"]

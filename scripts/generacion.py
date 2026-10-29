@@ -215,7 +215,7 @@ def rios_glofas():
     lon = ",".join(str(r[4]) for r in RIOS)
     f = _json("https://flood-api.open-meteo.com/v1/flood?latitude=" + lat + "&longitude=" + lon +
               "&daily=river_discharge,river_discharge_median,river_discharge_p25,river_discharge_p75,"
-              "river_discharge_min,river_discharge_max&past_days=7&forecast_days=30")
+              "river_discharge_min,river_discharge_max&past_days=14&forecast_days=30")
     out = []
     for (clave, rio, centrales, _, _), x in zip(RIOS, f):
         d = x["daily"]
@@ -227,22 +227,53 @@ def rios_glofas():
 
 
 def rios_reales(datos, hoy_d):
-    """Caudal medido (Celec): entrada a Mazar por día y río Coca por día."""
-    out = {"paute": [], "coca": []}
+    """Caudal medido (Celec): entrada a Mazar, río Coca, Jubones (Minas San Francisco) y Zamora (Delsitanisagua), por día."""
+    out = {"paute": [], "coca": [], "jubones": [], "zamora": []}
+    med = _leer(os.path.join("registro", "rios_medidos.json"), {})
+    for k in ("jubones", "zamora"):
+        out[k] = [[d, q] for d, q in sorted((med.get(k) or {}).items())][-45:]
+    hist = _leer(os.path.join("historial", "celec_diario.json"), {})
+    for d in sorted(hist)[-45:]:
+        if (hist[d] or {}).get("q") is not None:
+            out["paute"].append([d, round(hist[d]["q"], 1)])
+    ya = {d for d, _ in out["paute"]}
     for x in (datos.get("fisica") or {}).get("detalle") or []:
-        out["paute"].append([x["dia"], x.get("caudal")])
+        if x["dia"] not in ya: out["paute"].append([x["dia"], x.get("caudal")])
     q = (datos.get("hoy") or {}).get("qMazar")
     if q:
-        out["paute"].append([hoy_d.isoformat(), q])
+        out["paute"] = [p for p in out["paute"] if p[0] != hoy_d.isoformat()] + [[hoy_d.isoformat(), q]]
+    out["paute"].sort()
     rio = _leer(os.path.join("registro", "coca_rio.json"), {})
     dias = {}
     for k, v in rio.items():
         if v is not None:
             dias.setdefault(k[:10], []).append(v)
-    for d in sorted(dias)[-10:]:
+    for d in sorted(dias)[-45:]:
         if len(dias[d]) >= 6:
             out["coca"].append([d, round(sum(dias[d]) / len(dias[d]), 1)])
     return out
+
+
+def coca_horas(horas=48):
+    """Coca Codo hora a hora: caudal del río y MW generados (caudal turbinado por unidad × 8 unidades × 5,25 MW por m³/s)."""
+    rio = _leer(os.path.join("registro", "coca_rio.json"), {})
+    tur = _leer(os.path.join("registro", "ccs_turbinado.json"), {})
+    ks = sorted(rio)[-horas:]
+    return [[k, rio[k], round(tur[k] * 8 * 5.25) if k in tur else None] for k in ks]
+
+
+def corregir_rios(rios, reales):
+    """GloFAS no acierta igual en todos los ríos: en cada uno se mide cuánto es lo real frente a lo que dice
+    (días con caudal medido, hasta 14) y se corrige su pronóstico con ese factor."""
+    for r in rios:
+        med = dict(reales.get(r["clave"]) or [])
+        pares = [(med[d], r["q"][i]) for i, d in enumerate(r["dias"]) if d in med and med[d] and r["q"][i]][-14:]
+        if len(pares) >= 3:
+            k = sum(a for a, _ in pares) / sum(b for _, b in pares)
+            r["ratio"] = round(k, 3); r["ratio_dias"] = len(pares)
+            for c in ("q", "med", "p25", "p75", "min", "max"):
+                if r.get(c): r[c + "_c"] = [None if v is None else round(v * k, 1) for v in r[c]]
+    return rios
 
 
 # ------------------------------------------------------------------ principal
@@ -286,7 +317,11 @@ def actualizar(ahora, get, url_cenace, log=print):
         "lluvia": intenta("lluvia_ecmwf", lluvia_cuencas, prev.get("lluvia") or {}),
         "rios": intenta("glofas", rios_glofas, prev.get("rios") or []),
         "rios_reales": rios_reales(datos, hoy_d),
+        "coca_horas": coca_horas(),
+        "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),
+        "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }
+    out["rios"] = corregir_rios(out["rios"], out["rios_reales"])
     _guardar(F_OUT, out)
     ok = sum(1 for v in fuentes.values() if v.get("ok"))
     log(f"Pestañas de generación y clima: {ok}/{len(fuentes)} fuentes al día")

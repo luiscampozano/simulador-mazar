@@ -15,14 +15,17 @@
   };
   let PAR = JSON.parse(JSON.stringify(RESPALDO));
   let CCSF = null;   // paro de Coca Codo (sedimentos): fracción de lo que permite el río, día a día (robot → modelo.ccsFactor)
+  let OTR = null;    // otras hidroeléctricas con río medido (Pastaza, Zamora, Jubones): {frac, serie} (robot → modelo.otrasRios)
 
   function configurar(m) {
     PAR = JSON.parse(JSON.stringify(RESPALDO));
     CCSF = m && Array.isArray(m.ccsFactor) && m.ccsFactor.length ? m.ccsFactor : null;
+    OTR = m && m.otrasRios && Array.isArray(m.otrasRios.serie) && m.otrasRios.serie.length ? m.otrasRios : null;
     avisoParo(m && m.ccs_paro);
     if (!m) return;
     for (const k of Object.keys(RESPALDO)) if (m[k] != null) PAR[k] = m[k];
   }
+  const serieEn = (a, t) => { const i = Math.floor(t); if (i >= a.length - 1) return +a[a.length - 1]; return +a[i] + (a[i + 1] - a[i]) * (t - i); };
   const A = () => PAR.curva_mazar.a, B = () => PAR.curva_mazar.b;
   const volOf = x => A() * x + B() * x * x / 2;                       // hm³ sobre 2.115
   const xOf = v => v <= 0 ? 0 : (-A() + Math.sqrt(A() * A() + 2 * B() * v)) / B();
@@ -98,7 +101,10 @@
       const cutHoy = (plan != null && plan !== false) ? +plan : ((!ctx.cutDias || ctx.cutDias[dia]) ? P.cut : 0);
       const demand = P.demanda + ((ctx.deltaDia && ctx.deltaDia[dia]) || 0) - cutHoy;
       const ccsT = ccs(qcoca) * facAt(t);
-      const other = P.other * rainF;
+      // Otras hidroeléctricas: la parte con río pronosticado (Agoyán, San Francisco, Delsitanisagua, Minas San Francisco)
+      // sigue a su propio río; el resto sigue al caudal de la Amazonía norte, como antes.
+      const otr = ctx.otrasRios !== undefined ? ctx.otrasRios : OTR;
+      const other = otr ? P.other * ((1 - otr.frac) * rainF + otr.frac * serieEn(otr.serie, t)) : P.other * rainF;
       const req = demand - ccsT - other - P.therm - P.imp;
       const cotaAhora = COTA_CRIT + xOf(V);
       const kmz = 0.00981 * eta * Math.max(20, cotaAhora - amC);

@@ -1,4 +1,4 @@
-/* Pestañas "Hidroeléctricas", "Térmicas", "Otras fuentes y Colombia" y "Clima e hidrología".
+/* Pestañas "Hidroeléctricas", "Térmicas", "Otras fuentes y Colombia" y "Ríos y centrales".
    Mismo archivo en los dos simuladores; cada página pone su estilo con window.GEN_CFG y las variables --g-*.
    Solo leen registro/generacion.json (lo escribe el robot cada 2 h); no tocan el modelo ni el número grande. */
 (function () {
@@ -34,10 +34,17 @@
 .g-tbl th{color:var(--g-muted);font-weight:600;font-size:12px}.g-tbl td.n{text-align:right;font-family:var(--g-mono,ui-monospace,monospace);white-space:nowrap}
 .g-scroll{overflow-x:auto}.g-dia{display:grid;gap:4px;padding-top:8px;border-top:1px solid var(--g-line)}.g-dia:first-of-type{border-top:0;padding-top:0}
 .g-per{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}.g-per span:nth-child(odd){color:var(--g-muted)}
-.g-ok{color:var(--g-ok)}.g-ko{color:var(--g-crit)}`;
+.g-ok{color:var(--g-ok)}.g-ko{color:var(--g-crit)}
+.g-est{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}.g-est i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.g-est.ok{color:var(--g-ok);background:color-mix(in srgb,var(--g-ok) 14%,transparent)}.g-est.med{color:var(--g-warn);background:color-mix(in srgb,var(--g-warn) 14%,transparent)}.g-est.mal{color:var(--g-crit);background:color-mix(in srgb,var(--g-crit) 14%,transparent)}
+.g-fila{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--g-muted);margin-top:4px}.g-fila b{color:var(--g-ink);font-family:var(--g-mono,ui-monospace,monospace);font-variant-numeric:tabular-nums}
+.g-bar{height:6px;border-radius:4px;background:var(--g-line);overflow:hidden}.g-bar i{display:block;height:100%;border-radius:4px}
+.g-alerta{border:1px solid color-mix(in srgb,var(--g-crit) 45%,transparent);background:color-mix(in srgb,var(--g-crit) 10%,transparent);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.45}
+.g-riesgo{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.g-riesgo>div{border:1px solid var(--g-line);border-radius:10px;padding:8px;text-align:center;font-size:12px;color:var(--g-muted);display:grid;gap:3px;justify-items:center}.g-riesgo b{color:var(--g-ink);font-size:14px}
+.g-dos{display:grid;gap:12px;grid-template-columns:1fr}@media(min-width:900px){.g-dos{grid-template-columns:3fr 2fr}}`;
 
   /* ---------- pestañas y paneles ---------- */
-  const TABS = [["hidro", "Hidroeléctricas"], ["term", "Térmicas"], ["otras", "Otras fuentes y Colombia"], ["clima", "Clima e hidrología"]];
+  const TABS = [["hidro", "Hidroeléctricas"], ["term", "Térmicas"], ["otras", "Otras fuentes y Colombia"], ["rios", "Ríos y centrales"]];
   const leyenda = (real, txtReal) => `<div class="g-legend"><span><i style="background:${real};height:4px"></i>${txtReal}</span><span><i class="d"></i>lo que usó el modelo</span></div>`;
   const PANEL = {
     hidro: () => `<div class="g-head"><div style="display:grid;gap:6px;max-width:70ch"><h2 class="${CFG.h2}">Generación hidroeléctrica</h2>
@@ -69,21 +76,15 @@
       <div class="g-kpis" id="g-ren-kpis"></div><div class="g-chart"><svg id="g-ren-72" role="img" aria-label="Renovables no convencionales en las últimas 72 horas"></svg></div>
       <div class="g-chart"><svg id="g-ren-dias" role="img" aria-label="Renovables no convencionales, promedio diario"></svg></div></div>
       <p class="g-note">Fuentes: Cenace, información operativa (cada media hora) e informe de balance energético diario.</p>`,
-    clima: () => `<div style="display:grid;gap:6px;max-width:70ch"><h2 class="${CFG.h2}">Clima e hidrología</h2>
-      <p class="${CFG.lede}">Lo que mueve a las centrales: el calor en Guayaquil (más consumo), la lluvia en las cuencas del Paute y del Coca y los caudales de los ríos que alimentan a las hidroeléctricas.</p></div>
-      <div><h3 class="g-h3">Pronóstico del Inamhi</h3><div class="g-sub">Pronóstico oficial por ciudad</div></div>
-      <div class="g-grid" id="g-ciudades"></div>
-      <div><h3 class="g-h3">Lluvia ahora en las estaciones del Inamhi</h3><div class="g-sub">Última lectura de las estaciones más cercanas</div></div>
-      <div class="g-grid" id="g-estaciones"></div>
-      <div class="g-box g-col"><div><h3 class="g-h3">Lluvia en las cuencas: últimos 7 días y próximos 10</h3><div class="g-sub">mm por día, promedio de dos puntos de cada cuenca (modelo ECMWF, vía Open-Meteo)</div></div>
-      <div class="g-legend"><span><i class="s" style="background:var(--g-real)"></i>lo que llovió</span><span><i class="s" style="background:var(--g-real);opacity:.4"></i>pronóstico</span></div>
-      <div class="g-grid"><div class="g-chart"><div class="g-lbl">Cuenca del Paute (Mazar)</div><svg id="g-ll-paute" role="img" aria-label="Lluvia en la cuenca del Paute"></svg></div>
-      <div class="g-chart"><div class="g-lbl">Cuenca del Coca (Coca Codo)</div><svg id="g-ll-coca" role="img" aria-label="Lluvia en la cuenca del Coca"></svg></div></div>
-      <div class="g-chart"><div class="g-lbl">Guayaquil: temperatura máxima (°C)</div><svg id="g-gye" role="img" aria-label="Temperatura máxima en Guayaquil"></svg></div></div>
-      <div><h3 class="g-h3">Pronóstico hidrológico de los ríos</h3><div class="g-sub">Caudal en m³/s: últimos 7 días y próximos 30 según GloFAS (Copernicus, el modelo hidrológico global de la Unión Europea). La franja es el rango probable.</div></div>
-      <div class="g-legend"><span><i style="background:var(--g-real);height:3px"></i>GloFAS</span><span><i class="s" style="background:var(--g-real);opacity:.25"></i>rango probable (25–75 %)</span><span><i class="s" style="background:var(--g-ink);border-radius:50%;width:8px;height:8px"></i>caudal medido por Celec</span></div>
-      <div class="g-grid" id="g-rios"></div>
-      <p class="g-note">GloFAS es un modelo global: sirve más para ver si el río va a subir o bajar que para el valor exacto. En el Paute y el Coca se ve junto al caudal medido por Celec para comparar. Fuentes: Inamhi (pronóstico por ciudad y estaciones en tiempo real), Open-Meteo (ECMWF y GloFAS de Copernicus) y Celec.</p>`
+    rios: () => `<div style="display:grid;gap:6px;max-width:75ch"><h2 class="${CFG.h2}">Ríos y centrales</h2>
+      <p class="${CFG.lede}">Cuánta energía pueden dar hoy los ríos y qué está fallando: el caudal de cada río (medido por Celec y pronosticado por GloFAS) junto a lo que genera su central (Cenace). <a href="https://datalabecuador.com/clima/" style="color:var(--g-ok);font-weight:600">Ver el clima completo →</a></p></div>
+      <div class="g-grid" id="g-sem"></div>
+      <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair hora a hora</h3><div class="g-sub">Barras: MW generados. Línea: caudal del río Coca (escala de la derecha). Franja roja: horas en paro (genera menos de 100 MW teniendo río).</div></div>
+      <div id="g-cc-alerta"></div><div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
+      <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
+      <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
+      <div class="g-col" id="g-rios"></div>
+      <p class="g-note" id="g-rios-nota"></p>`
   };
 
   function montar() {
@@ -111,12 +112,13 @@
   function grafico(id, o) {
     const svg = $(id); if (!svg) return;
     const W = Math.max(280, Math.round(svg.parentNode.clientWidth || 600));
-    const H = o.h || (W < 520 ? 200 : 240), L = W < 520 ? 38 : 46, R = 10, T = 12, B = 24;
+    const H = o.h || (W < 520 ? 200 : 240), L = W < 520 ? 38 : 46, R = o.y2 ? (W < 520 ? 34 : 42) : 10, T = 12, B = 24;
     const X = x => L + (x - o.x0) / ((o.x1 - o.x0) || 1) * (W - L - R);
     const Y = y => T + (1 - (y - o.y0) / ((o.y1 - o.y0) || 1)) * (H - T - B);
     const F = `font-family="var(--g-mono,ui-monospace,monospace)" font-size="10" style="fill:var(--g-muted)"`;
     let s = "";
     (o.yt || []).forEach(v => { s += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--g-line)"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end" ${F}>${f(v)}</text>`; });
+    if (o.y2) o.yt.forEach(v => { s += `<text x="${W - R + 5}" y="${Y(v) + 3}" ${F}>${f(v * o.y2 / o.y1)}</text>`; });
     let ultX = -99;
     (o.xt || []).forEach(([x, t]) => { const px = X(x); if (px - ultX < 44) return; ultX = px; const an = px > W - R - 18 ? "end" : "middle"; s += `<text x="${an === "end" ? W - R : px}" y="${H - 6}" text-anchor="${an}" ${F}>${esc(t)}</text>`; });
     (o.series || []).forEach(se => {
@@ -131,12 +133,14 @@
       } else {
         let seg = [];
         const fin = () => { if (seg.length > 1) s += `<polyline points="${seg.join(" ")}" fill="none" style="${st}" stroke-linejoin="round" stroke-linecap="round"/>`; seg = []; };
-        se.d.forEach(([x, y]) => { if (y == null || isNaN(y)) fin(); else seg.push(X(x).toFixed(1) + "," + Y(Math.min(o.y1, y)).toFixed(1)); });
+        const k2 = se.y2 && o.y2 ? o.y1 / o.y2 : 1;
+        se.d.forEach(([x, y]) => { if (y == null || isNaN(y)) fin(); else seg.push(X(x).toFixed(1) + "," + Y(Math.min(o.y1, y * k2)).toFixed(1)); });
         fin();
-        if (se.puntos) se.d.forEach(([x, y]) => { if (y != null) s += `<circle cx="${X(x).toFixed(1)}" cy="${Y(Math.min(o.y1, y)).toFixed(1)}" r="${se.r || 3}" style="fill:${se.c}"/>`; });
+        if (se.puntos) se.d.forEach(([x, y]) => { if (y != null) s += `<circle cx="${X(x).toFixed(1)}" cy="${Y(Math.min(o.y1, y * k2)).toFixed(1)}" r="${se.r || 3}" style="fill:${se.c}"/>`; });
       }
     });
     (o.notas || []).forEach(([x, y, t]) => { s += `<text x="${X(x) - 4}" y="${Y(y) - 5}" text-anchor="end" ${F}>${esc(t)}</text>`; });
+    (o.zonas || []).forEach(([x0, x1, c]) => { s += `<rect x="${X(x0)}" y="${T}" width="${Math.max(1, X(x1) - X(x0))}" height="${H - B - T}" style="fill:${c}" opacity="0.18"/>`; });
     (o.marcas || []).forEach(([x, t]) => { s += `<line x1="${X(x)}" x2="${X(x)}" y1="${T}" y2="${H - B}" style="stroke:var(--g-muted)" stroke-dasharray="3 3"/><text x="${X(x) + 4}" y="${T + 10}" ${F}>${esc(t)}</text>`; });
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.innerHTML = s;
@@ -300,52 +304,100 @@
     grafico("g-ren-72", { h: 170, x0: e.t0, x1: e.t1, y0: 0, y1: tr, yt: marcasY(tr), xt: e.xt, series: [{ d: rr, c: "var(--g-ok)", w: 2.5 }] });
   }
 
-  /* ---------- Clima e hidrología ---------- */
-  const ROL = { "Guayaquil": "Calor = más consumo de luz", "Cuenca": "Cuenca del Paute (Mazar)", "Tena": "Cuenca del Coca", "Nueva Loja": "Cuenca del Coca (Coca Codo)" };
-  const cond = c => esc(String(c || "").replace(/\s+(dia|día|noche)$/i, "").replace(/,/g, ", ").toLowerCase().replace(/^./, m => m.toUpperCase()));
-  function clima() {
-    const C = G.ciudades || {};
-    $("g-ciudades").innerHTML = Object.keys(ROL).filter(n => C[n]).map(n => `<div class="g-box" style="display:grid;gap:8px"><div><div style="font-weight:700">${n}</div><div class="g-sub">${ROL[n]}</div></div>` +
-      C[n].map(d => `<div class="g-dia"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${fechaCorta(d.fecha)}</b><span class="g-mono">${f(+d.min, 0)}° / ${f(+d.max, 0)}°C</span></div>
-        <div class="g-per">${(d.periodos || []).map(p => `<span>${esc(p.p)}</span><span>${cond(p.c)}</span>`).join("")}</div></div>`).join("") + `</div>`).join("") || `<p class="g-note">Sin datos del Inamhi por ahora.</p>`;
-    const E = G.estaciones || {};
-    $("g-estaciones").innerHTML = ["paute", "coca", "gye"].filter(k => E[k]).map(k => {
-      const es = (E[k].estaciones || []).slice(0, 4), est = { clear: "sin lluvia", localized: "lluvia aislada", raining: "llueve", rain: "llueve", drizzle: "llovizna" }[E[k].estado] || (E[k].estado || "");
-      return `<div class="g-box" style="display:grid;gap:6px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(E[k].nombre)}</b><span class="${E[k].estado && E[k].estado !== "clear" ? "g-ok" : "g-lbl"}" style="font-weight:600">${esc(est)}</span></div>
-        <table class="g-tbl"><thead><tr><th>Estación</th><th class="n" style="text-align:right">mm</th><th class="n" style="text-align:right">Hora</th></tr></thead><tbody>${es.map(s => `<tr><td>${esc(s.n)} <span class="g-lbl">· ${f(s.km, 0)} km</span></td><td class="n">${f(s.mm, 1)}</td><td class="n">${esc((s.t || "").slice(11, 16))}</td></tr>`).join("")}</tbody></table></div>`;
-    }).join("") || `<p class="g-note">Sin datos de estaciones por ahora.</p>`;
-    const Lv = G.lluvia || {};
-    if (Lv.dias) {
-      const hoy = new Date(Date.now() - 5 * 36e5).toISOString().slice(0, 10), n = Lv.dias.length;
-      const xt = Lv.dias.map((d, i) => [i + 0.5, i % 3 === 0 || d === hoy ? (d === hoy ? "hoy" : fechaCorta(d).slice(4)) : null]).filter(x => x[1]);
-      const ih = Lv.dias.indexOf(hoy);
-      [["paute", "g-ll-paute"], ["coca", "g-ll-coca"]].forEach(([k, id]) => {
-        const v = Lv[k] || [], top = techo(v, 10);
-        grafico(id, { h: 170, x0: 0, x1: n, y0: 0, y1: top, yt: marcasY(top), xt, marcas: ih >= 0 ? [[ih, ""]] : [],
-          series: [{ tipo: "barras", d: v.map((y, i) => [i + 0.1, i + 0.9, 0, y, "var(--g-real)", Lv.dias[i] >= hoy ? 0.4 : 1]) }] });
-      });
-      const tg = Lv.gye_tmax || [], tmin = Math.floor(Math.min(...tg.filter(x => x != null)) - 1), tmax = Math.ceil(Math.max(...tg.filter(x => x != null)) + 1);
-      grafico("g-gye", { h: 150, x0: 0, x1: n, y0: tmin, y1: tmax, yt: [tmin, Math.round((tmin + tmax) / 2), tmax], xt, marcas: ih >= 0 ? [[ih + 0.5, ""]] : [],
-        series: [{ d: tg.map((y, i) => [i + 0.5, y]), c: "var(--g-crit)", w: 2.5, puntos: true, r: 2.5 }] });
+  /* ---------- Ríos y centrales ---------- */
+  const CENTRALES = [
+    { k: "paute", n: "Complejo Paute", s: "Mazar · Molino · Sopladora", rio: "Paute", pl: ["Paute", "Sopladora", "Mazar"], cap: 1757 },
+    { k: "coca", n: "Coca Codo Sinclair", s: "la central más grande del país", rio: "Coca", pl: ["Coca Codo"], cap: 1500 },
+    { k: "pastaza", n: "Agoyán + San Francisco", s: "Celec Hidroagoyán", rio: "Pastaza", pl: ["Agoyán", "San Francisco"], cap: 386 },
+    { k: "zamora", n: "Delsitanisagua", s: "Zamora Chinchipe", rio: "Zamora", pl: ["Delsitanisagua"], cap: 180 },
+    { k: "jubones", n: "Minas San Francisco", s: "Azuay y El Oro", rio: "Jubones", pl: ["Minas San Francisco"], cap: 275 }];
+  const COLP = { "Paute": "var(--g-real)", "Sopladora": "var(--g-col)", "Mazar": "var(--g-mod)", "Coca Codo": "var(--g-real)", "Agoyán": "var(--g-warn)", "San Francisco": "var(--g-therm)", "Delsitanisagua": "var(--g-real)", "Minas San Francisco": "var(--g-real)" };
+  const hoyEc = () => new Date(Date.now() - 5 * 36e5).toISOString().slice(0, 10);
+  function bloquesN(n) {   // bloques de los últimos n días con su hora absoluta
+    const out = [];
+    Object.keys(G.plantas || {}).sort().slice(-n).forEach(d => bloques(d).forEach(b => out.push(Object.assign({ d, ta: local(d + "T00:00").getTime() + b.h0 * 36e5, tb: local(d + "T00:00").getTime() + b.h1 * 36e5 }, b))));
+    return out;
+  }
+  function rios() {
+    const RR = {}; (G.rios || []).forEach(r => RR[r.clave] = r);
+    const RE = G.rios_reales || {}, BL = bloquesN(4), hoy = hoyEc();
+    const ult12 = BL.slice(-6), mwDe = (c, bs) => bs.length ? bs.reduce((a, b) => a + c.pl.reduce((x, p) => x + (b.mw[p] || 0), 0), 0) / bs.length : null;
+    const CH = (G.coca_horas || []).filter(x => x[2] != null);
+    const paro24 = CH.slice(-24).filter(x => x[2] < 100 && x[1] > 150).length;
+    $("g-sem").innerHTML = CENTRALES.map(c => {
+      const r = RR[c.k] || {}, me = RE[c.k] || [], ih = (r.dias || []).indexOf(hoy);
+      const ultMed = me.length && me[me.length - 1][0] >= new Date(Date.now() - 2 * 864e5 - 5 * 36e5).toISOString().slice(0, 10) ? me[me.length - 1] : null;
+      const q = ultMed ? ultMed[1] : (ih >= 0 ? (r.q_c || r.q)[ih] : null);
+      const ref = me.length >= 10 ? me.slice(-31, -1).map(x => x[1]) : (r.q_c || r.q || []).slice(0, Math.max(1, ih));
+      const prom = ref.length ? ref.reduce((a, b) => a + b, 0) / ref.length : null, pct = q && prom ? Math.round(q / prom * 100) : null;
+      const mw = mwDe(c, ult12), uso = mw != null ? Math.round(mw / c.cap * 100) : null;
+      const est = c.k === "coca" && paro24 >= 2 ? ["mal", `Paro de ~${paro24} h en 24 h`] : pct != null && pct < 60 ? ["med", "Río bajo"] : pct != null && pct > 180 ? ["med", "Río alto"] : uso != null && uso < 10 ? ["mal", "Casi sin generar"] : ["ok", "Normal"];
+      return `<div class="g-box" style="display:grid;gap:2px"><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>${esc(c.n)}</b><span class="g-est ${est[0]}"><i></i>${est[1]}</span></div>
+        <div class="g-sub">${esc(c.s)} · río ${esc(c.rio)}</div>
+        <div class="g-fila"><span>Caudal ${ultMed ? "medido (Celec)" : "previsto (GloFAS)"}</span><b>${f(q)} m³/s</b></div>
+        <div class="g-fila"><span>Frente al último mes</span><b>${pct == null ? "–" : pct + " %"}</b></div><div class="g-bar"><i style="width:${Math.min(100, pct || 0)}%;background:${pct != null && pct < 60 ? "var(--g-warn)" : "var(--g-col)"}"></i></div>
+        <div class="g-fila"><span>Generando (últimas 12 h)</span><b>${f(mw)} MW</b></div>
+        <div class="g-fila"><span>De su capacidad (${f(c.cap)} MW)</span><b>${uso == null ? "–" : uso + " %"}</b></div><div class="g-bar"><i style="width:${Math.min(100, uso || 0)}%;background:var(--g-ok)"></i></div></div>`;
+    }).join("");
+    // Coca Codo hora a hora
+    const CC = (G.coca_horas || []).slice(-36);
+    if (CC.length > 3) {
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime();
+      const x0 = tOf(CC[0][0]), x1 = tOf(CC[CC.length - 1][0]) + 36e5;
+      const barras = CC.filter(x => x[2] != null).map(x => [tOf(x[0]) + 3e5, tOf(x[0]) + 33e5, 0, x[2], x[2] < 100 && x[1] > 150 ? "var(--g-crit)" : "var(--g-ok)"]);
+      const zonas = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150).map(x => [tOf(x[0]), tOf(x[0]) + 36e5, "var(--g-crit)"]);
+      const xt = CC.filter((x, i) => i % 6 === 0).map(x => [tOf(x[0]) + 18e5, x[0].slice(11, 13) + ":00"]);
+      grafico("g-cc", { x0, x1, y0: 0, y1: 1300, y2: 650, yt: [0, 260, 520, 780, 1040, 1300], xt, zonas,
+        series: [{ tipo: "barras", d: barras }, { d: CC.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-col)", w: 2.5, y2: true, puntos: true, r: 2 }] });
+      const par = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150);
+      if (par.length >= 2) {
+        let sub = null; CC.forEach((x, i) => { if (i >= 2 && !sub && x[1] >= CC[i - 2][1] * 1.5 && x[1] - CC[i - 2][1] >= 100) sub = [CC[i - 2], x]; });
+        const perd = par.reduce((a, x) => a + Math.max(0, Math.min(1200, 5.25 * (x[1] - 21)) - x[2]), 0);
+        $("g-cc-alerta").innerHTML = `<div class="g-alerta">⚠️ <b>Paro de Coca Codo:</b> ${par.length} h sin generar en las últimas 36 h${sub ? `; el río subió de ${f(sub[0][1])} a ${f(sub[1][1])} m³/s en 2 h (${sub[1][0].slice(11, 13)}:00), la señal típica de una crecida con sedimentos` : ""}. Con el río que tenía pudo generar ~${f(Math.round(perd / 100) * 100)} MWh más.</div>`;
+      } else $("g-cc-alerta").innerHTML = "";
     }
-    const RR = G.rios || [], RE = G.rios_reales || {};
-    $("g-rios").innerHTML = RR.map((r, i) => `<div class="g-box" style="display:grid;gap:4px"><div><b>Río ${esc(r.rio)}</b><div class="g-sub">${esc(r.centrales)}</div></div><div class="g-lbl" id="g-rio-t${i}"></div><div class="g-chart"><svg id="g-rio-${i}" role="img" aria-label="Pronóstico de caudal del río ${esc(r.rio)}"></svg></div></div>`).join("") || `<p class="g-note">Sin pronóstico hidrológico por ahora.</p>`;
-    RR.forEach((r, i) => {
-      const n = r.dias.length, idx = d => r.dias.indexOf(d), hoy = new Date(Date.now() - 5 * 36e5).toISOString().slice(0, 10), ih = idx(hoy);
-      const med = (RE[r.clave] || []).map(([d, q]) => [idx(d), q]).filter(p => p[0] >= 0);
-      const vals = r.q.concat(r.p75 || [], med.map(p => p[1]));
-      const top = techo(vals, 20);
+    const T = G.ccs_crecida, rc = RR.coca;
+    if (rc && T) {
+      const ih = rc.dias.indexOf(hoy), qq = rc.med_c || rc.q_c || rc.q;
+      const fac = q => { const t = T.find(t => q >= t.desde && (t.hasta == null || q < t.hasta)); return t ? t.factor : 1; };
+      $("g-cc-riesgo-txt").textContent = `Según el caudal previsto del Coca y lo que pasó en el último año (Celec): ` + T.filter(t => t.desde > 0 && t.dias).map(t => `con más de ${f(t.desde)} m³/s rinde ${f(t.rendimiento * 100)} % (${t.dias} días)`).join("; ") + ". Una subida de más del 50 % en 2–3 h también es señal de alerta.";
+      $("g-cc-riesgo").innerHTML = ih < 0 ? "" : [1, 2, 3, 4, 5, 6, 7].map(k => { const q = qq[ih + k]; if (q == null) return ""; const fa = fac(q), e = fa < 0.9 ? ["mal", "Alto"] : fa < 0.995 ? ["med", "Medio"] : ["ok", "Bajo"];
+        return `<div>${fechaCorta(rc.dias[ih + k])}<b class="g-mono">${f(q)} m³/s</b><span class="g-est ${e[0]}"><i></i>${e[1]}</span></div>`; }).join("");
+    }
+    // un río por central
+    $("g-rios").innerHTML = CENTRALES.map((c, i) => { const r = RR[c.k]; if (!r) return "";
+      const nota = r.ratio ? `GloFAS ${r.ratio < 0.8 ? "exagera" : r.ratio > 1.25 ? "se queda corto" : "acierta"}: lo medido es ${f(r.ratio * 100)} % de lo que dice (últimos ${r.ratio_dias} días); se corrige.` : "Celec no publica el caudal de este río (Agoyán y San Francisco son de otra unidad de Celec): se muestra GloFAS sin corregir.";
+      return `<div class="g-box g-col"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;align-items:baseline"><h3 class="g-h3">Río ${esc(c.rio)} → ${esc(c.n)}</h3><span class="g-note">${nota}</span></div>
+        <div class="g-dos"><div class="g-chart"><div class="g-lbl" id="g-rq-t${i}"></div><svg id="g-rq-${i}" role="img" aria-label="Caudal del río ${esc(c.rio)}"></svg></div>
+        <div class="g-chart"><div class="g-lbl">Generación cada 2 h (MW) · capacidad ${f(c.cap)} MW${c.pl.length > 1 ? " · " + c.pl.map(p => `<span style="color:${COLP[p]}">■</span> ${esc(NOMBRE[p] || p)}`).join(" ") : ""}</div><svg id="g-rg-${i}" role="img" aria-label="Generación de ${esc(c.n)}"></svg></div></div></div>`; }).join("");
+    CENTRALES.forEach((c, i) => { const r = RR[c.k]; if (!r) return;
+      const n = r.dias.length, ih = r.dias.indexOf(hoy), idx = d => r.dias.indexOf(d);
+      const qc = r.q_c || r.q, p25 = r.p25_c || r.p25, p75 = r.p75_c || r.p75;
+      const med = (RE[c.k] || []).map(([d, q]) => [idx(d), q]).filter(p => p[0] >= 0);
+      const crudo = r.ratio && (r.ratio < 0.8 || r.ratio > 1.25) && r.ratio > 0.2;
+      const top = techo(qc.concat(p75, med.map(p => p[1]), crudo ? r.q : []), 20);
       const xt = r.dias.map((d, j) => [j, j === ih ? "hoy" : (j % 7 === 0 ? fechaCorta(d).slice(4) : null)]).filter(x => x[1]);
-      grafico(`g-rio-${i}`, { h: 170, x0: 0, x1: n - 1, y0: 0, y1: top, yt: marcasY(top), xt, marcas: ih >= 0 ? [[ih, ""]] : [],
-        series: [{ tipo: "franja", d: r.dias.map((d, j) => [j, r.p25[j], r.p75[j]]), c: "var(--g-real)", op: 0.22 },
-          { d: r.dias.map((d, j) => [j, r.q[j]]), c: "var(--g-real)", w: 2.5 }, { d: med, c: "var(--g-ink)", w: 1.5, puntos: true, r: 3.2 }] });
-      const q0 = ih >= 0 ? r.q[ih] : null, q7 = ih >= 0 ? r.q[Math.min(n - 1, ih + 7)] : null;
-      if (q0 && q7) { const c = (q7 / q0 - 1) * 100; $(`g-rio-t${i}`).textContent = `GloFAS: ${f(q0)} m³/s hoy → ${f(q7)} m³/s en 7 días (${c >= 0 ? "+" : "−"}${f(Math.abs(c))} %)` + (med.length ? ` · medido por Celec: ${f(med[med.length - 1][1])} m³/s` : ""); }
+      const series = [{ tipo: "franja", d: r.dias.map((d, j) => [j, j >= ih ? p25[j] : null, j >= ih ? p75[j] : null]), c: "var(--g-real)", op: 0.22 }];
+      if (crudo) series.push({ d: r.dias.map((d, j) => [j, r.q[j]]), c: "var(--g-muted)", w: 1.2, dash: "3 4" });
+      series.push({ d: r.dias.map((d, j) => [j, qc[j]]), c: "var(--g-real)", w: 2.8 }, { d: med, c: "var(--g-ink)", w: 1.4, puntos: true, r: 3.2 });
+      grafico(`g-rq-${i}`, { h: 230, x0: 0, x1: n - 1, y0: 0, y1: top, yt: marcasY(top), xt, marcas: ih >= 0 ? [[ih, ""]] : [], series });
+      const q0 = ih >= 0 ? qc[ih] : null, q7 = ih >= 0 ? qc[Math.min(n - 1, ih + 7)] : null;
+      if (q0 && q7) { const cc = (q7 / q0 - 1) * 100; $(`g-rq-t${i}`).textContent = `Caudal (m³/s): ${f(q0)} hoy → ${f(q7)} en 7 días (${cc >= 0 ? "+" : "−"}${f(Math.abs(cc))} %)` + (med.length ? ` · último medido: ${f(med[med.length - 1][1])}` : ""); }
+      if (BL.length) {
+        const x0 = BL[0].ta, x1 = BL[BL.length - 1].tb, barras = [];
+        BL.forEach(b => { let y = 0; c.pl.forEach(p => { const v = b.mw[p] || 0; barras.push([b.ta, b.tb, y, y + v, COLP[p]]); y += v; }); });
+        const xtg = []; Object.keys(G.plantas || {}).sort().slice(-4).forEach(d => xtg.push([local(d + "T12:00").getTime(), fechaCorta(d)]));
+        const topg = techo([c.cap * 1.02], 50);
+        grafico(`g-rg-${i}`, { h: 230, x0, x1, y0: 0, y1: topg, yt: marcasY(topg), xt: xtg, series: [{ tipo: "barras", d: barras }, { d: [[x0, c.cap], [x1, c.cap]], c: "var(--g-warn)", w: 1.2, dash: "5 4" }] });
+      }
     });
+    const O = G.otras_rios;
+    $("g-rios-nota").textContent = (O ? `El simulador ya usa estos ríos: Agoyán, San Francisco, Delsitanisagua y Minas San Francisco (${f(O.mw_total)} MW de las ${f(O.other)} MW de "otras hidroeléctricas") siguen el pronóstico de su propio río, y cada día aprende cuánto de lo que promete GloFAS se cumple. ` : "") +
+      `Fuentes: Celec (caudales medidos y Coca Codo hora a hora), Cenace (generación de cada central), GloFAS de Copernicus vía Open-Meteo (pronóstico). Actualizado: ${esc((G.actualizado || "").replace("T", " "))}.`;
   }
 
   /* ---------- carga y dibujo ---------- */
-  const DIBUJA = { hidro, term, otras, clima };
+  const DIBUJA = { hidro, term, otras, rios };
   function dibujar(tab) {
     if (!DIBUJA[tab]) return;
     ultimo = tab;
