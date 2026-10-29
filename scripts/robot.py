@@ -347,6 +347,7 @@ MRID_COCA = 100037
 # generación diaria de Cenace y el caudal de Celec (18–20 oct 2026); coincide con "240–250 m³/s para 1.200 MW".
 CCS_K, CCS_E, CCS_CAP = 5.25, 21.0, 1200.0
 RIO = None   # caché de caudales reales del río Coca (se llena en main)
+TURB = None  # caché del caudal turbinado de Coca Codo (se llena en main)
 # Cuánto se parece el río de los próximos días al caudal de AHORA; el resto lo pone su nivel NORMAL = mediana de los
 # últimos 7 días (una crecida no la infla, a diferencia del promedio de 72 h). Desde el día 11 el río vuelve a ese nivel.
 # Aprendido con el caudal horario de Celec (400 días, 1.448 casos; 597 tras crecidas): frente a la regla anterior
@@ -926,6 +927,78 @@ def rendimiento_ccs(cache, hoy_d):
                        f"se aplica {f * 100:.1f} %"}
 
 
+F_CCS_TURB = os.path.join("registro", "ccs_turbinado.json")   # caudal turbinado por unidad en Coca Codo (Celec, punto 100039), hora local → m³/s
+MRID_CCS_TURB = 100039
+CRECIDA_BINS = [0, 500, 700, 1000, 1e9]   # caudal medio diario del río Coca (m³/s)
+
+
+def ccs_turbinado(ahora, dias_atras=400):
+    """Caudal turbinado de Coca Codo (Celec). Con el caudal del río dice cuánto de lo posible generó cada hora,
+    también en días pasados (paros por crecidas y sedimentos). Rellena los días que falten en paralelo."""
+    from concurrent.futures import ThreadPoolExecutor
+    cache = _leer_json(F_CCS_TURB, {})
+    hoy_d = ahora.date()
+    falta = [hoy_d - timedelta(days=n) for n in range(dias_atras, -1, -1)
+             if n <= 1 or sum(1 for k in cache if k.startswith((hoy_d - timedelta(days=n)).isoformat())) < 20]
+    def leer(d):
+        try:
+            return d, _celec_puntos(MRID_CCS_TURB, d)
+        except Exception as e:
+            return d, None
+    with ThreadPoolExecutor(8) as ex:
+        for d, pts in ex.map(leer, falta[-120:]):   # como mucho 120 días por corrida
+            for ts, v in pts or []:
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(EC)
+                if 0 <= v < 60:
+                    cache[t.strftime("%Y-%m-%dT%H")] = round(v, 2)
+    lim = (hoy_d - timedelta(days=dias_atras + 5)).isoformat()
+    cache = {k: v for k, v in sorted(cache.items()) if k >= lim}
+    with open(F_CCS_TURB, "w", encoding="utf-8") as fo:
+        json.dump(cache, fo, ensure_ascii=False, separators=(",", ":"))
+    return cache
+
+
+def _turb_esperado(q):
+    """Caudal por unidad que Coca Codo turbinaría con ese río (8 unidades, 20 m³/s quedan en el río)."""
+    return max(0.0, min((q - 20.0) / 8.0, 27.5))
+
+
+def riesgo_crecida(rio, turb):
+    """Cuánto rinde Coca Codo según el caudal medio diario de su río, aprendido de la historia de Celec:
+    rendimiento = lo turbinado ÷ lo que el río permitía, día por día. Devuelve una función q → factor (0,5–1),
+    relativa a los días normales (menos de 500 m³/s), con freno n/(n+5), y la tabla."""
+    dias = {}
+    for k, q in rio.items():
+        if k in turb:
+            dias.setdefault(k[:10], []).append((q, turb[k]))
+    filas = []
+    for d, v in dias.items():
+        if len(v) < 18: continue
+        e = sum(_turb_esperado(q) for q, _ in v)
+        if e <= 0: continue
+        g = sum(min(t, _turb_esperado(q)) for q, t in v)
+        filas.append((sum(q for q, _ in v) / len(v), g / e))
+    if len(filas) < 60:
+        return None, None
+    tabla = []
+    for a, b in zip(CRECIDA_BINS, CRECIDA_BINS[1:]):
+        r = [x for q, x in filas if a <= q < b]
+        tabla.append({"desde": a, "hasta": None if b > 1e8 else b, "dias": len(r),
+                      "rendimiento": round(sum(r) / len(r), 3) if r else None, "malos": sum(1 for x in r if x < 0.7)})
+    base = tabla[0]["rendimiento"] or 1.0
+    for t in tabla:
+        n = t["dias"]
+        t["factor"] = 1.0 if not n else round(max(0.5, min(1.0, 1 + ((t["rendimiento"] / base) - 1) * n / (n + 5))), 3)
+    for a, b in zip(tabla, tabla[1:]):   # a más caudal, nunca mejor rendimiento que con menos
+        b["factor"] = min(b["factor"], a["factor"])
+    def fac(q):
+        for t in tabla:
+            if q >= t["desde"] and (t["hasta"] is None or q < t["hasta"]):
+                return t["factor"]
+        return 1.0
+    return fac, {"dias": len(filas), "tabla": tabla}
+
+
 PARO_UMBRAL = 0.5                      # Coca Codo genera menos de la mitad de lo que permite su río → paro (sedimentos, fallas)
 PARO_RECUPERA = [0.0, 0.25, 0.5, 0.75, 1.0]   # vuelta a lo normal día a día (0 = hoy, sigue en paro; 1 = recuperada)
 
@@ -1129,6 +1202,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             mod["serieMazar"] = serieM
             log(f"Se conserva el pronóstico de caudal anterior ({previo.get('serie_fecha')})")
     serieC_bruta = None
+    q_coca_dia = None   # caudal del río Coca previsto día a día (m³/s)
     try:
         serieC = serie_caudal_coca()
         serieC_bruta = list(serieC)
@@ -1166,6 +1240,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                     qd = [base[min(d, len(base)) - 1] if d >= 1 else q24 for d in range(len(serieC_rio))]
                     qd = [(base[-1] if d > len(base) else qd[d]) for d in range(len(serieC_rio))]
                     serieC = [1.0] + [round(ccs_mw_rio(qd[d] * serieC_rio[d]) / g24, 4) for d in range(1, len(serieC_rio))]
+                    q_coca_dia = [qd[d] * serieC_rio[d] for d in range(len(serieC_rio))]
                     mod["serieCoca"] = serieC
                     mod["serieCocaRio"] = [round(x, 4) for x in serieC_rio]
                     mod["coca_rio"] = {"q24": round(q24, 1), "mw24": round(g24), "k": CCS_K, "e": CCS_E, "tope": CCS_CAP, **info,
@@ -1224,6 +1299,29 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             log(f"Coca Codo normal: {info_paro['real_mw']} MW de {info_paro['posible_mw']} posibles ({info_paro['fraccion'] * 100:.0f} %)")
     except Exception as e:
         log(f"Paro de Coca Codo: {e}")
+    # Riesgo de paro por crecida: en días con el río Coca muy crecido, Coca Codo suele cerrar la toma por sedimentos.
+    # Lo aprendido de la historia de Celec se aplica al caudal previsto de cada día (se multiplica con el paro de hoy).
+    try:
+        if RIO and TURB and q_coca_dia:
+            f_cr, info_cr = riesgo_crecida(RIO, TURB)
+            if f_cr:
+                cr = [f_cr(q) for q in q_coca_dia]
+                info_cr["previsto"] = [{"dia": (hoy_d + timedelta(days=d)).isoformat(), "q": round(q_coca_dia[d]), "factor": cr[d]}
+                                       for d in range(len(cr)) if cr[d] < 0.995][:10]
+                mod["ccs_crecida"] = info_cr
+                if info_cr["previsto"]:
+                    base_f = mod.get("ccsFactor") or [1.0]
+                    fac2 = [round((base_f[min(d, len(base_f) - 1)]) * (cr[d] if d >= 1 else 1.0), 3) for d in range(len(cr))]
+                    mod["ccsFactor"] = fac2; ctx["ccsFactor"] = fac2
+                    pr = info_cr["previsto"]
+                    txt = ", ".join(f"{x['dia'][8:10]}/{x['dia'][5:7]} ~{x['q']} m³/s ({x['factor'] * 100:.0f} %)" for x in pr[:4])
+                    log(f"Riesgo de paro por crecida del Coca: {txt}")
+                    notas["coca"] = (notas.get("coca") or "") + (f" 🌊 Crecida prevista del río Coca ({txt}): con ríos así Coca Codo "
+                                     f"suele perder generación por sedimentos; el modelo la descuenta.")
+                else:
+                    log("Riesgo de paro por crecida del Coca: ningún día previsto sobre 500 m³/s")
+    except Exception as e:
+        log(f"Riesgo de paro por crecida: {e}")
     aj = autoajuste(_leer_json(F_VER, []), hoy_d)
     mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
     ctx["ajuste"] = aj["factor"]
@@ -1439,7 +1537,12 @@ def main():
             notas["coca"] = (f"Coca Codo generó en promedio {ccs_mw:.0f} MW ({base[0]}, Cenace, automático), "
                              f"equivalente a ~{hoy['qCoca']} m³/s en el modelo. Necesita 240–250 m³/s para 1.200 MW.")
         # Caudal REAL del río Coca (Celec, cada hora): reemplaza al equivalente por generación, que nunca pasa del tope
-        global RIO
+        global RIO, TURB
+        try:
+            TURB = ccs_turbinado(ahora)
+            log(f"Coca Codo turbinado (Celec): {len(TURB)} horas guardadas")
+        except Exception as e:
+            log(f"Coca Codo turbinado (Celec): {e}")
         try:
             RIO = coca_rio(ahora)
             q24, g24 = rio_prom(RIO, ahora), ccs_prom(RIO, ahora)
