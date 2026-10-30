@@ -28,6 +28,7 @@ F_MARC = os.path.join(DIR, "marcador.json")
 F_TIT = os.path.join(DIR, "titular.json")
 F_HIST = os.path.join(DIR, "historial.json")
 HORIZ = (1, 2, 3, 5, 7, 10, 14)
+HORIZ_REGION = 30   # días de la trayectoria completa que se guarda de la última corrida
 
 CONF_DEF = {"promocion_automatica": True, "activar_desde": "2026-10-31", "dias_min": 7, "casos_min": 40, "mejora_min": 0.10,
             "tolerancia_3d": 0.05, "tolerancia_7d": 0.10, "ventana_dias": 7, "revertir_dias": 3}
@@ -137,9 +138,10 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     if not os.path.exists(F_CONF):
         _escribir(F_CONF, conf)
     ts = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")
-    tray = {}
-    d_tit, _ = simular(_copia(P), _copia(ctx), par, horizonte=max(HORIZ))
+    tray, completa = {}, {}
+    d_tit, _ = simular(_copia(P), _copia(ctx), par, horizonte=HORIZ_REGION)
     tray["titular"] = [round(d_tit[h]["cota"], 3) for h in HORIZ]
+    completa["titular"] = [round(x["cota"], 2) for x in d_tit]
     if base and (_leer(F_TIT, {"promovidos": []}).get("promovidos")):
         try:
             d_ant, _ = simular(_copia(base[0]), _copia(base[1]), par, horizonte=max(HORIZ))
@@ -153,8 +155,9 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             r = c["f"](_copia(P), _copia(ctx), mod)
             if not r:
                 continue
-            di, _ = simular(r[0], r[1], par, horizonte=max(HORIZ))
+            di, _ = simular(r[0], r[1], par, horizonte=HORIZ_REGION)
             tray[cid] = [round(di[h]["cota"], 3) for h in HORIZ]
+            completa[cid] = [round(x["cota"], 2) for x in di]
         except Exception as e:
             log(f"Laboratorio: {cid} falló: {e}")
     reg = _leer(F_PRED, {"corridas": []})
@@ -164,6 +167,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     reg["corridas"] = sorted([x for x in reg["corridas"] if x["ts"] >= lim], key=lambda x: x["ts"])
     _escribir(F_PRED, reg, compacto=True)
     marc = marcador(reg, conf, ts)
+    marc["ultima_corrida"] = {"ts": ts, "cota": datos["cota"], "trayectorias": completa}   # para la región de proyección de los mejores
     _escribir(F_MARC, marc)
     return marc
 
