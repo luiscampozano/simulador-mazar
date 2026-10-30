@@ -1,0 +1,35 @@
+# Segundo auditor: Gemini propone un candidato para el laboratorio (días alternos, 10:23 en Ecuador).
+# La propuesta pasa por validación (código puro, sin archivos ni red) y prueba con los datos de hoy; si pasa, queda en una
+# rama candidato/gemini-<fecha>-<id>. Claude (auditor 14:36) la revisa con un Claude independiente y decide. Nunca toca el titular.
+name: Auditor Gemini (propone candidatos)
+on:
+  schedule:
+    - cron: "23 15 */2 * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  proponer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Gemini propone
+        env: { GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}" }
+        run: python3 scripts/auditor_gemini.py
+      - name: Guardar propuesta (y rama si pasó la prueba)
+        run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          if [ -f .rama_candidato ]; then
+            R=$(cat .rama_candidato); rm .rama_candidato
+            git checkout -q -b "$R"
+            git add scripts/laboratorio.py laboratorio/propuestas
+            git commit -q -m "Gemini propone candidato ($R) [skip ci]"
+            git push -q origin "$R"
+            git checkout -q main
+            git checkout "$R" -- laboratorio/propuestas
+          fi
+          git add laboratorio/propuestas
+          git commit -q -m "Propuesta del auditor Gemini $(TZ=America/Guayaquil date '+%Y-%m-%d') [skip ci]" || exit 0
+          for i in 1 2 3; do git pull -q --rebase && git push -q && exit 0; sleep 5; done
