@@ -176,8 +176,9 @@ def c_corrige_error_6_lento(P, ctx, mod):
     return _corr_error(P, ctx, mod, 6, 3.0)
 
 
-def _sesgo_plazo(P, ctx, mod, fuerza):
-    """Quita el sesgo medido por plazo (aciertos.por_horizonte, solo plazos con ≥30 casos), repartido día a día como caudal."""
+def _sesgo_plazo(P, ctx, mod, fuerza, desde=0):
+    """Quita el sesgo medido por plazo (aciertos.por_horizonte, solo plazos con ≥30 casos), repartido día a día como caudal.
+    desde = primer día en que se corrige (antes, 0); lo usa la combinación con la corrección del error reciente."""
     ph = (mod.get("aciertos") or {}).get("por_horizonte") or {}
     pts = [(0, 0.0)] + sorted((int(h), v["sesgo_m"]) for h, v in ph.items() if (v.get("n") or 0) >= 30 and v.get("sesgo_m") is not None)
     if len(pts) < 3:
@@ -188,7 +189,7 @@ def _sesgo_plazo(P, ctx, mod, fuerza):
                 return v0 + (v1 - v0) * (t - h0) / (h1 - h0)
         return pts[-1][1]
     k = _dvdz(ctx, mod) / 0.0864
-    corr = [max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * fuerza)) for d in range(60)]
+    corr = [0.0 if d < desde else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * fuerza)) for d in range(60)]
     m = _sumar_memoria(ctx, corr)
     return P, ctx, {"memoria": m}
 
@@ -554,3 +555,48 @@ def promover(marc, conf, log=print):
     aviso = f"Laboratorio: {m} pasa a titular (acierta {round(v['mejora_1d'] * 100)} % más a 1 día en {v['dias']} días)"
     log(aviso)
     return aviso
+
+
+# ---------------------------------------------------------------- auditor Claude 30 oct (14:36): combinaciones
+# Lo que se ve en aciertos al 30 oct: a 1 día el titular viene diciendo de menos varias corridas seguidas (−0,74 … −0,26 m)
+# y a 5–10 días es mucho peor que "la cota no cambia" (semana: 2,41 m vs 1,22 a 5 días; 4,39 vs 1,14 a 7 días). Dos
+# mecanismos de la tanda atacan cada cosa por separado; aquí se prueban juntos, sin contar dos veces el primer día.
+
+def c_corrige_y_sesgo(P, ctx, mod):
+    """Corrección del error de las 3 últimas verificaciones (día 0, se apaga en ~1 día) + media corrección del sesgo
+    por plazo solo desde el día 1 (así el primer día no se corrige dos veces). Estricta: si falta una de las dos, no corre."""
+    r = _corr_error(P, ctx, mod, 3, 1.0)
+    if not r:
+        return None
+    P, ctx, _ = r
+    r2 = _sesgo_plazo(P, ctx, mod, 0.5, desde=1)
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {"memoria": ctx["memoria"]}
+
+
+def c_ajustes_completos(P, ctx, mod):
+    """Autoajuste con el valor medido entero + Paute con el ajuste observado entero (los dos ajustes que el robot ya
+    calcula y publica, sin recortar). Estricta: si falta uno, no corre."""
+    r = c_autoajuste_completo(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, _ = r
+    r2 = _paute_fuerza(P, ctx, mod, "observado")
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {"ajuste": ctx["ajuste"], "serieMazar": ctx["serieMazar"]}
+
+
+def _cand_auditor(cid, f, prom, nombre, hip):
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": "auditor 2026-10-30", "nombre": nombre, "hipotesis": hip}
+
+
+_cand_auditor("corrige_y_sesgo", c_corrige_y_sesgo, "luis", "Corrige el error reciente y el sesgo largo",
+              "Corregir el error de las 3 últimas verificaciones en el primer día y la mitad del sesgo por plazo desde el día 1 "
+              "baja el error a 1 día hacia 5 cm y además mejora 7 y 14 días (cada mecanismo solo arregla una de las dos cosas).")
+_cand_auditor("ajustes_completos", c_ajustes_completos, "auto", "Autoajuste y Paute sin recortar",
+              "Usar enteros los dos ajustes medidos (autoajuste 0,66 en vez de 0,84 y Paute 135 % en vez de 111 %) quita el "
+              "pesimismo de la bajada y de la entrada a la vez; si solo uno ayuda, se verá contra autoajuste_completo y paute_ajuste_completo.")
