@@ -99,6 +99,25 @@ CANDIDATOS = {
 }
 
 
+def c_sin_paro_hoy(P, ctx, mod):
+    paro = mod.get("ccs_paro") or {}
+    f_paro = paro.get("factor")
+    fac = ctx.get("ccsFactor")
+    if not paro.get("paro") or not f_paro or not fac:
+        return None
+    nuevo = []
+    for d, v in enumerate(fac):
+        fp = f_paro[min(d, len(f_paro) - 1)]
+        nuevo.append(round(v / fp, 3) if fp > 0 else 1.0)
+    if all(abs(x - 1.0) < 0.005 for x in nuevo):
+        nuevo = None
+    ctx["ccsFactor"] = nuevo
+    return P, ctx, {"ccsFactor": nuevo}
+
+
+CANDIDATOS["sin_paro_hoy"] = {"f": c_sin_paro_hoy, "promocion": "luis", "origen": "Gemini 2026-10-30", "hipotesis": "Desactivar la proyección del paro actual de Coca Codo (conservando el descuento por riesgo de crecida de los días 1 a 14) reduce el error a 1 día cuando hay paros cortos por sedimentos."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
