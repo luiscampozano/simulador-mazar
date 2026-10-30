@@ -1566,6 +1566,14 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     mod["ajuste"] = aj["factor"]; mod["ajuste_info"] = aj
     ctx["ajuste"] = aj["factor"]
     log(f"Autoajuste por aciertos: {aj['nota']}")
+    # Laboratorio en sombra: si algún candidato ya pasó a titular (laboratorio/titular.json), se aplica aquí
+    P_base, ctx_base = json.loads(json.dumps(P)), json.loads(json.dumps(ctx))
+    try:
+        import laboratorio as LAB
+        P, ctx, _prom = LAB.aplicar_titular(P, ctx, mod, log)
+    except Exception as e:
+        LAB = None
+        log(f"Laboratorio (titular): {e}")
     diarios, cruce = simular_py(P, ctx, par)
     # Memoria de las corridas de las últimas 48 h: cada corrida suma un ladrillo a la proyección
     numero_corridas = None
@@ -1588,6 +1596,21 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     except Exception as e:
         log(f"Memoria de corridas: {e}")
         ctx.pop("memoria", None)
+    # Laboratorio en sombra: titular y candidatos con los mismos datos; solo mide, no cambia el número grande
+    if LAB:
+        try:
+            marc = LAB.correr(P, ctx, par, mod, datos, simular_py, log, base=(P_base, ctx_base))
+            ver = marc.get("veredicto") or {}
+            mod["laboratorio"] = {"actualizado": marc["actualizado"],
+                                  "titular_1d_m": ((marc["modelos"].get("titular") or {}).get("1") or {}).get("error_medio_m"),
+                                  "candidatos": {m: {k: v.get(k) for k in ("estado", "mejora_1d", "dias")} for m, v in ver.items()}}
+            log("Laboratorio: " + (", ".join(f"{m} {v['estado']}" + (f" ({v['mejora_1d']:+.0%} a 1 día, {v['dias']} días)" if "mejora_1d" in v else "")
+                                             for m, v in ver.items()) or "midiendo"))
+            aviso = LAB.promover(marc, marc["config"], log)
+            if aviso:
+                mod["laboratorio"]["aviso"] = aviso
+        except Exception as e:
+            log(f"Laboratorio: {e}")
     rg = rango_py(diarios, mod.get("rango_cuantiles"), datos["cota"])
     d0 = diarios[0]
     ritmo = (d0["qturb"] - d0["qin"]) * 0.0864 / (par["curva_mazar"]["a"] + par["curva_mazar"]["b"] * (datos["cota"] - 2115))
