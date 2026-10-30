@@ -182,7 +182,7 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
       <div id="ventana" class="ventana"></div>
       <span class="status" id="status">calculando</span>
       <div class="kpis">
-        <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">caída de cota hoy (m/día)</div></div>
+        <div class="kpi"><div class="v" id="kDrop">–</div><div class="l">cambio de cota hoy (m/día; + sube)</div></div>
         <div class="kpi"><div class="v" id="kPaute">–</div><div class="l">MW que se le piden a Paute</div></div>
         <div class="kpi kpi-esc"><div class="v v-esc" id="kCut">–</div><div class="l">horas de corte al tocar 2.115</div></div>
       </div>
@@ -484,7 +484,7 @@ function applyTexts(){
     el("kTxt").textContent = "unos " + fmt(kmz+M.k_molino_sopladora,1) + " MW por cada m³/s que sale de Mazar (" + fmt(kmz,1) +
       " en Mazar y " + fmt(M.k_molino_sopladora,1) + " en Molino y Sopladora). Además, Molino y Sopladora aprovechan el agua que llega entre las dos presas (≈ " +
       fmt(M.beta_cuenca_intermedia*100) + " % del caudal de Mazar) y la que se saque de Amaluza, que hoy está en " + fmt(M.amaluzaCota||0,1) +
-      " msnm" + ((M.amaluzaVolumen!=null && M.amaluzaVolumen<1) ? ", su nivel mínimo: ya no puede ayudar." : ".") +
+      " msnm" + ((M.amaluzaVolumen!=null && M.amaluzaVolumen<1) ? ", casi en su nivel mínimo: casi no puede ayudar." : ".") +
       " Calibrado con " + fmt(M.historial.dias) + " días de Celec Sur (" + M.historial.desde + " a " + M.historial.hasta + ").";
     const c = M.curva_mazar;
     el("curvaTxt").textContent = "≈ " + fmt(ModeloMazar.areaEn(COTA_HOY),1).replace(".",",") + " millones de m³ por metro en la cota actual; la curva se ajustó con el balance diario de agua de " + fmt(M.historial.dias) + " días";
@@ -639,7 +639,7 @@ function drawAciertos(){
   const filas = (ac.recientes_1d||[]).slice().reverse().map(v => `<tr><td>${fh(v.pred_ts)}</td><td>${fh(v.obj_ts)}</td><td class="num">${c2(v.pred)}</td><td class="num">${c2(v.real)}</td><td class="num">${cm(v.err)}</td></tr>`).join("");
   el("acTbl").innerHTML = "<thead><tr><th>Dijo el</th><th>Para el</th><th>Predijo (m)</th><th>Real (m)</th><th>Diferencia</th></tr></thead><tbody>"+filas+"</tbody>";
   const ph = ac.por_horizonte || {};
-  const txt = Object.keys(ph).map(h => `a ${h} día${h==="1"?"":"s"}: error medio ${fmt(ph[h].error_medio_m*100)} cm, sesgo ${cm(ph[h].sesgo_m)} (${ph[h].n} comparaciones, ${ph[h].dias} días)`).join(" · ");
+  const txt = Object.keys(ph).map(h => `a ${h} día${h==="1"?"":"s"}: error medio ${fmt(ph[h].error_medio_m*100)} cm, sesgo ${cm(ph[h].sesgo_m)} (${ph[h].n} comparaciones, ${ph[h].dias} días${+h>=5?"; casi todas de antes de las correcciones del 28 oct":""})`).join(" · ");
   el("acResumen").innerHTML = "Resumen — " + txt + ". Sesgo positivo = el modelo dijo más alto de lo que fue (optimista)." +
     (aj ? "<br><b>Autoajuste:</b> " + (aj.factor!==1 ? "la realidad bajó "+fmt(aj.ratio_mediana,2)+" veces lo predicho; el modelo corrige su bajada ×"+fmt(aj.factor,3)+" (con "+aj.dias+" días; la corrección crece a medida que se acumulan días)." : "todavía pocos días comparados; sin corrección.") : "") +
     "<br>Las comparaciones del 17 al 20 de octubre se reconstruyeron con los datos que el robot tenía en cada momento.";

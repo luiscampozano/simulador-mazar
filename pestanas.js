@@ -269,8 +269,8 @@
   function escenarios() {
     const m = D.modelo || {}, q = D.hoy.qCoca, q15 = Math.round(q * 0.85), uno = new Array(61).fill(1);
     const coca = [
-      { id: "pron", txt: "sube como pronostica GloFAS", q, w: D.hoy.wCoca, ex: {} },
-      { id: "const", txt: `se queda en ${q} m³/s (hoy)`, q, w: "auto", ex: { serieCoca: uno } },
+      { id: "pron", txt: "sigue el pronóstico de GloFAS", q, w: D.hoy.wCoca, ex: {} },
+      { id: "const", txt: `Coca Codo se queda como hoy (${q} m³/s equivalentes)`, q, w: "auto", ex: { serieCoca: uno } },
       { id: "baja", txt: `baja 15 % (${q15} m³/s)`, q: q15, w: "auto", ex: { serieCoca: uno } },
     ];
     const paute = [{ id: "lluvia", txt: "lluvia pronosticada", ex: {} }];
@@ -293,7 +293,7 @@
       const q = D.hoy.qCoca;
       const R_som = correr(q, "auto", { serieCoca: D.modelo.serieCocaRio });
       E.push({
-        coca: { id: "sombra", txt: "modelo con el ajuste del río Coca (próximo a ser incorporado)", q, w: "auto", ex: { serieCoca: D.modelo.serieCocaRio } },
+        coca: { id: "sombra", txt: "modelo en prueba desde el 28 oct: usa el caudal real del río Coca", q, w: "auto", ex: { serieCoca: D.modelo.serieCocaRio } },
         paute: { id: "lluvia", txt: "lluvia pronosticada", ex: {} },
         R: R_som,
         Z: ModeloMazar.zonaCritica(R_som, cota),

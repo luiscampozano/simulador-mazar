@@ -1639,7 +1639,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         txt += f" Promedio real de los últimos 7 días: {rit(-real7).replace(' ≈', '')} m/día"
         if mod.get("amaluzaVolumen") is not None and mod["amaluzaVolumen"] < 1:
             txt += (f", cuando Amaluza todavía aportaba agua; hoy Amaluza está en {mod['amaluzaCota']:.1f}".replace(".", ",") + " m, "
-                    "su nivel mínimo, y ya no puede ayudar.")
+                    "casi en su nivel mínimo, y casi no puede ayudar.")
         else:
             txt += "."
     notas["calibracion"] = txt
