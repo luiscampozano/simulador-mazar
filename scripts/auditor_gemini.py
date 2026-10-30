@@ -12,7 +12,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "scripts"))
 EC = timezone(timedelta(hours=-5))
 MODELOS = ["gemini-4-argon", "gemini-3.8-flash"]
-PERMITIDOS = {"min", "max", "abs", "round", "len", "range", "list", "dict", "float", "int", "sum", "enumerate", "zip", "sorted", "math", "None", "True", "False", "isinstance"}
+PERMITIDOS = {"min", "max", "abs", "round", "len", "range", "list", "dict", "float", "int", "sum", "enumerate", "zip", "sorted", "math", "None", "True", "False", "isinstance", "all", "any", "bool", "tuple", "reversed"}
 
 
 def leer(p, n=60000):
@@ -69,7 +69,7 @@ def validar(cid, codigo):
 def probar(cid, codigo):
     import math, robot, laboratorio as L
     entorno = {"math": math, "__builtins__": {k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
-                                               for k in ("min", "max", "abs", "round", "len", "range", "list", "dict", "float", "int", "sum", "enumerate", "zip", "sorted", "isinstance")}}
+                                               for k in ("min", "max", "abs", "round", "len", "range", "list", "dict", "float", "int", "sum", "enumerate", "zip", "sorted", "isinstance", "all", "any", "bool", "tuple", "reversed")}}
     exec(compile(codigo, "candidato", "exec"), entorno)
     f = entorno[f"c_{cid}"]
     d = json.load(open(os.path.join(RAIZ, "datos.json"), encoding="utf-8")); m = d["modelo"]; hoy = d["hoy"]
@@ -101,7 +101,7 @@ def main():
              "Reglas del código: una sola función `def c_<id>(P, ctx, mod):` que modifica SOLO sus argumentos (ya son copias) y "
              "devuelve (P, ctx, cambios_mod) o None si hoy no aplica; cambios_mod = campos de datos.json que la página necesitaría "
              "para hacer el mismo cálculo (normalmente los mismos que cambias en ctx). Sin import, sin archivos, sin red; solo "
-             "aritmética, min/max/abs/round/len/range/list/dict/sum/sorted/enumerate/zip/isinstance y math. Nada de datos del futuro.\n"
+             "aritmética, min/max/abs/round/len/range/list/dict/tuple/sum/sorted/reversed/enumerate/zip/isinstance/all/any/bool y math. Nada de datos del futuro.\n"
              "Responde SOLO con JSON: {\"id\": \"snake_case\", \"hipotesis\": \"una frase medible\", \"promocion\": \"auto|luis\", "
              "\"por_que\": \"2-4 frases con los datos que te llevaron a esta idea\", \"codigo\": \"def c_<id>(P, ctx, mod): ...\"} "
              "o {\"id\": null, \"por_que\": \"...\"} si hoy no hay una idea que valga la pena.\n\n"
