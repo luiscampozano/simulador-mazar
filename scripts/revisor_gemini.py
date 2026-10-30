@@ -4,6 +4,8 @@ marcadores, y deja su veredicto como comentario en el commit. Uso en GitHub Acti
   python revisor_gemini.py --prueba      (solo comprueba que la llave y el modelo funcionan)
 Modelos: primero gemini-4-argon; si falla, gemini-3.8-flash."""
 import argparse, json, os, subprocess, sys, time, urllib.request, urllib.error
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gasto_gemini as GG
 
 MODELOS = ["gemini-4-argon", "gemini-3.8-flash"]
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
@@ -18,7 +20,10 @@ def preguntar(texto):
     cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
                          "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2500}}).encode()
     ultimo = None
-    for m, intento in [(m, i) for m in MODELOS for i in range(3)]:
+    lista = GG.modelos(MODELOS)
+    if not lista:
+        return None, "(Gemini no revisó: tope de gasto del mes alcanzado; decide el revisor Claude)", {}
+    for m, intento in [(m, i) for m in lista for i in range(3)]:
         if m in MODELOS_SALTAR:
             continue
         if intento:
@@ -30,6 +35,7 @@ def preguntar(texto):
                 d = json.load(r)
             partes = d["candidates"][0]["content"]["parts"]
             uso = d.get("usageMetadata", {})
+            GG.anotar("revisor", m, uso)
             return m, "".join(p.get("text", "") for p in partes), uso
         except urllib.error.HTTPError as e:
             ultimo = f"{m}: HTTP {e.code} {e.read()[:300]!r}"

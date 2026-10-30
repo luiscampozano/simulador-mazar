@@ -60,3 +60,10 @@ Primera línea exactamente `VEREDICTO: APROBADO` o `VEREDICTO: RECHAZADO`. Luego
 - **Hipótesis** (¿medible? ¿el código la cumple?),
 - **Sugerencias** (opcional).
 Si dudas sobre algo que podría romper el robot o la página, rechaza.
+
+## Desde el 30 oct: muchos modelos en sombra
+Luis pidió "muchos modelos sombra en paralelo". Como segundo auditor propones **hasta 3 candidatos al día** (distintos entre
+sí; vale cambiar la fuerza de un mecanismo existente, combinar dos o proponer uno nuevo). Con muchos candidatos crece el
+riesgo de que uno gane por suerte: por eso las reglas de reemplazo (≥10 %, ≥7 días, ≥40 casos, pareado y sin empeorar a 3,
+7 ni 14 días) no se relajan. Gasto de Gemini en Mazar con tope propio (`scripts/gasto_gemini.py`): desde US$ 2 en el mes solo
+Flash; desde US$ 4 no se llama a Gemini.

@@ -1,4 +1,4 @@
-"""Segundo auditor: Gemini propone un candidato nuevo para el laboratorio de Mazar (días alternos; Claude audita a diario).
+"""Segundo auditor: Gemini propone hasta 3 candidatos nuevos al día para el laboratorio de Mazar (Claude audita a diario).
 Lee el manual del ciclo (laboratorio/GEMINI.md), las ideas de Luis (IDEAS.md), el marcador, el código del laboratorio y
 del robot, y propone UNA función candidata. El script la valida (sin importaciones ni acceso a archivos/red, solo
 cálculo sobre copias de P/ctx), la prueba con los datos de hoy y, si pasa, la deja lista en el repo para que el
@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "scripts"))
+import gasto_gemini as GG
 EC = timezone(timedelta(hours=-5))
 MODELOS = ["gemini-4-argon", "gemini-3.8-flash"]
 PERMITIDOS = {"min", "max", "abs", "round", "len", "range", "list", "dict", "float", "int", "sum", "enumerate", "zip", "sorted", "math", "None", "True", "False", "isinstance", "all", "any", "bool", "tuple", "reversed"}
@@ -28,8 +29,8 @@ def gemini(texto):
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key: return None, None
     cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
-                         "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4000}}).encode()
-    for m in MODELOS:
+                         "generationConfig": {"temperature": 0.6, "maxOutputTokens": 9000}}).encode()
+    for m in GG.modelos(MODELOS):
         for i in range(3):
             if i: time.sleep(20 * i)
             try:
@@ -37,6 +38,7 @@ def gemini(texto):
                                              headers={"Content-Type": "application/json", "x-goog-api-key": key})
                 with urllib.request.urlopen(req, timeout=240) as r:
                     d = json.load(r)
+                GG.anotar("auditor", m, d.get("usageMetadata", {}))
                 return m, "".join(p.get("text", "") for p in d["candidates"][0]["content"]["parts"])
             except urllib.error.HTTPError as e:
                 print(m, "HTTP", e.code, file=sys.stderr)
@@ -93,62 +95,74 @@ def probar(cid, codigo):
 def main():
     hoy = datetime.now(EC).date().isoformat()
     import laboratorio as L
-    existentes = sorted(L.CANDIDATOS)
+    existentes = "\n".join(f"- {k}: {c.get('hipotesis', '')}" for k, c in sorted(L.CANDIDATOS.items()))
     texto = (leer("laboratorio/GEMINI.md") + "\n\n# TU PAPEL HOY: SEGUNDO AUDITOR (PROPONES, NO REVISAS)\n"
-             "Propón UN candidato nuevo para el laboratorio de Mazar que pueda acercar el error típico a 1 día a 5 cm (meta de Luis) "
-             "sin empeorar a 7 y 14 días. Básate en el marcador (dónde y cuándo falla el titular, importancia_1d), en las ideas de "
-             "Luis (IDEAS.md) y en cómo el robot arma P y ctx. No repitas candidatos existentes: " + ", ".join(existentes) + ".\n"
-             "Reglas del código: una sola función `def c_<id>(P, ctx, mod):` que modifica SOLO sus argumentos (ya son copias) y "
-             "devuelve (P, ctx, cambios_mod) o None si hoy no aplica; cambios_mod = campos de datos.json que la página necesitaría "
-             "para hacer el mismo cálculo (normalmente los mismos que cambias en ctx). Sin import, sin archivos, sin red; solo "
-             "aritmética, min/max/abs/round/len/range/list/dict/tuple/sum/sorted/reversed/enumerate/zip/isinstance/all/any/bool y math. Nada de datos del futuro.\n"
-             "Responde SOLO con JSON: {\"id\": \"snake_case\", \"hipotesis\": \"una frase medible\", \"promocion\": \"auto|luis\", "
-             "\"por_que\": \"2-4 frases con los datos que te llevaron a esta idea\", \"codigo\": \"def c_<id>(P, ctx, mod): ...\"} "
-             "o {\"id\": null, \"por_que\": \"...\"} si hoy no hay una idea que valga la pena.\n\n"
+             "Luis quiere MUCHOS modelos en sombra en paralelo. Propón HASTA 3 candidatos nuevos, distintos entre sí, que puedan "
+             "acercar el error típico a 1 día a 5 cm (meta de Luis) sin empeorar a 7 y 14 días. Básate en el marcador (dónde y "
+             "cuándo falla el titular, sesgo por plazo, importancia_1d), en datos.json (aciertos.por_horizonte, recientes_1d), en "
+             "las ideas de Luis (IDEAS.md) y en cómo el robot arma P y ctx. Vale variar la fuerza de un mecanismo existente, "
+             "combinar dos candidatos o proponer uno nuevo. No repitas los que ya existen (con su hipótesis):\n" + existentes + "\n"
+             "Reglas del código: cada uno es una sola función `def c_<id>(P, ctx, mod):` que modifica SOLO sus argumentos (ya son "
+             "copias) y devuelve (P, ctx, cambios_mod) o None si hoy no aplica; cambios_mod = campos de datos.json (bloque modelo) que "
+             "la página necesitaría para hacer el mismo cálculo. mod['aciertos'] es el de la corrida anterior. Sin import, sin "
+             "archivos, sin red; solo aritmética, min/max/abs/round/len/range/list/dict/tuple/sum/sorted/reversed/enumerate/zip/"
+             "isinstance/all/any/bool y math. No llames a funciones de laboratorio.py (copia lo que necesites). Nada de datos del futuro. "
+             "promocion: \"auto\" solo si usa el mismo mecanismo con otra fuerza o mezcla series existentes; si es un mecanismo nuevo, \"luis\".\n"
+             "Responde SOLO con JSON: {\"propuestas\": [{\"id\": \"snake_case\", \"nombre\": \"nombre corto en español\", "
+             "\"hipotesis\": \"una frase medible\", \"promocion\": \"auto|luis\", \"por_que\": \"2-4 frases con los datos\", "
+             "\"codigo\": \"def c_<id>(P, ctx, mod): ...\"}]} (lista vacía si hoy no hay ideas que valgan la pena).\n\n"
              "# IDEAS.md\n" + leer("laboratorio/IDEAS.md", 8000) + "\n\n# marcador.json\n" + leer("laboratorio/marcador.json", 25000)
-             + "\n\n# scripts/laboratorio.py\n```python\n" + leer("scripts/laboratorio.py", 40000) + "\n```\n\n# scripts/robot.py (cómo se arman P y ctx)\n```python\n"
+             + "\n\n# datos.json → modelo.aciertos\n" + json.dumps((json.load(open(os.path.join(RAIZ, "datos.json"), encoding="utf-8")).get("modelo") or {}).get("aciertos"), ensure_ascii=False)[:6000]
+             + "\n\n# scripts/laboratorio.py\n```python\n" + leer("scripts/laboratorio.py", 45000) + "\n```\n\n# scripts/robot.py (cómo se arman P y ctx)\n```python\n"
              + leer("scripts/robot.py", 90000) + "\n```")
     modelo, resp = gemini(texto)
-    reg = {"fecha": hoy, "modelo": modelo}
+    reg = {"fecha": hoy, "modelo": modelo, "gasto_mes_usd": round(GG.gasto_mes(), 3)}
     os.makedirs(os.path.join(RAIZ, "laboratorio", "propuestas"), exist_ok=True)
     out = os.path.join(RAIZ, "laboratorio", "propuestas", hoy + ".json")
+    def guardar():
+        json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if not resp:
-        reg["estado"] = "gemini no respondió"; json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1); print(reg); return
+        reg["estado"] = "gemini no respondió (o tope de gasto)"; guardar(); print(reg); return
     try:
-        p = json.loads(re.search(r"\{.*\}", resp, re.S).group(0))
-    except Exception as e:
-        reg.update({"estado": "respuesta sin JSON", "crudo": resp[:3000]}); json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1); print(reg); return
-    reg["propuesta"] = p
-    cid = p.get("id")
-    if not cid:
-        reg["estado"] = "sin propuesta hoy"
-    elif cid in L.CANDIDATOS:
-        reg["estado"] = "ya existe"
-    else:
-        err = validar(cid, p.get("codigo", ""))
-        if err:
-            reg["estado"] = "rechazada por validación: " + err
+        props = json.loads(re.search(r"\{.*\}", resp, re.S).group(0)).get("propuestas") or []
+    except Exception:
+        reg.update({"estado": "respuesta sin JSON", "crudo": resp[:3000]}); guardar(); print(reg); return
+    reg["propuestas"] = []
+    s = open(os.path.join(RAIZ, "scripts", "laboratorio.py"), encoding="utf-8").read()
+    vistos, aceptadas = set(L.CANDIDATOS), []
+    for p in props[:3]:
+        cid = p.get("id"); r = {"propuesta": p}
+        if not cid:
+            r["estado"] = "sin id"
+        elif cid in vistos:
+            r["estado"] = "ya existe"
         else:
-            try:
-                prueba = probar(cid, p["codigo"])
-            except Exception as e:
-                prueba = {"ok": False, "nota": f"error al probar: {e}"}
-            reg["prueba"] = prueba
-            if not prueba.get("ok"):
-                reg["estado"] = "rechazada en la prueba"
+            err = validar(cid, p.get("codigo", ""))
+            if err:
+                r["estado"] = "rechazada por validación: " + err
             else:
-                reg["estado"] = "lista para revisión de Claude"
-                s = open(os.path.join(RAIZ, "scripts", "laboratorio.py"), encoding="utf-8").read()
-                cand = (p["codigo"].rstrip() + "\n\n\n")
-                ent = (f'CANDIDATOS["{cid}"] = {{"f": c_{cid}, "promocion": {json.dumps("luis" if p.get("promocion") == "luis" else "auto")}, '
-                       f'"origen": "Gemini {hoy}", "hipotesis": {json.dumps(p.get("hipotesis", ""), ensure_ascii=False)}}}\n\n\n')
-                s = s.replace("\ndef aplicar_titular(", "\n" + cand + ent + "def aplicar_titular(", 1)
-                open(os.path.join(RAIZ, "scripts", "laboratorio.py"), "w", encoding="utf-8").write(s)
-                reg["rama"] = f"candidato/gemini-{hoy}-{cid}"
-    json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print(json.dumps(reg, ensure_ascii=False, indent=1)[:4000])
-    if reg.get("rama"):
+                try:
+                    prueba = probar(cid, p["codigo"])
+                except Exception as e:
+                    prueba = {"ok": False, "nota": f"error al probar: {e}"}
+                r["prueba"] = prueba
+                if not prueba.get("ok"):
+                    r["estado"] = "rechazada en la prueba"
+                else:
+                    r["estado"] = "lista para revisión de Claude"
+                    ent = (f'CANDIDATOS["{cid}"] = {{"f": c_{cid}, "promocion": {json.dumps("luis" if p.get("promocion") == "luis" else "auto")}, '
+                           f'"origen": "Gemini {hoy}", "nombre": {json.dumps(p.get("nombre") or cid, ensure_ascii=False)}, '
+                           f'"hipotesis": {json.dumps(p.get("hipotesis", ""), ensure_ascii=False)}}}\n\n\n')
+                    s = s.replace("\ndef aplicar_titular(", "\n" + p["codigo"].rstrip() + "\n\n\n" + ent + "def aplicar_titular(", 1)
+                    vistos.add(cid); aceptadas.append(cid)
+        reg["propuestas"].append(r)
+    reg["estado"] = f"{len(aceptadas)} de {len(props[:3])} listas para revisión" if props else "sin propuestas hoy"
+    if aceptadas:
+        open(os.path.join(RAIZ, "scripts", "laboratorio.py"), "w", encoding="utf-8").write(s)
+        reg["rama"] = f"candidato/gemini-{hoy}"
         open(os.path.join(RAIZ, ".rama_candidato"), "w").write(reg["rama"])
+    guardar()
+    print(json.dumps(reg, ensure_ascii=False, indent=1)[:5000])
 
 
 if __name__ == "__main__":

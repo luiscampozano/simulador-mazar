@@ -1,10 +1,10 @@
-# Segundo auditor: Gemini propone un candidato para el laboratorio (días alternos, 10:23 en Ecuador).
+# Segundo auditor: Gemini propone hasta 3 candidatos al día para el laboratorio (10:23 en Ecuador). Tope de gasto: scripts/gasto_gemini.py.
 # La propuesta pasa por validación (código puro, sin archivos ni red) y prueba con los datos de hoy; si pasa, queda en una
 # rama candidato/gemini-<fecha>-<id>. Claude (auditor 14:36) la revisa con un Claude independiente y decide. Nunca toca el titular.
 name: Auditor Gemini (propone candidatos)
 on:
   schedule:
-    - cron: "23 15 */2 * *"
+    - cron: "23 15 * * *"
   workflow_dispatch:
 permissions:
   contents: write
@@ -30,6 +30,6 @@ jobs:
             git checkout -q main
             git checkout "$R" -- laboratorio/propuestas
           fi
-          git add laboratorio/propuestas
+          git add laboratorio/propuestas laboratorio/gasto_gemini.json 2>/dev/null || git add laboratorio/propuestas
           git commit -q -m "Propuesta del auditor Gemini $(TZ=America/Guayaquil date '+%Y-%m-%d') [skip ci]" || exit 0
           for i in 1 2 3; do git pull -q --rebase && git push -q && exit 0; sleep 5; done

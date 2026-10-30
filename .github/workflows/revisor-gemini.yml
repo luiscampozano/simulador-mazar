@@ -28,7 +28,20 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
         run: |
           git fetch -q origin main
+          git show origin/main:laboratorio/gasto_gemini.json > laboratorio/gasto_gemini.json 2>/dev/null || rm -f laboratorio/gasto_gemini.json
           python3 scripts/revisor_gemini.py --manual laboratorio/GEMINI.md --base origin/main \
             --archivos scripts/laboratorio.py scripts/robot.py laboratorio/config.json laboratorio/marcador.json laboratorio/IDEAS.md
           gh api -X POST repos/${{ github.repository }}/commits/${{ github.sha }}/comments -F body=@revision_gemini.md > /dev/null
           cat revision_gemini.md >> "$GITHUB_STEP_SUMMARY"
+          cp laboratorio/gasto_gemini.json /tmp/gasto.json 2>/dev/null || true
+      - name: Guardar el gasto de Gemini en main
+        if: always() && (github.event_name == 'push' || !inputs.prueba)
+        run: |
+          [ -f /tmp/gasto.json ] || exit 0
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B gasto origin/main
+            cp /tmp/gasto.json laboratorio/gasto_gemini.json && git add laboratorio/gasto_gemini.json
+            git commit -q -m "Gasto de Gemini (revisor) [skip ci]" || exit 0
+            git push -q origin gasto:main && exit 0; sleep 5
+          done
