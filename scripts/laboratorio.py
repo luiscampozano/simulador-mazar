@@ -205,6 +205,7 @@ def marcador(reg, conf, ts_ahora):
     t_ahora = datetime.fromisoformat(ts_ahora)
     desde = t_ahora - timedelta(days=conf["ventana_dias"])
     err = {}            # err[modelo][h] = [(fecha_objetivo, |error|, error)]
+    pares = {}          # pares[modelo][h] = [(|error modelo|, |error titular|)] en las MISMAS corridas
     casos_imp = []      # (rasgos, error del titular a 1 día)
     for x in reg["corridas"]:
         t0 = datetime.fromisoformat(x["ts"])
@@ -212,9 +213,12 @@ def marcador(reg, conf, ts_ahora):
             obj = (t0 + timedelta(days=h)).isoformat(timespec="minutes")
             if obj not in real or datetime.fromisoformat(obj) < desde:
                 continue
+            et = x["tray"]["titular"][i] - real[obj] if "titular" in x["tray"] else None
             for m, tr in x["tray"].items():
                 e = tr[i] - real[obj]
                 err.setdefault(m, {}).setdefault(h, []).append((obj[:10], abs(e), e))
+                if m != "titular" and et is not None:
+                    pares.setdefault(m, {}).setdefault(h, []).append((abs(e), abs(et)))
             if h == 1 and "titular" in x["tray"]:
                 casos_imp.append((x.get("rasgos") or {}, x["tray"]["titular"][i] - real[obj]))
     res = {"actualizado": ts_ahora, "ventana_dias": conf["ventana_dias"], "modelos": {}}
@@ -224,19 +228,23 @@ def marcador(reg, conf, ts_ahora):
                                       "sesgo_m": round(sum(e for _, _, e in v) / len(v), 3)} for h, v in sorted(porh.items())}
         if m in CANDIDATOS:
             res["modelos"][m]["_info"] = {k: CANDIDATOS[m][k] for k in ("hipotesis", "origen", "promocion")}
-    # veredicto de cada candidato frente al titular
-    tit = res["modelos"].get("titular", {})
+    # veredicto de cada candidato frente al titular, comparando SOLO las corridas en que corrieron los dos
     ver = {}
+    def rel(m, h):
+        pp = (pares.get(m) or {}).get(h) or []
+        if not pp: return None
+        sm, st_ = sum(a for a, _ in pp), sum(b for _, b in pp)
+        return 1 - sm / st_ if st_ > 0 else 0.0
     for m, v in res["modelos"].items():
         if m == "titular":
             continue
-        a1, t1 = v.get("1"), tit.get("1")
-        if not a1 or not t1:
+        a1 = v.get("1")
+        mejora = rel(m, 1)
+        if not a1 or mejora is None:
             ver[m] = {"estado": "sin datos"}; continue
-        mejora = 1 - a1["error_medio_m"] / t1["error_medio_m"] if t1["error_medio_m"] > 0 else 0
         def peor(h, tol):
-            a, t = v.get(h), tit.get(h)
-            return bool(a and t and a["error_medio_m"] > t["error_medio_m"] * (1 + tol))
+            r = rel(m, int(h))
+            return bool(r is not None and r < -tol)
         suficiente = a1["dias"] >= conf["dias_min"] and a1["n"] >= conf["casos_min"]
         if not suficiente:
             estado = "midiendo"
