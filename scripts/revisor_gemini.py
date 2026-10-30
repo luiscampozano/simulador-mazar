@@ -3,11 +3,12 @@ marcadores, y deja su veredicto como comentario en el commit. Uso en GitHub Acti
   python revisor_gemini.py --manual laboratorio/GEMINI.md --base origin/main --archivos a.py b.json ...
   python revisor_gemini.py --prueba      (solo comprueba que la llave y el modelo funcionan)
 Modelos: primero gemini-4-argon; si falla, gemini-3.8-flash."""
-import argparse, json, os, subprocess, sys, urllib.request, urllib.error
+import argparse, json, os, subprocess, sys, time, urllib.request, urllib.error
 
 MODELOS = ["gemini-4-argon", "gemini-3.8-flash"]
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
-MAX_CHARS = 120000   # tope de contexto por revisión (controla el costo)
+MAX_CHARS = 120000
+MODELOS_SALTAR = set()   # cuota agotada o modelo no disponible: no reintentar   # tope de contexto por revisión (controla el costo)
 
 
 def preguntar(texto):
@@ -17,7 +18,11 @@ def preguntar(texto):
     cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
                          "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2500}}).encode()
     ultimo = None
-    for m in MODELOS:
+    for m, intento in [(m, i) for m in MODELOS for i in range(3)]:
+        if m in MODELOS_SALTAR:
+            continue
+        if intento:
+            time.sleep(20 * intento)   # 503 = mucha demanda: esperar y reintentar
         req = urllib.request.Request(URL.format(m=m), data=cuerpo,
                                      headers={"Content-Type": "application/json", "x-goog-api-key": key})
         try:
@@ -28,6 +33,9 @@ def preguntar(texto):
             return m, "".join(p.get("text", "") for p in partes), uso
         except urllib.error.HTTPError as e:
             ultimo = f"{m}: HTTP {e.code} {e.read()[:300]!r}"
+            if e.code not in (500, 503):
+                print("Falló", ultimo, file=sys.stderr)
+                MODELOS_SALTAR.add(m)
         except Exception as e:
             ultimo = f"{m}: {e}"
         print("Falló", ultimo, file=sys.stderr)
