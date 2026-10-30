@@ -1,5 +1,5 @@
 """Gasto de Gemini en el simulador de Mazar (revisor + segundo auditor), con tope mensual propio.
-Luis (30 oct): "iterar a lo loco cuidando el gasto de Gemini". Topes: desde US$ 2 en el mes solo Flash (más barato);
+Luis (30 oct): "iterar a lo loco cuidando el gasto de Gemini". Topes: desde US$ 1 en el mes solo Flash (más barato);
 desde US$ 4 no se llama a Gemini (el ciclo sigue con Claude). Separado del tope del clima (datalab-ec: US$ 5 / 8).
 Archivo: laboratorio/gasto_gemini.json {"AAAA-MM": {"usd", "llamadas", "por_quien": {...}}}."""
 import json, os
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 F = os.path.join(RAIZ, "laboratorio", "gasto_gemini.json")
 PRECIO = {"gemini-4-argon": (2.00, 10.00), "gemini-3.8-flash": (0.75, 3.75)}   # US$ por millón de tokens (entrada, salida)
-SOLO_FLASH, PARAR = 2.0, 4.0
+SOLO_FLASH, PARAR = 1.0, 4.0
 EC = timezone(timedelta(hours=-5))
 
 

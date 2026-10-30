@@ -29,7 +29,7 @@ def gemini(texto):
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key: return None, None
     cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
-                         "generationConfig": {"temperature": 0.6, "maxOutputTokens": 9000}}).encode()
+                         "generationConfig": {"temperature": 0.6, "maxOutputTokens": 6000}}).encode()
     for m in GG.modelos(MODELOS):
         for i in range(3):
             if i: time.sleep(20 * i)
