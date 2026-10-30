@@ -88,13 +88,13 @@ def c_sin_memoria(P, ctx, mod):
 
 
 CANDIDATOS = {
-    "coca_rio_real": {"f": c_coca_rio_real, "promocion": "auto", "origen": "auditoría Mazar 29 oct",
+    "coca_rio_real": {"f": c_coca_rio_real, "nombre": "Río Coca con su caudal real", "promocion": "auto", "origen": "auditoría Mazar 29 oct",
                       "hipotesis": "El modelo es pesimista a 7 días porque baja a Coca Codo con la historia del río; con el pronóstico del río real acertaría más."},
-    "sin_autoajuste": {"f": c_sin_autoajuste, "promocion": "auto", "origen": "laboratorio",
+    "sin_autoajuste": {"f": c_sin_autoajuste, "nombre": "Sin el autoajuste", "promocion": "auto", "origen": "laboratorio",
                        "hipotesis": "Comprobar si el factor de autoajuste mejora o empeora el pronóstico."},
-    "paute_sin_ajuste": {"f": c_paute_sin_ajuste, "promocion": "auto", "origen": "laboratorio",
+    "paute_sin_ajuste": {"f": c_paute_sin_ajuste, "nombre": "Paute sin el ajuste aprendido", "promocion": "auto", "origen": "laboratorio",
                          "hipotesis": "Comprobar si el ajuste del caudal del Paute (≈42 % de lo que promete la lluvia) ayuda."},
-    "sin_memoria": {"f": c_sin_memoria, "promocion": "luis", "origen": "laboratorio",
+    "sin_memoria": {"f": c_sin_memoria, "nombre": "Sin la memoria de 48 h", "promocion": "luis", "origen": "laboratorio",
                     "hipotesis": "Comprobar si promediar las corridas de 48 h estabiliza sin perder acierto."},
 }
 
@@ -115,7 +115,186 @@ def c_sin_paro_hoy(P, ctx, mod):
     return P, ctx, {"ccsFactor": nuevo}
 
 
-CANDIDATOS["sin_paro_hoy"] = {"f": c_sin_paro_hoy, "promocion": "luis", "origen": "Gemini 2026-10-30", "hipotesis": "Desactivar la proyección del paro actual de Coca Codo (conservando el descuento por riesgo de crecida de los días 1 a 14) reduce el error a 1 día cuando hay paros cortos por sedimentos."}
+CANDIDATOS["sin_paro_hoy"] = {"f": c_sin_paro_hoy, "nombre": "Sin el paro de hoy (conserva crecida)", "promocion": "luis", "origen": "Gemini 2026-10-30", "hipotesis": "Desactivar la proyección del paro actual de Coca Codo (conservando el descuento por riesgo de crecida de los días 1 a 14) reduce el error a 1 día cuando hay paros cortos por sedimentos."}
+
+
+# ---------------------------------------------------------------- tanda Claude 30 oct (Luis: "muchos modelos sombra en paralelo")
+# Diagnóstico: el titular es PESIMISTA y el sesgo crece con el plazo (aciertos.por_horizonte al 30 oct: −0,13 m a 1 día,
+# −0,39 a 2, −0,86 a 3, −2,32 a 5, −4,19 a 7; err = predicho − real) y el error a 1 día está autocorrelacionado
+# (−0,74 … −0,26 m en 8 corridas seguidas). Esta tanda prueba: (a) la misma maquinaria con otra fuerza (auto) y
+# (b) corrección del error reciente o del sesgo por plazo (luis: mecanismo nuevo).
+
+def _dvdz(ctx, mod):
+    """hm³ por metro de cota en la cota de hoy (curva de Mazar)."""
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    return c["a"] + c["b"] * max(0.0, float(ctx["cota"]) - 2115)
+
+
+def _sumar_memoria(ctx, corr):
+    """Suma una corrección de caudal (m³/s por día) a la memoria; la página la usa igual (campo modelo.memoria)."""
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), len(corr))
+    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx["memoria"] = out
+    return out
+
+
+def _corr_error(P, ctx, mod, k, tau):
+    """Corrige con el error a 1 día de las últimas k verificaciones (de la corrida anterior: sin datos del futuro).
+    Si el modelo viene diciendo e metros de menos, suma el caudal que explica esos e metros en un día y lo apaga
+    con constante de tiempo tau días."""
+    ac = mod.get("aciertos") or {}
+    rec = [x for x in (ac.get("recientes_1d") or []) if isinstance(x.get("err"), (int, float))]
+    if len(rec) < max(2, k):
+        return None
+    rec = sorted(rec, key=lambda x: x["obj_ts"])[-k:]
+    try:
+        hoy = datetime.fromisoformat(str(mod.get("_ts") or rec[-1]["obj_ts"]))
+        if (hoy - datetime.fromisoformat(rec[-1]["obj_ts"])).total_seconds() > 12 * 3600:
+            return None           # verificaciones viejas: no corrige
+    except Exception:
+        pass
+    e = sum(x["err"] for x in rec) / len(rec)
+    q0 = -e * _dvdz(ctx, mod) / 0.0864
+    q0 = max(-60.0, min(60.0, q0))
+    corr = [q0 * math.exp(-d / tau) for d in range(60)]
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m}
+
+
+def c_corrige_error_3(P, ctx, mod):
+    return _corr_error(P, ctx, mod, 3, 1.0)
+
+
+def c_corrige_error_6(P, ctx, mod):
+    return _corr_error(P, ctx, mod, 6, 1.0)
+
+
+def c_corrige_error_6_lento(P, ctx, mod):
+    return _corr_error(P, ctx, mod, 6, 3.0)
+
+
+def _sesgo_plazo(P, ctx, mod, fuerza):
+    """Quita el sesgo medido por plazo (aciertos.por_horizonte, solo plazos con ≥30 casos), repartido día a día como caudal."""
+    ph = (mod.get("aciertos") or {}).get("por_horizonte") or {}
+    pts = [(0, 0.0)] + sorted((int(h), v["sesgo_m"]) for h, v in ph.items() if (v.get("n") or 0) >= 30 and v.get("sesgo_m") is not None)
+    if len(pts) < 3:
+        return None
+    def s(t):
+        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+            if t <= h1:
+                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)
+        return pts[-1][1]
+    k = _dvdz(ctx, mod) / 0.0864
+    corr = [max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * fuerza)) for d in range(60)]
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m}
+
+
+def c_sesgo_plazo_50(P, ctx, mod):
+    return _sesgo_plazo(P, ctx, mod, 0.5)
+
+
+def c_sesgo_plazo_100(P, ctx, mod):
+    return _sesgo_plazo(P, ctx, mod, 1.0)
+
+
+def c_autoajuste_completo(P, ctx, mod):
+    """El autoajuste usa el valor medido entero (ratio_mediana) en vez del recortado por pocos días."""
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    if not isinstance(r, (int, float)) or r <= 0:
+        return None
+    v = round(max(0.3, min(1.5, r)), 3)
+    ctx["ajuste"] = v
+    return P, ctx, {"ajuste": v}
+
+
+def _paute_fuerza(P, ctx, mod, cual):
+    bruta, info = mod.get("serieMazarBruta"), mod.get("ajuste_paute") or {}
+    f = info.get(cual)
+    if not bruta or not isinstance(f, (int, float)):
+        return None
+    actual = ctx.get("serieMazar") or bruta
+    serie = [round(1 + (b - 1) * f, 4) if abs(a - b) > 1e-6 else a for a, b in zip(actual, bruta)]
+    ctx["serieMazar"] = serie
+    return P, ctx, {"serieMazar": serie}
+
+
+def c_paute_ajuste_completo(P, ctx, mod):
+    """El caudal del Paute con el ajuste observado entero (lo que de verdad llegó por cada m³/s que prometía la lluvia)."""
+    return _paute_fuerza(P, ctx, mod, "observado")
+
+
+def c_coca_mitad(P, ctx, mod):
+    """Río Coca a medio camino entre la serie del titular y el pronóstico del río real."""
+    a, b = ctx.get("serieCoca"), mod.get("serieCocaRio")
+    if not a or not b:
+        return None
+    s = [round((x + y) / 2, 4) for x, y in zip(a, b)]
+    ctx["serieCoca"] = s
+    return P, ctx, {"serieCoca": s}
+
+
+def c_otros_rios_planos(P, ctx, mod):
+    """Las otras centrales siguen solo al río Coca (sin la serie propia de Pastaza, Zamora y Jubones)."""
+    if not ctx.get("otrasRios"):
+        return None
+    ctx["otrasRios"] = None
+    return P, ctx, {"otrasRios": None}
+
+
+def c_dia_semana_suave(P, ctx, mod):
+    """La diferencia de demanda entre días de la semana a la mitad."""
+    dd = ctx.get("deltaDia")
+    if not dd:
+        return None
+    v = [round(x * 0.5, 1) for x in dd]
+    ctx["deltaDia"] = v
+    return P, ctx, {"deltaDia": v}
+
+
+def c_humedo_completo(P, ctx, mod):
+    """Combinación: río Coca real + Paute con el ajuste observado entero."""
+    r = c_coca_rio_real(P, ctx, mod)
+    if r:
+        P, ctx, _ = r
+    r2 = _paute_fuerza(P, ctx, mod, "observado")
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {"serieCoca": ctx["serieCoca"], "serieMazar": ctx["serieMazar"]}
+
+
+def c_cortes_siguen_7d(P, ctx, mod):
+    """Los cortes de hoy siguen 7 días más (el esquema a empresas continúa), en vez de valer solo hoy."""
+    plan = list(ctx.get("cutPlan") or [])
+    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) else None
+    if not hoy:
+        return None
+    plan = plan + [None] * max(0, 8 - len(plan))
+    for d in range(1, 8):
+        if plan[d] is None:
+            plan[d] = hoy
+    ctx["cutPlan"] = plan
+    return P, ctx, {"cutPlan": plan}
+
+
+def _cand(cid, f, prom, nombre, hip):
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": "Claude 2026-10-30 (tanda)", "nombre": nombre, "hipotesis": hip}
+
+
+_cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 últimas", "Si el titular viene fallando en la misma dirección, sumar el caudal que explica el error de las 3 últimas verificaciones a 1 día (apagándose en ~1 día) baja el error a 1 día hacia 5 cm.")
+_cand("corrige_error_6", c_corrige_error_6, "luis", "Corrige el error de las 6 últimas", "Igual que la anterior pero con 6 verificaciones: más estable, reacciona más lento.")
+_cand("corrige_error_6_lento", c_corrige_error_6_lento, "luis", "Corrige el error (6) y lo arrastra 3 días", "La corrección del error reciente se apaga en ~3 días: debería ayudar también a 3 y 7 días si el sesgo es persistente.")
+_cand("sesgo_plazo_50", c_sesgo_plazo_50, "luis", "Quita la mitad del sesgo por plazo", "El titular es pesimista y más a más plazo (−0,13 m a 1 día, −4,2 m a 7); quitar la mitad del sesgo medido mejora 3–14 días sin sobrecorregir.")
+_cand("sesgo_plazo_100", c_sesgo_plazo_100, "luis", "Quita todo el sesgo por plazo", "Igual, quitando el sesgo entero: prueba el límite (puede sobrecorregir si cambia el clima).")
+_cand("autoajuste_completo", c_autoajuste_completo, "auto", "Autoajuste con el valor medido entero", "El autoajuste recortado (0,84) se queda corto frente a lo medido (0,66): usarlo entero reduce el pesimismo de la bajada.")
+_cand("paute_ajuste_completo", c_paute_ajuste_completo, "auto", "Paute con el ajuste observado entero", "Llegó 135 % de lo que prometía la lluvia y el titular usa 111 %: con lo observado entero el caudal de entrada se acerca a la realidad.")
+_cand("coca_mitad", c_coca_mitad, "auto", "Río Coca a medio camino", "Punto medio entre el titular y el río real: menos riesgo que cambiar todo a la serie del río.")
+_cand("otros_rios_planos", c_otros_rios_planos, "auto", "Otras centrales sin su serie propia", "Comprobar si la serie de Pastaza, Zamora y Jubones ayuda o solo mete ruido.")
+_cand("dia_semana_suave", c_dia_semana_suave, "auto", "Demanda por día de la semana a la mitad", "El patrón semanal de demanda pesa demasiado en épocas de cortes; a la mitad se acerca más.")
+_cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute observado", "Combinación de los dos cambios que apuntan contra el pesimismo del titular.")
+_cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
 def aplicar_titular(P, ctx, mod, log=print):
@@ -154,6 +333,22 @@ def _rasgos(P, ctx, mod, datos):
             "hora": int(str(datos.get("fecha", "T00"))[11:13] or 0)}
 
 
+def _con_previo(mod, ts):
+    """Los aciertos se calculan después del laboratorio: los candidatos que los usan leen los de la corrida anterior
+    (datos.json en disco, de hace ~2 h). Devuelve una copia; no cambia el bloque que se publica."""
+    m = dict(mod)
+    m["_ts"] = ts
+    if mod.get("aciertos"):
+        return m
+    try:
+        prev = _leer("datos.json", {}).get("modelo", {}).get("aciertos")
+        if prev:
+            m["aciertos"] = prev
+    except Exception:
+        pass
+    return m
+
+
 def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     """Calcula titular y candidatos con los mismos datos y guarda sus trayectorias. Devuelve el resumen del marcador.
     base = (P, ctx) antes de aplicar los promovidos: se sigue corriendo como 'anterior' para poder revertir."""
@@ -171,6 +366,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             tray["anterior"] = [round(d_ant[h]["cota"], 3) for h in HORIZ]
         except Exception as e:
             log(f"Laboratorio: anterior falló: {e}")
+    mod = _con_previo(mod, ts)
     for cid, c in CANDIDATOS.items():
         if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
             continue
@@ -315,7 +511,7 @@ def marcador(reg, conf, ts_ahora):
         imp = dict(sorted(imp.items(), key=lambda kv: -abs(kv[1]["con_error_abs"] or 0)))
     res["importancia_1d"] = imp
     res["config"] = conf
-    res["candidatos"] = {k: {kk: c[kk] for kk in ("hipotesis", "origen", "promocion")} for k, c in CANDIDATOS.items()}
+    res["candidatos"] = {k: {kk: c[kk] for kk in ("hipotesis", "origen", "promocion", "nombre") if kk in c} for k, c in CANDIDATOS.items()}
     res["corridas_registradas"] = len(reg["corridas"])
     return res
 
