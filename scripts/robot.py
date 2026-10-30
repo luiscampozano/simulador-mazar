@@ -568,8 +568,9 @@ def ajuste_por_cortes(P, ctx, par, fecha0, plan_hoy, horizonte=60):
     fechas = [(fecha0 + timedelta(days=k)).isoformat() for k in range(1, horizonte + 1)]
     base = [float(plan_hoy.get(fecha0.isoformat(), 0.0))] + [float(plan_hoy.get(f, 0.0)) for f in fechas]
 
-    def dz(plan_e):
-        alt = [base[0]] + [float(plan_e.get(f, 0.0)) for f in fechas]
+    def dz(plan_e, hasta=None):
+        # hasta: última fecha que cubría esa corrida; más allá se toma el plan de hoy (no hay diferencia que corregir)
+        alt = [base[0]] + [float(plan_e.get(f, 0.0)) if (hasta is None or f <= hasta) else b for f, b in zip(fechas, base[1:])]
         if all(abs(x - y) < 1 for x, y in zip(base, alt)):
             return None
         clave = tuple(round(x) for x in alt)
@@ -633,7 +634,11 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
                 pe = e.get("cortes")
                 if pe is None:
                     pe = {} if datetime.fromisoformat(e["ts"]) < lim else cortes
-                r = ajuste(pe)
+                try:
+                    hasta = (datetime.fromisoformat(e["ts"]).date() + timedelta(days=len(e["cv"]) - 1)).isoformat()
+                    r = ajuste(pe, hasta) if isinstance(pe, dict) else None
+                except Exception:
+                    r = None   # una entrada dañada no apaga la memoria: esa corrida queda sin corregir
                 if r:
                     e = dict(e, cv=[c + en0(r, k - o) for k, c in enumerate(e["cv"])])
                     n_cortes += 1
