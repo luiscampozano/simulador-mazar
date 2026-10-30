@@ -1,0 +1,12 @@
+{
+ "fecha": "2026-10-30",
+ "modelo": "gemini-4-argon",
+ "propuesta": {
+  "id": "sin_paro_hoy",
+  "hipotesis": "Desactivar la proyección del paro actual de Coca Codo (conservando el descuento por riesgo de crecida de los días 1 a 14) reduce el error a 1 día cuando hay paros cortos por sedimentos.",
+  "promocion": "luis",
+  "por_que": "En IDEAS.md (30 oct) se rechazó `sin_paro_coca` porque `ccsFactor` mezcla el paro del día 0 con el riesgo de crecida de los días siguientes, midiendo dos efectos a la vez. Sin embargo, `robot.py` ya guarda el vector del paro de hoy por separado en `mod['ccs_paro']['factor']` antes de multiplicarlo por el factor de crecida. Usando ese vector podemos aislar y quitar únicamente el efecto del paro de hoy en `ccsFactor` sin alterar el descuento por crecida futura ni requerir cambios previos en el robot.",
+  "codigo": "def c_sin_paro_hoy(P, ctx, mod):\n    paro = mod.get(\"ccs_paro\") or {}\n    f_paro = paro.get(\"factor\")\n    fac = ctx.get(\"ccsFactor\")\n    if not paro.get(\"paro\") or not f_paro or not fac:\n        return None\n    nuevo = []\n    for d, v in enumerate(fac):\n        fp = f_paro[min(d, len(f_paro) - 1)]\n        nuevo.append(round(v / fp, 3) if fp > 0 else 1.0)\n    if all(abs(x - 1.0) < 0.005 for x in nuevo):\n        nuevo = None\n    ctx[\"ccsFactor\"] = nuevo\n    return P, ctx, {\"ccsFactor\": nuevo}"
+ },
+ "estado": "rechazada por validación: función no permitida: all"
+}
