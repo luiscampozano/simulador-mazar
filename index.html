@@ -333,6 +333,14 @@ td.n{font-family:var(--f-mono);text-align:right;white-space:nowrap}
     <p class="note" id="acResumen"></p>
   </section>
 
+  <section class="card" id="semCard" hidden>
+    <h2>🎯 Aciertos de la semana · pronóstico a 1 día</h2>
+    <p class="note">Cada 2 horas el modelo dice dónde estará Mazar 24 horas después; al día siguiente se compara con la cota real de Celec Sur.</p>
+    <div id="semKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:8px 0"></div>
+    <div class="tbl"><table id="semTbl"></table></div>
+    <p class="note" id="semPie"></p>
+  </section>
+
   <section class="card">
     <h2>Los siguientes 10 días, uno por uno</h2>
     <div class="tbl"><table id="tbl"></table></div>
@@ -599,7 +607,7 @@ function render(){
   pintarCortes();
 
   drawProb(P);
-  drawAciertos();
+  drawAciertos(); try{ drawSemana(); }catch(e){ console.warn(e); }
   drawGauge(R);
   drawChart(R);
   drawBalance(f);
@@ -626,6 +634,25 @@ function pintarCortes(){
   el("kCut").innerHTML = fila("pesimista", ord[0]) + fila("simulador", act) + fila("optimista", ord[ord.length-1]);
 }
 window.pintarCortes = pintarCortes;
+
+function drawSemana(){
+  const S = ((DATA.modelo||{}).aciertos||{}).semana_1d;
+  if(!S || !S.dias || !S.dias.length){ el("semCard").hidden = true; return; }
+  el("semCard").hidden = false;
+  const MESx=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"], DSx=["dom","lun","mar","mié","jue","vie","sáb"];
+  const fd = t => { const d=new Date(t.length<=10? t+"T12:00" : t); return DSx[d.getDay()]+" "+d.getDate()+" "+MESx[d.getMonth()]; };
+  const hh = t => t.slice(11,16), cm = v => Math.round(Math.abs(v)*100)+" cm", m2 = v => fmt(v,2);
+  const b = S.mejor;
+  const kpi = (v,c,t) => `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="num" style="font-size:26px;font-weight:800;color:${c}">${v}</div><div class="note" style="margin:2px 0 0">${t}</div></div>`;
+  el("semKpis").innerHTML = kpi(S.n5+" de "+S.n,"var(--ok, #16a34a)","predicciones con error de 5 cm o menos") +
+    kpi(cm(b.err),"var(--water)","mejor acierto: dijo "+m2(b.pred)+" m para el "+fd(b.obj_ts)+" a las "+hh(b.obj_ts)+" y fue "+m2(b.real)+" m") +
+    kpi(cm(S.mediana_m),"var(--warn, #d97706)","error típico de la semana (9 de cada 10, menos de "+cm(S.p90_m)+")");
+  el("semTbl").innerHTML = "<thead><tr><th>Día</th><th>Pred.</th><th>≤ 5 cm</th><th>Error típico</th><th>Mejor acierto</th></tr></thead><tbody>" +
+    S.dias.map(d => `<tr><td style="white-space:nowrap">${fd(d.dia).replace(/ [a-z]+$/,"")}</td><td class="num">${d.n}</td><td class="num">${d.n5}</td><td class="num">${cm(d.mediana_m)}</td><td class="num">${cm(d.mejor.err)} · ${hh(d.mejor.obj_ts)}${d.paro_h?`<br><span style="color:var(--warn);font-size:12px">paro Coca Codo ${d.paro_h} h</span>`:""}</td></tr>`).join("") + "</tbody>";
+  const conParo = S.dias.filter(d=>d.paro_h).map(d=>fd(d.dia));
+  el("semPie").innerHTML = "Si se dijera “mañana Mazar queda igual que hoy”, el error promedio de la semana sería "+cm(S.persistencia_m)+"; el del modelo es "+cm(S.error_medio_m)+"." +
+    (conParo.length ? " Los paros de Coca Codo por sedimentos ("+conParo.join(", ")+") hacen que Paute cubra de golpe y el nivel cambie más de lo previsto; desde el 30 oct el modelo no proyecta un paro más allá de ese día." : "");
+}
 
 function drawAciertos(){
   const M = DATA.modelo || {}, ac = M.aciertos, aj = M.ajuste_info;

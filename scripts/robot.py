@@ -803,7 +803,40 @@ def resumen_aciertos(ver):
                 pers = sum(abs(float(v["cota0"]) - v["real"]) for v in vv) / len(vv)
                 semana[str(h)] = {"n": len(vv), "mediana_m": e[len(e) // 2], "p90_m": e[min(len(e) - 1, int(0.9 * len(e)))],
                                   "error_medio_m": round(sum(e) / len(e), 2), "persistencia_m": round(pers, 2)}
-    return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes, "semana": semana}
+    # Detalle de la última semana a 1 día, día por día (panel "Aciertos de la semana"): cuántas predicciones, cuántas con
+    # 5 cm o menos, error típico, mejor acierto, y horas de paro de Coca Codo ese día (explica los días con más error).
+    det = None
+    v1 = [v for v in ver if v["h"] == 1 and v.get("cota0") is not None]
+    if v1:
+        dias_obj = sorted({v["obj_ts"][:10] for v in v1})[-7:]
+        sel = [v for v in v1 if v["obj_ts"][:10] in dias_obj]
+        try:
+            rio = RIO if RIO else _leer_json(F_COCA_RIO, {})
+            tur = _leer_json(F_CCS_TURB, {})
+        except Exception:
+            rio, tur = {}, {}
+        def paro_h(d):
+            n = 0
+            for k, q in rio.items():
+                if k.startswith(d) and k in tur:
+                    pos = ccs_mw_rio(float(q))
+                    if pos >= 300 and float(tur[k]) * 8 * 5.25 < 0.5 * pos:
+                        n += 1
+            return n
+        filas = []
+        for d in dias_obj:
+            vv = [v for v in sel if v["obj_ts"][:10] == d]
+            e = sorted(abs(v["err"]) for v in vv)
+            b = min(vv, key=lambda v: abs(v["err"]))
+            filas.append({"dia": d, "n": len(vv), "n5": sum(1 for x in e if x <= 0.05), "mediana_m": e[len(e) // 2],
+                          "mejor": {k: b[k] for k in ("pred_ts", "obj_ts", "pred", "real", "err")}, "paro_h": paro_h(d)})
+        e = sorted(abs(v["err"]) for v in sel)
+        b = min(sel, key=lambda v: (abs(v["err"]), v["obj_ts"]))
+        det = {"dias": filas, "n": len(sel), "n5": sum(1 for x in e if x <= 0.05), "mediana_m": e[len(e) // 2],
+               "p90_m": e[min(len(e) - 1, int(0.9 * len(e)))], "error_medio_m": round(sum(e) / len(e), 2),
+               "persistencia_m": round(sum(abs(float(v["cota0"]) - v["real"]) for v in sel) / len(sel), 2),
+               "mejor": {k: b[k] for k in ("pred_ts", "obj_ts", "pred", "real", "err")}}
+    return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes, "semana": semana, "semana_1d": det}
 
 
 
