@@ -31,7 +31,11 @@ HORIZ = (1, 2, 3, 5, 7, 10, 14)
 HORIZ_REGION = 30   # días de la trayectoria completa que se guarda de la última corrida
 
 CONF_DEF = {"promocion_automatica": True, "activar_desde": "2026-10-31", "dias_min": 7, "casos_min": 40, "mejora_min": 0.10,
-            "tolerancia_3d": 0.05, "tolerancia_7d": 0.10, "ventana_dias": 7, "revertir_dias": 3}
+            "tolerancia_3d": 0.05, "tolerancia_7d": 0.05, "tolerancia_14d": 0.05, "ventana_dias": 7, "ventana_largo_dias": 14,
+            "dias_min_7d": 5, "dias_min_14d": 5, "objetivo_cm": 5, "posible_cm": 7, "revertir_dias": 3}
+# Regla de Luis (30 oct): la meta es un modelo con error típico (mediana) de 5 cm o menos a 1 día ("objetivo"); 7 cm o
+# menos es "posible". Antes de reemplazar al titular, el candidato también debe probarse a 7 y a 14 días (no puede
+# empeorar), porque el modelo titular queda para siempre: un candidato nuevo tarda al menos ~19 días en poder calificar.
 
 
 def _leer(ruta, defecto):
@@ -207,7 +211,8 @@ def _spearman(xs, ys):
 def marcador(reg, conf, ts_ahora):
     real = _reales(reg)
     t_ahora = datetime.fromisoformat(ts_ahora)
-    desde = t_ahora - timedelta(days=conf["ventana_dias"])
+    desde_corto = t_ahora - timedelta(days=conf["ventana_dias"])                     # 1 a 5 días
+    desde_largo = t_ahora - timedelta(days=conf.get("ventana_largo_dias", 14))       # 7, 10 y 14 días
     err = {}            # err[modelo][h] = [(fecha_objetivo, |error|, error)]
     pares = {}          # pares[modelo][h] = [(|error modelo|, |error titular|)] en las MISMAS corridas
     casos_imp = []      # (rasgos, error del titular a 1 día)
@@ -215,7 +220,7 @@ def marcador(reg, conf, ts_ahora):
         t0 = datetime.fromisoformat(x["ts"])
         for i, h in enumerate(HORIZ):
             obj = (t0 + timedelta(days=h)).isoformat(timespec="minutes")
-            if obj not in real or datetime.fromisoformat(obj) < desde:
+            if obj not in real or datetime.fromisoformat(obj) < (desde_largo if h >= 7 else desde_corto):
                 continue
             et = x["tray"]["titular"][i] - real[obj] if "titular" in x["tray"] else None
             for m, tr in x["tray"].items():
@@ -229,7 +234,8 @@ def marcador(reg, conf, ts_ahora):
     for m, porh in err.items():
         res["modelos"][m] = {str(h): {"n": len(v), "dias": len({d for d, _, _ in v}),
                                       "error_medio_m": round(sum(a for _, a, _ in v) / len(v), 3),
-                                      "sesgo_m": round(sum(e for _, _, e in v) / len(v), 3)} for h, v in sorted(porh.items())}
+                                      "sesgo_m": round(sum(e for _, _, e in v) / len(v), 3),
+                                      "mediana_m": round(sorted(a for _, a, _ in v)[len(v) // 2], 3)} for h, v in sorted(porh.items())}
         if m in CANDIDATOS:
             res["modelos"][m]["_info"] = {k: CANDIDATOS[m][k] for k in ("hipotesis", "origen", "promocion")}
     # veredicto de cada candidato frente al titular, comparando SOLO las corridas en que corrieron los dos
@@ -249,18 +255,33 @@ def marcador(reg, conf, ts_ahora):
         def peor(h, tol):
             r = rel(m, int(h))
             return bool(r is not None and r < -tol)
+        def dias_h(h):
+            return (v.get(str(h)) or {}).get("dias", 0)
         suficiente = a1["dias"] >= conf["dias_min"] and a1["n"] >= conf["casos_min"]
-        if not suficiente:
-            estado = "midiendo"
-        elif mejora >= conf["mejora_min"] and not peor("3", conf["tolerancia_3d"]) and not peor("7", conf["tolerancia_7d"]):
-            estado = "listo"
-        elif mejora <= -conf["mejora_min"]:
+        largo_ok = dias_h(7) >= conf.get("dias_min_7d", 5) and dias_h(14) >= conf.get("dias_min_14d", 5)
+        if mejora <= -conf["mejora_min"] and suficiente:
             estado = "pierde"
-        else:
+        elif not suficiente:
+            estado = "midiendo"
+        elif mejora < conf["mejora_min"]:
             estado = "empate"
+        elif peor("3", conf["tolerancia_3d"]) or peor("7", conf["tolerancia_7d"]) or peor("14", conf.get("tolerancia_14d", 0.05)):
+            estado = "empeora a largo plazo"
+        elif not largo_ok:
+            estado = "esperando 7 y 14 días"
+        else:
+            estado = "listo"
+        med = a1.get("mediana_m")
+        nivel = None if med is None else ("objetivo" if med * 100 <= conf.get("objetivo_cm", 5) else "posible" if med * 100 <= conf.get("posible_cm", 7) else "lejos")
         ver[m] = {"estado": estado, "mejora_1d": round(mejora, 3), "dias": a1["dias"], "casos": a1["n"],
-                  "falta_dias": max(0, conf["dias_min"] - a1["dias"])}
+                  "falta_dias": max(0, conf["dias_min"] - a1["dias"]), "mediana_1d_m": med, "nivel": nivel,
+                  "mejora_7d": None if rel(m, 7) is None else round(rel(m, 7), 3), "mejora_14d": None if rel(m, 14) is None else round(rel(m, 14), 3),
+                  "dias_7d": dias_h(7), "dias_14d": dias_h(14)}
     res["veredicto"] = ver
+    t1 = (res["modelos"].get("titular") or {}).get("1") or {}
+    if t1.get("mediana_m") is not None:
+        mt = t1["mediana_m"] * 100
+        res["titular_nivel"] = {"mediana_1d_cm": round(mt, 1), "nivel": "objetivo" if mt <= conf.get("objetivo_cm", 5) else "posible" if mt <= conf.get("posible_cm", 7) else "lejos"}
     # importancia de variables: qué tanto se relaciona cada una con el error del titular a 1 día
     imp = {}
     if len(casos_imp) >= 8:

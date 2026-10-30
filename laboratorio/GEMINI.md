@@ -32,8 +32,10 @@ Eres **Gemini**, uno de los dos revisores independientes del sistema de mejora a
   para que la página (`modelo.js`) haga exactamente el mismo cálculo sin cambiar código.
 - Se registra en `CANDIDATOS` con `hipotesis`, `origen` y `promocion`: **"auto"** (solo cambia entradas que ya se
   publican) o **"luis"** (cambia la metodología del número grande o necesitaría tocar `modelo.js`; espera a Luis).
-- Regla de reemplazo (`laboratorio/config.json`): ≥ 10 % menos error medio a 1 día, ≥ 7 días y ≥ 40 casos, sin empeorar
-  más de 5 % a 3 días ni más de 10 % a 7 días.
+- Meta de Luis: error típico (mediana) a 1 día ≤ 5 cm ("objetivo"); ≤ 7 cm es "posible". Regla de reemplazo
+  (`laboratorio/config.json`): ≥ 10 % menos error medio a 1 día (≥ 7 días, ≥ 40 casos, mismas corridas) y sin empeorar
+  más de 5 % a 3, 7 ni 14 días, con al menos 5 días medidos a 7 y a 14 días. El titular queda para siempre: un buen
+  candidato debe ser estable a largo plazo, no solo acertar mañana.
 
 ## Cómo funciona un candidato (Clima · `clima/laboratorio.py`)
 - Es una función `c_<id>(v, cal)`: `v` = lluvia diaria (mm) de cada modelo para una ciudad y un día; `cal` = calibración
