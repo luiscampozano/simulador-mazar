@@ -538,14 +538,62 @@ def simular_py(P, ctx, par, horizonte=60):
 MEMORIA_DESDE = "2026-10-28T20:00:00-05:00"
 
 
-def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
+# Cortes conocidos (Luis, 30-oct-2026): un anuncio de cortes es un HECHO, no ruido. Cada corrida guarda los cortes que
+# suponía por fecha; si el plan de hoy es distinto en alguna fecha futura, su trayectoria se corrige con la diferencia
+# que produce ese cambio (simulada con los datos de hoy) antes de promediar. Así el anuncio entra de una vez en la
+# memoria, el número grande y las trayectorias del laboratorio; los pronósticos (lluvia, río) se siguen promediando.
+# Corridas guardadas antes de CORTES_DESDE no traen "cortes": en las 48 h previas todas suponían 0 MW desde el 31 oct.
+CORTES_DESDE = "2026-10-30T17:00:00-05:00"
+
+
+def cortes_efectivos(P, ctx, fecha0, dias=60):
+    """MW de corte que la simulación usa en cada fecha (misma regla que simular_py). Solo fechas con corte."""
+    out, plan = {}, (ctx.get("cutPlan") or [])
+    for k in range(dias + 1):
+        dia = (ctx["diaSemana0"] + k) % 7
+        if k < len(plan) and isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool):
+            v = plan[k]
+        else:
+            v = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
+        if v:
+            out[(fecha0 + timedelta(days=k)).isoformat()] = round(float(v), 1)
+    return out
+
+
+def ajuste_por_cortes(P, ctx, par, fecha0, plan_hoy, horizonte=60):
+    """Devuelve f(plan_de_otra_corrida) → lista de diferencias de cota (m) por día desde hoy: lo que cambia la
+    trayectoria de HOY si en vez de los cortes que esa corrida suponía se usan los de hoy (solo fechas desde mañana).
+    None si no hay diferencia."""
+    cache = {}
+    fechas = [(fecha0 + timedelta(days=k)).isoformat() for k in range(1, horizonte + 1)]
+    base = [float(plan_hoy.get(fecha0.isoformat(), 0.0))] + [float(plan_hoy.get(f, 0.0)) for f in fechas]
+
+    def dz(plan_e, hasta=None):
+        # hasta: última fecha que cubría esa corrida; más allá se toma el plan de hoy (no hay diferencia que corregir)
+        alt = [base[0]] + [float(plan_e.get(f, 0.0)) if (hasta is None or f <= hasta) else b for f, b in zip(fechas, base[1:])]
+        if all(abs(x - y) < 1 for x, y in zip(base, alt)):
+            return None
+        clave = tuple(round(x) for x in alt)
+        if clave not in cache:
+            c1 = dict(ctx, cutPlan=base, memoria=None); c2 = dict(ctx, cutPlan=alt, memoria=None)
+            d1, _ = simular_py(dict(P), c1, par, horizonte=horizonte)
+            d2, _ = simular_py(dict(P), c2, par, horizonte=horizonte)
+            cache[clave] = [a["cotaV"] - b["cotaV"] for a, b in zip(d1, d2)]
+        return cache[clave]
+    return dz
+
+
+def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, ajuste=None):
     """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
     el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
     como caudal de corrección diario (m³/s) para que ningún dato suelto mueva sola la proyección."""
     t_now = datetime.fromisoformat(ts)
     cv = [round(d["cotaV"], 3) for d in diarios]
     reg = [e for e in _leer_json(F_TRAY, []) if e.get("ts") != ts]
-    reg.append({"ts": ts, "cota": cota0, "cv": cv, "al": 1})   # al: trayectoria alineada (cv[k] = cota en el día k)
+    nueva = {"ts": ts, "cota": cota0, "cv": cv, "al": 1}   # al: trayectoria alineada (cv[k] = cota en el día k)
+    if cortes is not None:
+        nueva["cortes"] = cortes                          # cortes que suponía esta corrida, por fecha (solo > 0)
+    reg.append(nueva)
     reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 72 * 3600]
     reg.sort(key=lambda e: e["ts"])
     os.makedirs("registro", exist_ok=True)
@@ -571,6 +619,31 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
             usadas.append((e, o))
     if not usadas:
         return None, 0, None
+    # Cortes conocidos: corrige las corridas que suponían otros cortes (ver CORTES_DESDE). No se guarda corregido:
+    # cada corrida recalcula la diferencia con los datos de ese momento, y si un corte se cancela, se deshace solo.
+    n_cortes = 0
+    if ajuste is not None and cortes is not None:
+        lim = datetime.fromisoformat(CORTES_DESDE)
+        def en0(r, x):
+            if x <= 0:
+                return 0.0
+            return en(r, x)
+        nuevas = []
+        for e, o in usadas:
+            if e["ts"] != ts and e.get("al"):
+                pe = e.get("cortes")
+                if pe is None:
+                    pe = {} if datetime.fromisoformat(e["ts"]) < lim else cortes
+                try:
+                    hasta = (datetime.fromisoformat(e["ts"]).date() + timedelta(days=len(e["cv"]) - 1)).isoformat()
+                    r = ajuste(pe, hasta) if isinstance(pe, dict) else None
+                except Exception:
+                    r = None   # una entrada dañada no apaga la memoria: esa corrida queda sin corregir
+                if r:
+                    e = dict(e, cv=[c + en0(r, k - o) for k, c in enumerate(e["cv"])])
+                    n_cortes += 1
+            nuevas.append((e, o))
+        usadas = nuevas
     # Peso de cada corrida: (1) antigüedad, la mitad cada 24 h; (2) acierto, comparando lo que dijo con la cota REAL de
     # las corridas que vinieron después (error de 0,5 m → pesa 60 % menos). La corrida más nueva, que aún no se puede
     # comparar, recibe el mejor acierto del grupo. Probado con 52 corridas: mismo error a 1–3 días que pesos iguales,
@@ -622,7 +695,7 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0):
         return {"dias": round(dias, 1), "rango": [round(lo, 1), round(hi, 1)],
                 "entran": round(sum(w for _, w, x in vals if x) / sw, 2)}
     numero = {"critica": num(2116.0), "parada": num(2115.0), "corridas": len(usadas),
-              "peso_ultima": round(pesos[-1] / sw, 3),
+              "peso_ultima": round(pesos[-1] / sw, 3), "corregidas_por_cortes": n_cortes,
               "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"}
     return mem, len(usadas), numero
 
@@ -1580,7 +1653,16 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     try:
         zc_foto = zona_critica_py(diarios, cruce, datos["cota"])
         ts_mem = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")
-        mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par)
+        try:
+            f0 = datetime.fromisoformat(datos["fecha"]).date()
+            plan_hoy = cortes_efectivos(P, ctx, f0)
+            aj_cortes = ajuste_por_cortes(P, ctx, par, f0, plan_hoy)
+        except Exception as e:
+            plan_hoy, aj_cortes = None, None
+            log(f"Cortes conocidos: {e}")
+        mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par, cortes=plan_hoy, ajuste=aj_cortes)
+        if numero_corridas and numero_corridas.get("corregidas_por_cortes"):
+            log(f"Cortes conocidos: {numero_corridas['corregidas_por_cortes']} corridas de las últimas 48 h corregidas con el plan de cortes de hoy")
         mod["prediccion_foto"] = {"dias_critica": round(zc_foto["entrada"], 1) if zc_foto["entrada"] is not None else None,
                                   "cota_3d": round(diarios[3]["cota"], 2), "cota_5d": round(diarios[5]["cota"], 2)}
         if mem:
