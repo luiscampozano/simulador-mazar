@@ -635,7 +635,8 @@ function drawAciertos(){
   const fh = s => { const d=new Date(s); return dlabel(d)+" "+String(d.getHours()).padStart(2,"0")+":00"; };
   const u = ac.ultimo_1d;
   const tono = Math.abs(u.err)<0.15 ? "acertó" : (u.err>0 ? "fue optimista" : "fue pesimista");
-  el("acHoy").innerHTML = "<b>Hace 24 horas</b> ("+fh(u.pred_ts)+") el modelo dijo que a las "+fh(u.obj_ts).split(" ").pop()+" de hoy Mazar estaría en <b>"+c2(u.pred)+" m</b>. Fue <b>"+c2(u.real)+" m</b>: diferencia "+cm(u.err)+", "+tono+".";
+  const sm = (ac.semana||{})["1"]; const semTxt = sm ? "<b>Última semana, a 1 día:</b> error típico <b>"+fmt(sm.mediana_m*100)+" cm</b>; 9 de cada 10 veces menos de "+fmt(sm.p90_m*100)+" cm. Suponer que el nivel no cambia fallaría "+fmt(sm.persistencia_m*100)+" cm en promedio (el modelo: "+fmt(sm.error_medio_m*100)+" cm).<br>" : "";
+  el("acHoy").innerHTML = semTxt + "<b>Hace 24 horas</b> ("+fh(u.pred_ts)+") el modelo dijo que a las "+fh(u.obj_ts).split(" ").pop()+" de hoy Mazar estaría en <b>"+c2(u.pred)+" m</b>. Fue <b>"+c2(u.real)+" m</b>: diferencia "+cm(u.err)+", "+tono+".";
   const filas = (ac.recientes_1d||[]).slice().reverse().map(v => `<tr><td>${fh(v.pred_ts)}</td><td>${fh(v.obj_ts)}</td><td class="num">${c2(v.pred)}</td><td class="num">${c2(v.real)}</td><td class="num">${cm(v.err)}</td></tr>`).join("");
   el("acTbl").innerHTML = "<thead><tr><th>Dijo el</th><th>Para el</th><th>Predijo (m)</th><th>Real (m)</th><th>Diferencia</th></tr></thead><tbody>"+filas+"</tbody>";
   const ph = ac.por_horizonte || {};
