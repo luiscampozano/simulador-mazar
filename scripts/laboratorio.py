@@ -82,6 +82,14 @@ def c_sin_memoria(P, ctx, mod):
     return P, ctx, {"memoria": None}
 
 
+def c_sin_paro_coca(P, ctx, mod):
+    """No proyecta el paro de Coca Codo (supone que genera lo que permite su río desde ya)."""
+    if not ctx.get("ccsFactor"):
+        return None
+    ctx["ccsFactor"] = None
+    return P, ctx, {"ccsFactor": None}
+
+
 CANDIDATOS = {
     "coca_rio_real": {"f": c_coca_rio_real, "promocion": "auto", "origen": "auditoría Mazar 29 oct",
                       "hipotesis": "El modelo es pesimista a 7 días porque baja a Coca Codo con la historia del río; con el pronóstico del río real acertaría más."},
@@ -89,6 +97,8 @@ CANDIDATOS = {
                        "hipotesis": "Comprobar si el factor de autoajuste mejora o empeora el pronóstico."},
     "paute_sin_ajuste": {"f": c_paute_sin_ajuste, "promocion": "auto", "origen": "laboratorio",
                          "hipotesis": "Comprobar si el ajuste del caudal del Paute (≈42 % de lo que promete la lluvia) ayuda."},
+    "sin_paro_coca": {"f": c_sin_paro_coca, "promocion": "auto", "origen": "prueba del revisor 30 oct",
+                      "hipotesis": "Los paros de Coca Codo duran poco (mediana 5 h); proyectarlos empeora el pronóstico a 1 día."},
     "sin_memoria": {"f": c_sin_memoria, "promocion": "luis", "origen": "laboratorio",
                     "hipotesis": "Comprobar si promediar las corridas de 48 h estabiliza sin perder acierto."},
 }
