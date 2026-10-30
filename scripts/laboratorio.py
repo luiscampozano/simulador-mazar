@@ -122,7 +122,9 @@ CANDIDATOS["sin_paro_hoy"] = {"f": c_sin_paro_hoy, "nombre": "Sin el paro de hoy
 # Diagnóstico: el titular es PESIMISTA y el sesgo crece con el plazo (aciertos.por_horizonte al 30 oct: −0,13 m a 1 día,
 # −0,39 a 2, −0,86 a 3, −2,32 a 5, −4,19 a 7; err = predicho − real) y el error a 1 día está autocorrelacionado
 # (−0,74 … −0,26 m en 8 corridas seguidas). Esta tanda prueba: (a) la misma maquinaria con otra fuerza (auto) y
-# (b) corrección del error reciente o del sesgo por plazo (luis: mecanismo nuevo).
+# (b) corrección del error reciente o del sesgo por plazo (luis: mecanismo nuevo). OJO si alguno de memoria se promueve:
+# hay que cambiar robot.py para aplicar la corrección DESPUÉS del paso de memoria (aplicar_titular corre antes y la
+# memoria la sobreescribe) y sumarla al campo modelo.memoria.
 
 def _dvdz(ctx, mod):
     """hm³ por metro de cota en la cota de hoy (curva de Mazar)."""
@@ -204,7 +206,7 @@ def c_autoajuste_completo(P, ctx, mod):
     r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
     if not isinstance(r, (int, float)) or r <= 0:
         return None
-    v = round(max(0.3, min(1.5, r)), 3)
+    v = round(max(0.5, min(1.3, r)), 3)
     ctx["ajuste"] = v
     return P, ctx, {"ajuste": v}
 
@@ -215,7 +217,8 @@ def _paute_fuerza(P, ctx, mod, cual):
     if not bruta or not isinstance(f, (int, float)):
         return None
     actual = ctx.get("serieMazar") or bruta
-    serie = [round(1 + (b - 1) * f, 4) if abs(a - b) > 1e-6 else a for a, b in zip(actual, bruta)]
+    f = max(0.0, min(1.5, float(f)))                       # mismo criterio que el robot: solo donde la lluvia promete más (b > 1)
+    serie = [round(1 + (b - 1) * f, 4) if b > 1 else a for a, b in zip(actual, bruta)]
     ctx["serieMazar"] = serie
     return P, ctx, {"serieMazar": serie}
 
@@ -256,8 +259,9 @@ def c_dia_semana_suave(P, ctx, mod):
 def c_humedo_completo(P, ctx, mod):
     """Combinación: río Coca real + Paute con el ajuste observado entero."""
     r = c_coca_rio_real(P, ctx, mod)
-    if r:
-        P, ctx, _ = r
+    if not r:
+        return None
+    P, ctx, _ = r
     r2 = _paute_fuerza(P, ctx, mod, "observado")
     if not r2:
         return None
@@ -266,7 +270,7 @@ def c_humedo_completo(P, ctx, mod):
 
 
 def c_cortes_siguen_7d(P, ctx, mod):
-    """Los cortes de hoy siguen 7 días más (el esquema a empresas continúa), en vez de valer solo hoy."""
+    """Los cortes de hoy siguen 7 días más (el esquema a empresas continúa), en vez de valer solo hoy. A 1 día no cambia nada: se mide a 3, 7 y 14 días."""
     plan = list(ctx.get("cutPlan") or [])
     hoy = plan[0] if plan and isinstance(plan[0], (int, float)) else None
     if not hoy:
@@ -287,7 +291,7 @@ _cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 �
 _cand("corrige_error_6", c_corrige_error_6, "luis", "Corrige el error de las 6 últimas", "Igual que la anterior pero con 6 verificaciones: más estable, reacciona más lento.")
 _cand("corrige_error_6_lento", c_corrige_error_6_lento, "luis", "Corrige el error (6) y lo arrastra 3 días", "La corrección del error reciente se apaga en ~3 días: debería ayudar también a 3 y 7 días si el sesgo es persistente.")
 _cand("sesgo_plazo_50", c_sesgo_plazo_50, "luis", "Quita la mitad del sesgo por plazo", "El titular es pesimista y más a más plazo (−0,13 m a 1 día, −4,2 m a 7); quitar la mitad del sesgo medido mejora 3–14 días sin sobrecorregir.")
-_cand("sesgo_plazo_100", c_sesgo_plazo_100, "luis", "Quita todo el sesgo por plazo", "Igual, quitando el sesgo entero: prueba el límite (puede sobrecorregir si cambia el clima).")
+_cand("sesgo_plazo_100", c_sesgo_plazo_100, "luis", "Quita todo el sesgo por plazo", "Igual, quitando el sesgo entero: prueba el límite (puede sobrecorregir: el sesgo mezcla verificaciones de versiones anteriores del modelo).")
 _cand("autoajuste_completo", c_autoajuste_completo, "auto", "Autoajuste con el valor medido entero", "El autoajuste recortado (0,84) se queda corto frente a lo medido (0,66): usarlo entero reduce el pesimismo de la bajada.")
 _cand("paute_ajuste_completo", c_paute_ajuste_completo, "auto", "Paute con el ajuste observado entero", "Llegó 135 % de lo que prometía la lluvia y el titular usa 111 %: con lo observado entero el caudal de entrada se acerca a la realidad.")
 _cand("coca_mitad", c_coca_mitad, "auto", "Río Coca a medio camino", "Punto medio entre el titular y el río real: menos riesgo que cambiar todo a la serie del río.")
@@ -371,7 +375,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
         if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
             continue
         try:
-            r = c["f"](_copia(P), _copia(ctx), mod)
+            r = c["f"](_copia(P), _copia(ctx), _copia(mod))
             if not r:
                 continue
             di, _ = simular(r[0], r[1], par, horizonte=HORIZ_REGION)
