@@ -271,6 +271,8 @@ def marcador(reg, conf, ts_ahora):
         imp = dict(sorted(imp.items(), key=lambda kv: -abs(kv[1]["con_error_abs"] or 0)))
     res["importancia_1d"] = imp
     res["config"] = conf
+    res["candidatos"] = {k: {kk: c[kk] for kk in ("hipotesis", "origen", "promocion")} for k, c in CANDIDATOS.items()}
+    res["corridas_registradas"] = len(reg["corridas"])
     return res
 
 
