@@ -7,7 +7,7 @@ import argparse, json, os, subprocess, sys, time, urllib.request, urllib.error
 
 MODELOS = ["gemini-4-argon", "gemini-3.8-flash"]
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
-MAX_CHARS = 120000
+MAX_CHARS = 220000
 MODELOS_SALTAR = set()   # cuota agotada o modelo no disponible: no reintentar   # tope de contexto por revisión (controla el costo)
 
 
@@ -65,7 +65,7 @@ def main():
     log = subprocess.run(["git", "log", "--format=%h %s%n%b", f"{a.base}..HEAD"], capture_output=True, text=True).stdout
     partes = [leer(a.manual, 30000), "\n\n# Commits del candidato\n" + log, "\n\n# Cambio propuesto (git diff)\n```diff\n" + diff[:40000] + "\n```"]
     for p in a.archivos:
-        partes.append(f"\n\n# Archivo: {p}\n```\n{leer(p, 30000)}\n```")
+        partes.append(f"\n\n# Archivo: {p}\n```\n{leer(p, 100000 if p.endswith(('robot.py', 'horario.py')) else 30000)}\n```")
     partes.append("\n\nRevisa el cambio propuesto según el manual. Empieza con la línea de VEREDICTO.")
     texto = "".join(partes)[:MAX_CHARS]
     m, t, uso = preguntar(texto)

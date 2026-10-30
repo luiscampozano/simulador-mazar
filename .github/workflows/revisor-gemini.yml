@@ -29,6 +29,6 @@ jobs:
         run: |
           git fetch -q origin main
           python3 scripts/revisor_gemini.py --manual laboratorio/GEMINI.md --base origin/main \
-            --archivos scripts/laboratorio.py laboratorio/config.json laboratorio/marcador.json laboratorio/IDEAS.md
+            --archivos scripts/laboratorio.py scripts/robot.py laboratorio/config.json laboratorio/marcador.json laboratorio/IDEAS.md
           gh api -X POST repos/${{ github.repository }}/commits/${{ github.sha }}/comments -F body=@revision_gemini.md > /dev/null
           cat revision_gemini.md >> "$GITHUB_STEP_SUMMARY"
