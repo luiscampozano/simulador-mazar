@@ -790,7 +790,20 @@ def resumen_aciertos(ver):
     ult = [v for v in ver if v["h"] == 1]
     ultimo = ult[-1] if ult else None
     recientes = [v for v in ver if v["h"] == 1][-8:]
-    return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes}
+    # Última semana (por fecha verificada): error típico (mediana), 9 de cada 10 por debajo de (p90) y comparación
+    # con "suponer que el nivel no cambia" (persistencia), que es la referencia mínima de cualquier pronóstico.
+    semana = {}
+    if ver:
+        lim = max(v["obj_ts"] for v in ver)[:10]
+        lim = (datetime.fromisoformat(lim) - timedelta(days=7)).date().isoformat()
+        for h in HORIZ_VER:
+            vv = [v for v in ver if v["h"] == h and v["obj_ts"][:10] > lim and v.get("cota0") is not None]
+            if len(vv) >= 5:
+                e = sorted(abs(v["err"]) for v in vv)
+                pers = sum(abs(float(v["cota0"]) - v["real"]) for v in vv) / len(vv)
+                semana[str(h)] = {"n": len(vv), "mediana_m": e[len(e) // 2], "p90_m": e[min(len(e) - 1, int(0.9 * len(e)))],
+                                  "error_medio_m": round(sum(e) / len(e), 2), "persistencia_m": round(pers, 2)}
+    return {"por_horizonte": out, "ultimo_1d": ultimo, "recientes_1d": recientes, "semana": semana}
 
 
 
@@ -1007,7 +1020,28 @@ def riesgo_crecida(rio, turb):
 
 
 PARO_UMBRAL = 0.5                      # Coca Codo genera menos de la mitad de lo que permite su río → paro (sedimentos, fallas)
-PARO_RECUPERA = [0.0, 0.25, 0.5, 0.75, 1.0]   # vuelta a lo normal día a día (0 = hoy, sigue en paro; 1 = recuperada)
+# Vuelta a lo normal día a día (0 = sigue en paro; 1 = recuperada). Historia de Celec (≈400 días, caudal turbinado hora a
+# hora): 31 paros, mediana 5 h, 9 de cada 10 duran 11 h o menos y solo 1 pasó de 24 h → al día siguiente casi siempre ya volvió.
+PARO_RECUPERA = [0.0, 0.95, 1.0]
+
+
+def coca_ahora(horas=3, ahora=None):
+    """Coca Codo en las últimas horas (Celec, hora a hora): MW reales (caudal turbinado × 8 unidades × 5,25) frente a lo
+    que permite el río. Sirve para saber si un paro del día ya terminó."""
+    rio = RIO if RIO else _leer_json(F_COCA_RIO, {})
+    tur = _leer_json(F_CCS_TURB, {})
+    ks = [k for k in sorted(tur) if k in rio][-horas:]
+    if len(ks) < 2:
+        return None
+    if ahora is not None:
+        ult = datetime.fromisoformat(ks[-1] + ":00").replace(tzinfo=EC)
+        if ahora - ult > timedelta(hours=4):
+            return None
+    real = sum(float(tur[k]) * 8 * 5.25 for k in ks) / len(ks)
+    pos = sum(ccs_mw_rio(float(rio[k])) for k in ks) / len(ks)
+    if pos < 200:
+        return None
+    return {"horas": [ks[0], ks[-1]], "real_mw": round(real), "posible_mw": round(pos), "fraccion": round(real / pos, 3)}
 
 
 def paro_ccs(serie, posible_mw):
@@ -1417,6 +1451,16 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     mod.pop("ccsFactor", None)
     try:
         fac, info_paro = paro_ccs(_leer_json(SERIE, {}), min(5 * hoy["qCoca"], 1200))
+        # ¿El paro ya terminó? Si en las últimas horas Coca Codo volvió a generar lo que permite su río, el paro de hoy
+        # no se proyecta a mañana (antes se suponía una recuperación en 4 días y el pronóstico salía pesimista).
+        if fac:
+            ah = coca_ahora(3, ahora)
+            if ah and ah["fraccion"] >= 0.6:
+                log(f"Coca Codo ya se recuperó: {ah['real_mw']} MW de {ah['posible_mw']} posibles en {ah['horas'][0][11:]}–{ah['horas'][1][11:]} h; el paro de hoy no se proyecta")
+                info_paro = dict(info_paro, paro=False, recuperado=ah)
+                fac = None
+            elif ah:
+                info_paro = dict(info_paro, ahora=ah)
         mod["ccs_paro"] = info_paro
         if fac:
             # ¿Cuánto del hueco cubre de verdad Paute? (el resto lo cubren térmicas, otras hidroeléctricas o menos demanda)
@@ -1437,9 +1481,9 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             log(f"Paute real hoy {info_paro['paute_real_mw']} MW frente a {info_paro['paute_sin_paro_mw']} sin paro: cubre el {cub * 100:.0f} % del hueco")
             mod["ccsFactor"] = fac; ctx["ccsFactor"] = fac
             log(f"Coca Codo en PARO: genera {info_paro['real_mw']} MW de {info_paro['posible_mw']} que permite el río "
-                f"({info_paro['fraccion'] * 100:.0f} %, {info_paro['dia']}); el modelo lo usa hoy y lo recupera en 4 días: {fac}")
+                f"({info_paro['fraccion'] * 100:.0f} %, {info_paro['dia']}); el modelo lo usa hoy y supone que mañana ya volvió (paros: mediana 5 h): {fac}")
             notas["coca"] = (notas.get("coca") or "") + (f" ⚠️ Coca Codo está generando solo {info_paro['real_mw']} MW de ~{info_paro['posible_mw']} posibles "
-                             f"(probable paro por sedimentos): Paute cubre ~{info_paro.get('cubre_paute', 1) * 100:.0f} % del hueco. El modelo lo incluye y supone que se recupera en ~4 días.")
+                             f"(probable paro por sedimentos): Paute cubre ~{info_paro.get('cubre_paute', 1) * 100:.0f} % del hueco. El modelo lo incluye hoy y supone que mañana ya volvió (9 de cada 10 paros duran menos de 12 h).")
         elif info_paro:
             log(f"Coca Codo normal: {info_paro['real_mw']} MW de {info_paro['posible_mw']} posibles ({info_paro['fraccion'] * 100:.0f} %)")
     except Exception as e:
