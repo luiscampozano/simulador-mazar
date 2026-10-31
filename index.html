@@ -645,7 +645,7 @@ function drawSemana(){
   const b = S.mejor;
   const kpi = (v,c,t) => `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><div class="num" style="font-size:26px;font-weight:800;color:${c}">${v}</div><div class="note" style="margin:2px 0 0">${t}</div></div>`;
   el("semKpis").innerHTML = kpi(S.n5+" de "+S.n,"var(--ok, #16a34a)","predicciones con error de 5 cm o menos") +
-    (S.n10 != null ? kpi(S.n10+" de "+S.n,"#2dd4bf","predicciones con error de más de 5 y hasta 10 cm") : "") +
+    (S.n10 != null ? kpi(S.n10+" de "+S.n,"#0d9488","predicciones con error de más de 5 y hasta 10 cm") : "") +
     kpi(cm(b.err),"var(--water)","mejor acierto: dijo "+m2(b.pred)+" m para el "+fd(b.obj_ts)+" a las "+hh(b.obj_ts)+" y fue "+m2(b.real)+" m") +
     kpi(cm(S.mediana_m),"var(--warn, #d97706)","error típico de la semana (9 de cada 10, menos de "+cm(S.p90_m)+")");
   el("semTbl").innerHTML = "<thead><tr><th>Día</th><th>Pred.</th><th>≤ 5 cm</th><th>Error típico</th><th>Mejor acierto</th></tr></thead><tbody>" +
