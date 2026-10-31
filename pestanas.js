@@ -259,7 +259,7 @@
   function ctxBase(extra) {
     const m = D.modelo || {};
     return Object.assign({ cota: D.cota, inicio: new Date(D.fecha), diaSemana0: m.diaSemana0, amaluzaCota: m.amaluzaCota, amaluzaRitmo: m.amaluzaRitmo,
-      deltaDia: m.deltaDia, cutDias: m.cutDias, cutPlan: m.cutPlan, ajuste: m.ajuste, serieMazar: m.serieMazar, serieCoca: m.serieCoca, memoria: m.memoria, horizonte: 60 }, extra || {});
+      deltaDia: m.deltaDia, cutDias: m.cutDias, feriados: m.feriados, cutPlan: m.cutPlan, ajuste: m.ajuste, serieMazar: m.serieMazar, serieCoca: m.serieCoca, memoria: m.memoria, horizonte: 60 }, extra || {});
   }
   function correr(qCoca, wCoca, extra) {
     const h = D.hoy;

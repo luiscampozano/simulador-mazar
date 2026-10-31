@@ -63,7 +63,7 @@
          cut, imp, therm, other, ccsFn (opcional)}
      ctx: {cota, inicio (Date), diaSemana0 (0 = domingo, día de la lectura en Ecuador), amaluzaCota, amaluzaRitmo (hm³/día que se saca de Amaluza),
            deltaDia [7] (MW extra de Paute por día de la semana, 0 = domingo), cutDias [7] (true/false),
-           cutPlan [] (MW de cortes ya anunciados o de emergencia por día desde la lectura: 0 = día de la lectura; null = usar cutDias),
+           feriados [] (true = ese día Paute se comporta como domingo; 0 = día de la lectura), cutPlan [] (MW de cortes ya anunciados o de emergencia por día desde la lectura: 0 = día de la lectura; null = usar cutDias),
            serieMazar, serieCoca (caudal relativo al de hoy, día a día), horizonte,
            ajuste (factor que corrige la bajada según los aciertos recientes; 1 = sin corrección),
            memoria [] (m³/s por día: lo que las corridas de las últimas 48 h dicen distinto a la de ahora;
@@ -99,7 +99,8 @@
       const kd = Math.floor(t);
       const plan = ctx.cutPlan && ctx.cutPlan[kd];
       const cutHoy = (plan != null && plan !== false) ? +plan : ((!ctx.cutDias || ctx.cutDias[dia]) ? P.cut : 0);
-      const demand = P.demanda + ((ctx.deltaDia && ctx.deltaDia[dia]) || 0) - cutHoy;
+      const fer = Array.isArray(ctx.feriados) && ctx.feriados[kd];   // feriado: Paute como un domingo (historial 2010–2026)
+      const demand = P.demanda + ((ctx.deltaDia && ctx.deltaDia[fer ? 0 : dia]) || 0) - cutHoy;
       const ccsT = ccs(qcoca) * facAt(t);
       // Otras hidroeléctricas: la parte con río pronosticado (Agoyán, San Francisco, Delsitanisagua, Minas San Francisco)
       // sigue a su propio río; el resto sigue al caudal de la Amazonía norte, como antes.
