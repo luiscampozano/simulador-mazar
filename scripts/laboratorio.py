@@ -302,6 +302,53 @@ _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute obse
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
+def c_memoria_desde_dia3(P, ctx, mod):
+    """Auditor 31 oct (versión corregida de memoria_solo_largo de Gemini, rechazada por el revisor: al poner en 0 la
+    memoria de los días 0 y 1 el volumen quitado faltaba para siempre). Aquí la memoria de 48 h no actúa los días 0 y 1
+    (a 1 y 2 días = sin_memoria) y ese caudal se devuelve a medias en los días 2 y 3: desde el día 4 la cota acumulada es
+    la del titular. Mide si la memoria solo estorba a corto plazo."""
+    mem = ctx.get("memoria")
+    if not isinstance(mem, list) or not mem:
+        return None
+    L = len(mem)
+    full = [float(mem[min(i, L - 1)] or 0) for i in range(max(L, 5))]   # el último valor se repite igual que en el robot
+    quitado = full[0] + full[1]
+    full[0] = full[1] = 0.0
+    full[2] += quitado / 2; full[3] += quitado / 2
+    nueva = [round(x, 2) for x in full]
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+def c_sin_memoria_paute_bruto(P, ctx, mod):
+    """Auditor 31 oct: combina los dos candidatos que mejor van a 1 día (sin_memoria +44 %, paute_sin_ajuste +12 %,
+    1 día medido): solo la corrida de ahora y el caudal del Paute como lo promete la lluvia."""
+    s = mod.get("serieMazarBruta")
+    if not s:
+        return None
+    ctx["memoria"] = None
+    ctx["serieMazar"] = list(s)
+    return P, ctx, {"memoria": None, "serieMazar": list(s)}
+
+
+def c_memoria_mitad(P, ctx, mod):
+    """Gemini 31 oct (aprobado por el auditor y el Claude independiente): la memoria de 48 h a la mitad."""
+    mem = ctx.get("memoria")
+    if not mem:
+        return None
+    nueva = [round(float(x) * 0.5, 2) for x in mem]
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["memoria_mitad"] = {"f": c_memoria_mitad, "promocion": "luis", "origen": "Gemini 2026-10-31", "nombre": "Memoria de 48 h a la mitad",
+                               "hipotesis": "Reducir a la mitad el caudal de corrección de la memoria de 48 h disminuye el error por rezago a 1 día hacia la meta de 5 cm sin perder toda la estabilidad de promediar corridas."}
+CANDIDATOS["memoria_desde_dia3"] = {"f": c_memoria_desde_dia3, "promocion": "luis", "origen": "auditor 2026-10-31", "nombre": "Memoria solo desde el día 3",
+    "hipotesis": "La memoria de 48 h (hoy +17 m³/s el día 0) mete el rezago que hace que el titular diga de más a 1 día (sesgo +12 cm); quitándola los días 0–1 y devolviendo ese caudal en los días 2–3, el error a 1 día baja como sin_memoria y desde el día 4 la cota es la del titular (no empeora a 7 y 14 días)."}
+CANDIDATOS["sin_memoria_paute_bruto"] = {"f": c_sin_memoria_paute_bruto, "promocion": "luis", "origen": "auditor 2026-10-31", "nombre": "Sin memoria + Paute sin ajuste",
+    "hipotesis": "Los dos cambios que mejor van a 1 día (sin_memoria y paute_sin_ajuste) suman: el error a 1 día baja más que con cada uno por separado."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
