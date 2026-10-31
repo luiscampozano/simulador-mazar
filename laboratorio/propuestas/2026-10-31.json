@@ -1,0 +1,90 @@
+{
+ "fecha": "2026-10-31",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 0.971,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "memoria_mitad",
+    "nombre": "Memoria de 48 h a la mitad",
+    "hipotesis": "Reducir a la mitad el caudal de corrección de la memoria de 48 h disminuye el error por rezago a 1 día hacia la meta de 5 cm sin perder toda la estabilidad de promediar corridas.",
+    "promocion": "luis",
+    "por_que": "En las primeras 4 verificaciones del marcador, el candidato `sin_memoria` logra una mediana de error de 5,0 cm (nivel objetivo) frente a 14,3 cm del titular. En `recientes_1d` se ve que cuando cambia la tendencia, el promedio de 48 h introduce un rezago (+14 a +16 cm de sesgo en las últimas corridas). Usar la mitad de la memoria busca acercarse a los 5 cm manteniendo la mitad del amortiguador contra saltos bruscos.",
+    "codigo": "def c_memoria_mitad(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    nueva = [round(float(x) * 0.5, 2) for x in mem]\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2124.27,
+     2125.64,
+     2117.17
+    ],
+    "candidato_1_7_14": [
+     2124.11,
+     2126.16,
+     2117.93
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_solo_largo",
+    "nombre": "Sin memoria en los primeros 2 días",
+    "hipotesis": "Apagar la memoria de 48 h en los días 0 y 1 y encenderla gradualmente desde el día 2 logra el acierto de `sin_memoria` a 1 día (~5 cm) conservando la estabilidad del número grande a 7 y 14 días.",
+    "promocion": "luis",
+    "por_que": "El candidato `sin_memoria` ya alcanza la meta de 5,0 cm de mediana a 1 día, pero eliminar la memoria por completo deja desprotegidos los horizontes de 7 y 14 días ante el ruido entre corridas. Si anulamos la corrección de memoria en el día 0, ponemos la mitad en el día 1 y la dejamos intacta desde el día 2, la trayectoria de corto plazo reacciona al instante a las condiciones de hoy mientras el largo plazo sigue promediado.",
+    "codigo": "def c_memoria_solo_largo(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    pesos = [0.0, 0.5]\n    nueva = [round(float(x) * (pesos[i] if i < len(pesos) else 1.0), 2) for i, x in enumerate(mem)]\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2124.27,
+     2125.64,
+     2117.17
+    ],
+    "candidato_1_7_14": [
+     2123.96,
+     2125.49,
+     2116.99
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "paute_freno_medio",
+    "nombre": "Paute con mitad de ajuste aprendido",
+    "hipotesis": "Aplicar la mitad del factor de ajuste de lluvia del Paute reduce el error a 1 día cuando el factor aprendido sobrecorrige en transiciones de lluvia a secano.",
+    "promocion": "auto",
+    "por_que": "En el marcador a 1 día, `paute_sin_ajuste` supera al titular (mediana 13,5 cm vs 14,3 cm, mejora de 8,5 %) y en la última corrida el titular sobreestima la subida de cota (+16 cm en `ultimo_1d`) en parte porque el ajuste del Paute infla la escorrentía esperada. Usar un punto medio entre la serie bruta (1,0) y el factor del titular (1,11) modera ese exceso sin descartar lo aprendido en la cuenca.",
+    "codigo": "def c_paute_freno_medio(P, ctx, mod):\n    bruta = mod.get(\"serieMazarBruta\")\n    info = mod.get(\"ajuste_paute\") or {}\n    f = info.get(\"factor\")\n    if not bruta or not isinstance(f, (int, float)):\n        return None\n    actual = ctx.get(\"serieMazar\") or bruta\n    f_med = max(0.0, min(1.5, 0.5 * (1.0 + float(f))))\n    serie = [round(1.0 + (b - 1.0) * f_med, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]\n    ctx[\"serieMazar\"] = serie\n    return P, ctx, {\"serieMazar\": serie}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2124.27,
+     2125.64,
+     2117.17
+    ],
+    "candidato_1_7_14": [
+     2124.27,
+     2125.66,
+     2117.2
+    ],
+    "cambios_mod": [
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-10-31"
+}

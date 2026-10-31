@@ -302,6 +302,47 @@ _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute obse
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
+def c_memoria_mitad(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not mem:
+        return None
+    nueva = [round(float(x) * 0.5, 2) for x in mem]
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["memoria_mitad"] = {"f": c_memoria_mitad, "promocion": "luis", "origen": "Gemini 2026-10-31", "nombre": "Memoria de 48 h a la mitad", "hipotesis": "Reducir a la mitad el caudal de corrección de la memoria de 48 h disminuye el error por rezago a 1 día hacia la meta de 5 cm sin perder toda la estabilidad de promediar corridas."}
+
+
+def c_memoria_solo_largo(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not mem:
+        return None
+    pesos = [0.0, 0.5]
+    nueva = [round(float(x) * (pesos[i] if i < len(pesos) else 1.0), 2) for i, x in enumerate(mem)]
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["memoria_solo_largo"] = {"f": c_memoria_solo_largo, "promocion": "luis", "origen": "Gemini 2026-10-31", "nombre": "Sin memoria en los primeros 2 días", "hipotesis": "Apagar la memoria de 48 h en los días 0 y 1 y encenderla gradualmente desde el día 2 logra el acierto de `sin_memoria` a 1 día (~5 cm) conservando la estabilidad del número grande a 7 y 14 días."}
+
+
+def c_paute_freno_medio(P, ctx, mod):
+    bruta = mod.get("serieMazarBruta")
+    info = mod.get("ajuste_paute") or {}
+    f = info.get("factor")
+    if not bruta or not isinstance(f, (int, float)):
+        return None
+    actual = ctx.get("serieMazar") or bruta
+    f_med = max(0.0, min(1.5, 0.5 * (1.0 + float(f))))
+    serie = [round(1.0 + (b - 1.0) * f_med, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]
+    ctx["serieMazar"] = serie
+    return P, ctx, {"serieMazar": serie}
+
+
+CANDIDATOS["paute_freno_medio"] = {"f": c_paute_freno_medio, "promocion": "auto", "origen": "Gemini 2026-10-31", "nombre": "Paute con mitad de ajuste aprendido", "hipotesis": "Aplicar la mitad del factor de ajuste de lluvia del Paute reduce el error a 1 día cuando el factor aprendido sobrecorrige en transiciones de lluvia a secano."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
