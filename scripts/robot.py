@@ -590,7 +590,7 @@ def ajuste_por_cortes(P, ctx, par, fecha0, plan_hoy, horizonte=60):
     return dz
 
 
-def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, ajuste=None):
+def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, ajuste=None, cortes_base=None):
     """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
     el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
     como caudal de corrección diario (m³/s) para que ningún dato suelto mueva sola la proyección."""
@@ -640,7 +640,9 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
             if e["ts"] != ts and e.get("al"):
                 pe = e.get("cortes")
                 if pe is None:
-                    pe = {} if datetime.fromisoformat(e["ts"]) < lim else cortes
+                    # sin "cortes" guardados: antes de CORTES_DESDE no suponían ninguno; después, los cortes de hoy SIN
+                    # feriados (cortes_base), porque esas corridas no sabían de los feriados
+                    pe = {} if datetime.fromisoformat(e["ts"]) < lim else (cortes_base if cortes_base is not None else cortes)
                 try:
                     hasta = (datetime.fromisoformat(e["ts"]).date() + timedelta(days=len(e["cv"]) - 1)).isoformat()
                     r = ajuste(pe, hasta) if isinstance(pe, dict) else None
@@ -1672,11 +1674,13 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         try:
             f0 = datetime.fromisoformat(datos["fecha"]).date()
             plan_hoy = cortes_efectivos(P, ctx, f0)
+            plan_sin_fer = cortes_efectivos(P, dict(ctx, feriados=None), f0)
             aj_cortes = ajuste_por_cortes(P, ctx, par, f0, plan_hoy)
         except Exception as e:
-            plan_hoy, aj_cortes = None, None
+            plan_hoy, aj_cortes, plan_sin_fer = None, None, None
             log(f"Cortes conocidos: {e}")
-        mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par, cortes=plan_hoy, ajuste=aj_cortes)
+        mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par, cortes=plan_hoy, ajuste=aj_cortes,
+                                                       cortes_base=plan_sin_fer)
         if numero_corridas and numero_corridas.get("corregidas_por_cortes"):
             log(f"Cortes conocidos: {numero_corridas['corregidas_por_cortes']} corridas de las últimas 48 h corregidas con el plan de cortes de hoy")
         mod["prediccion_foto"] = {"dias_critica": round(zc_foto["entrada"], 1) if zc_foto["entrada"] is not None else None,

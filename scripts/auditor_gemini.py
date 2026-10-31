@@ -78,7 +78,7 @@ def probar(cid, codigo):
     P = {"qMazar": hoy["qMazar"], "qCoca": hoy["qCoca"], "wPaute": "auto", "wCoca": "auto", "demanda": hoy["dBase"] + 50 * (hoy["tCosta"] - 32),
          "cut": hoy["cut"], "imp": hoy["imp"], "therm": hoy["therm"], "other": hoy["other"]}
     ctx = {"cota": d["cota"], "diaSemana0": m["diaSemana0"], "amaluzaCota": m["amaluzaCota"], "amaluzaRitmo": m["amaluzaRitmo"],
-           "deltaDia": m["deltaDia"], "cutDias": m["cutDias"], "cutPlan": m.get("cutPlan"), "serieMazar": m["serieMazar"], "serieCoca": m["serieCoca"],
+           "deltaDia": m["deltaDia"], "cutDias": m["cutDias"], "cutPlan": m.get("cutPlan"), "feriados": m.get("feriados"), "serieMazar": m["serieMazar"], "serieCoca": m["serieCoca"],
            "ccsFactor": m.get("ccsFactor"), "otrasRios": m.get("otrasRios"), "ajuste": m.get("ajuste"), "memoria": m.get("memoria")}
     P0, c0 = L._copia(P), L._copia(ctx)
     r = f(L._copia(P), L._copia(ctx), L._copia(m))
