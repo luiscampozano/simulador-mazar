@@ -490,7 +490,9 @@ def simular_py(P, ctx, par, horizonte=60):
             cut = plan[kd]
         else:
             cut = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
-        demanda = P["demanda"] + ctx["deltaDia"][dia] - cut
+        fer = ctx.get("feriados") or []
+        dd = 0 if (kd < len(fer) and fer[kd]) else dia      # feriado: Paute como un domingo (historial 2010–2026)
+        demanda = P["demanda"] + ctx["deltaDia"][dd] - cut
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * fac_at(t)
         otr = ctx.get("otrasRios")
         if otr and otr.get("serie"):
@@ -547,14 +549,18 @@ CORTES_DESDE = "2026-10-30T17:00:00-05:00"
 
 
 def cortes_efectivos(P, ctx, fecha0, dias=60):
-    """MW de corte que la simulación usa en cada fecha (misma regla que simular_py). Solo fechas con corte."""
-    out, plan = {}, (ctx.get("cutPlan") or [])
+    """MW de corte que la simulación usa en cada fecha (misma regla que simular_py). Solo fechas con corte.
+    Un feriado (Luis, 31 oct) cuenta como corte equivalente: lo que Paute baja ese día frente a un día normal de esa
+    semana (deltaDia del día − deltaDia del domingo). Así las corridas que no sabían del feriado se corrigen de golpe."""
+    out, plan, fer = {}, (ctx.get("cutPlan") or []), (ctx.get("feriados") or [])
     for k in range(dias + 1):
         dia = (ctx["diaSemana0"] + k) % 7
         if k < len(plan) and isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool):
             v = plan[k]
         else:
             v = P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0
+        if k < len(fer) and fer[k] and ctx.get("deltaDia"):
+            v = v + max(0.0, ctx["deltaDia"][dia] - ctx["deltaDia"][0])
         if v:
             out[(fecha0 + timedelta(days=k)).isoformat()] = round(float(v), 1)
     return out
@@ -575,7 +581,8 @@ def ajuste_por_cortes(P, ctx, par, fecha0, plan_hoy, horizonte=60):
             return None
         clave = tuple(round(x) for x in alt)
         if clave not in cache:
-            c1 = dict(ctx, cutPlan=base, memoria=None); c2 = dict(ctx, cutPlan=alt, memoria=None)
+            # los feriados ya van como corte equivalente dentro de base/alt: no contarlos dos veces
+            c1 = dict(ctx, cutPlan=base, memoria=None, feriados=None); c2 = dict(ctx, cutPlan=alt, memoria=None, feriados=None)
             d1, _ = simular_py(dict(P), c1, par, horizonte=horizonte)
             d2, _ = simular_py(dict(P), c2, par, horizonte=horizonte)
             cache[clave] = [a["cotaV"] - b["cotaV"] for a, b in zip(d1, d2)]
@@ -1452,6 +1459,15 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             v = reg_m.get(fk)
         cplan.append(float(clamp(v, 0, 1500)) if isinstance(v, (int, float)) and not isinstance(v, bool) else None)
     mod["cutPlan"] = cplan if any(x is not None for x in cplan) else None
+    # Feriados nacionales (manual.feriados {"AAAA-MM-DD": nombre}): Paute se comporta como un domingo. Historial de Celec
+    # Sur 2010–2026 (178 feriados en días laborables): Paute baja ~175 MW, igual que el domingo vecino (~190 MW).
+    fer_m = manual.get("feriados") or {}
+    fer = [isinstance(fer_m, dict) and (hoy_d + timedelta(days=k)).isoformat() in fer_m for k in range(61)]
+    mod["feriados"] = fer if any(fer) else None
+    mod["feriados_txt"] = [{"fecha": (hoy_d + timedelta(days=k)).isoformat(), "nombre": fer_m[(hoy_d + timedelta(days=k)).isoformat()]}
+                           for k in range(61) if fer[k]] or None
+    if mod["feriados"]:
+        log("Feriados (Paute como domingo): " + ", ".join(f"{x['fecha']} {x['nombre']}" for x in mod["feriados_txt"]))
     if mod["cutPlan"]:
         log("Cortes por fecha: " + ", ".join(f"{(hoy_d + timedelta(days=k)).isoformat()} {x:.0f} MW"
                                              for k, x in enumerate(cplan) if x is not None))
@@ -1552,7 +1568,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
          "therm": hoy["therm"], "other": hoy["other"]}
     ctx = {"cota": datos["cota"], "diaSemana0": mod["diaSemana0"], "amaluzaCota": mod["amaluzaCota"],
            "amaluzaRitmo": mod["amaluzaRitmo"], "deltaDia": mod["deltaDia"], "cutDias": mod["cutDias"],
-           "cutPlan": mod.get("cutPlan"), "serieMazar": serieM, "serieCoca": serieC}
+           "cutPlan": mod.get("cutPlan"), "feriados": mod.get("feriados"), "serieMazar": serieM, "serieCoca": serieC}
     # Paro de Coca Codo (sedimentos/fallas): lo que de verdad genera frente a lo que permite su río
     mod.pop("ccsFactor", None)
     try:
