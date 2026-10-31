@@ -910,11 +910,13 @@ def resumen_aciertos(ver):
             vv = [v for v in sel if v["obj_ts"][:10] == d]
             e = sorted(abs(v["err"]) for v in vv)
             b = min(vv, key=lambda v: abs(v["err"]))
-            filas.append({"dia": d, "n": len(vv), "n5": sum(1 for x in e if x <= 0.05), "mediana_m": e[len(e) // 2],
+            filas.append({"dia": d, "n": len(vv), "n5": sum(1 for x in e if x <= 0.05), "n10": sum(1 for x in e if 0.05 < x <= 0.10), "mediana_m": e[len(e) // 2],
                           "mejor": {k: b[k] for k in ("pred_ts", "obj_ts", "pred", "real", "err")}, "paro_h": paro_h(d)})
         e = sorted(abs(v["err"]) for v in sel)
         b = min(sel, key=lambda v: (abs(v["err"]), v["obj_ts"]))
-        det = {"dias": filas, "n": len(sel), "n5": sum(1 for x in e if x <= 0.05), "mediana_m": e[len(e) // 2],
+        det = {"dias": filas, "n": len(sel), "n5": sum(1 for x in e if x <= 0.05),
+               "n10": sum(1 for x in e if 0.05 < x <= 0.10),   # error de más de 5 y hasta 10 cm (Luis, 31 oct)
+               "mediana_m": e[len(e) // 2],
                "p90_m": e[min(len(e) - 1, int(0.9 * len(e)))], "error_medio_m": round(sum(e) / len(e), 2),
                "persistencia_m": round(sum(abs(float(v["cota0"]) - v["real"]) for v in sel) / len(sel), 2),
                "mejor": {k: b[k] for k in ("pred_ts", "obj_ts", "pred", "real", "err")}}
