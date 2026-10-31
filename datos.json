@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-10-30T21:00:00-05:00",
-  "etiqueta": "datos al vie 30 oct 2026, 21:00 (actualización automática)",
-  "cota": 2123.51,
+  "fecha": "2026-10-30T23:00:00-05:00",
+  "etiqueta": "datos al vie 30 oct 2026, 23:00 (actualización automática)",
+  "cota": 2123.56,
   "historico": [
     [
       "2026-10-01",
@@ -105,47 +105,47 @@
     ],
     [
       "2026-10-30",
-      2123.51
+      2123.56
     ]
   ],
   "hoy": {
     "qMazar": 49,
     "wPaute": "auto",
-    "qCoca": 192,
+    "qCoca": 193,
     "wCoca": "auto",
-    "dBase": 4790,
+    "dBase": 4800,
     "tCosta": 31.5,
     "cut": 300,
-    "imp": 0,
+    "imp": 5,
     "therm": 1190,
     "other": 1650
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 49 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 216 m³/s en promedio de 24 h; a las 21:00 iba en 212 m³/s. Con ese río Coca Codo puede generar ~1022 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 991 MW de promedio hoy. En el modelo equivale a 192 m³/s (rendimiento aplicado 93.9 %).",
-    "importacion": "Promedio de las últimas 24 h: 2 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
-    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 725 MW y para eso Mazar suelta ≈ 47 m³/s mientras le entran 49: hoy sube ≈ 0,04 m/día. Promedio real de los últimos 7 días: sube 0,07 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1974,3 m, casi en su nivel mínimo, y casi no puede ayudar.",
-    "termica": "Promedio de las últimas 24 h: 1168 MW térmicos + 26 MW renovables no convencionales (Cenace, automático).",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 215 m³/s en promedio de 24 h; a las 23:00 iba en 237 m³/s. Con ese río Coca Codo puede generar ~1016 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 987 MW de promedio hoy. En el modelo equivale a 193 m³/s (rendimiento aplicado 94.9 %).",
+    "importacion": "Promedio de las últimas 24 h: 5 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
+    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 725 MW y para eso Mazar suelta ≈ 47 m³/s mientras le entran 49: hoy sube ≈ 0,04 m/día. Promedio real de los últimos 7 días: sube 0,08 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1974,0 m, casi en su nivel mínimo, y casi no puede ayudar.",
+    "termica": "Promedio de las últimas 24 h: 1164 MW térmicos + 26 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-10-31: 31.5 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 60 mm en los últimos 7 días y 63 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 59 mm en los últimos 7 días y 30 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a los últimos días: Paute generó 578 MW en promedio ponderado del 2026-10-20 al 2026-10-29 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~300 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4106 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1652 MW (hoy, 22 h, Cenace, automático). El complejo Paute generó 246 MW en ese mismo periodo.",
+    "demanda": "Equivale a los últimos días: Paute generó 578 MW en promedio ponderado del 2026-10-20 al 2026-10-29 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~300 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4100 MW (Cenace).",
+    "otras": "Generación medida de las demás hidroeléctricas: 1653 MW (hoy, 24 h, Cenace, automático). El complejo Paute generó 268 MW en ese mismo periodo.",
     "cortes": "30/10: Gobierno amplía desconexión AV1 (185 industrias) dom 1–mié 4 nov; MV sin cortes 1–6 nov (Teleamazonas/El Diario 30/10). 31/10 sin cortes. 300 MW/día"
   },
   "robot": {
-    "ultima_lectura": "2026-10-30T21:00:00-05:00",
-    "caudal_entrada_24h": 216,
-    "variacion_cota_24h": 0.58,
+    "ultima_lectura": "2026-10-30T23:00:00-05:00",
+    "caudal_entrada_24h": 215,
+    "variacion_cota_24h": 0.57,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
         "ok": true,
-        "lectura": "2026-10-30T21:00:00-05:00"
+        "lectura": "2026-10-30T23:00:00-05:00"
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-10-30T21:30",
+        "ultimo_dato": "2026-10-30T23:30",
         "medias_horas_propias": 48,
         "completadas_con_dia": null
       },
@@ -162,16 +162,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-10-30T21:56-05:00",
+    "ultima_ejecucion": "2026-10-30T23:54-05:00",
     "registro": [
-      "Memoria: 30 corridas de las últimas 48 h; sin memoria la zona crítica sería en 12.3 días",
+      "Memoria: 30 corridas de las últimas 48 h; sin memoria la zona crítica sería en 12.9 días",
       "Laboratorio: midiendo",
-      "Número grande (promedio ponderado de 30 corridas): zona crítica 16.7 días [12.2, 19.1], parada 17.7 días",
-      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.842}, semana seca {'7': 0.0, '14': 0.105, '30': 0.895}",
-      "Zona crítica (2.116): 15.986238829215406; ventana hasta None; mínimo {'t': 17.0, 'cota': 2115.0}",
-      "Modelo: 16.9 días hasta 2.115 (rango 15.72222983809258–24.470321224046792); hoy +0.04 m/día",
+      "Número grande (promedio ponderado de 30 corridas): zona crítica 16.4 días [12.1, 19.1], parada 17.4 días",
+      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.895}, semana seca {'7': 0.0, '14': 0.158, '30': 0.895}",
+      "Zona crítica (2.116): 15.63801132625232; ventana hasta None; mínimo {'t': 17.0, 'cota': 2115.0}",
+      "Modelo: 16.5 días hasta 2.115 (rango 15.369080171421764–23.683036135772767); hoy +0.04 m/día",
       "Predicción guardada en registro/predicciones.json",
-      "Verificación: 6 comparaciones nuevas; última a 1 día: dijo 2123.49 y fue 2123.51 (-0.02 m)"
+      "Verificación: 6 comparaciones nuevas; última a 1 día: dijo 2123.6 y fue 2123.56 (+0.04 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-20",
@@ -180,10 +180,10 @@
     },
     "ccs_referencia_mw": 1052,
     "ccs_rendimiento": {
-      "factor": 0.939,
-      "observado": 0.892,
-      "dias": 12,
-      "nota": "Coca Codo rindió 89 % de lo que permitía su río (promedio ponderado de 12 días); se aplica 93.9 %"
+      "factor": 0.949,
+      "observado": 0.911,
+      "dias": 13,
+      "nota": "Coca Codo rindió 91 % de lo que permitía su río (promedio ponderado de 13 días); se aplica 94.9 %"
     }
   },
   "manual": {
@@ -335,7 +335,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-10-30T21:56-05:00"
+    "actualizado": "2026-10-30T23:54-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -490,9 +490,9 @@
         1.422
       ]
     },
-    "amaluzaCota": 1974.27,
+    "amaluzaCota": 1973.97,
     "amaluzaRitmo": 0.0,
-    "amaluzaVolumen": 0.89,
+    "amaluzaVolumen": 0.75,
     "deltaDia": [
       -136.1,
       -0.3,
@@ -778,17 +778,17 @@
       "error_glofas": {
         "1": {
           "n": 195,
-          "error_medio": 48.5,
-          "sesgo": 1.6
+          "error_medio": 48.4,
+          "sesgo": 1.5
         },
         "2": {
           "n": 179,
-          "error_medio": 74.9,
-          "sesgo": -8.3
+          "error_medio": 74.8,
+          "sesgo": -8.4
         },
         "3": {
           "n": 160,
-          "error_medio": 76.5,
+          "error_medio": 76.6,
           "sesgo": -31.4
         }
       },
@@ -796,66 +796,66 @@
     },
     "serieCoca": [
       1.0,
-      0.9869,
-      1.0026,
-      0.9911,
-      0.9552,
-      0.9029,
-      0.8741,
-      0.8528,
-      0.8192,
+      1.0733,
+      1.042,
+      1.0191,
+      0.9771,
+      0.9272,
+      0.8939,
+      0.8681,
+      0.836,
+      0.7979,
+      0.7841,
+      0.778,
+      0.7877,
+      0.7921,
       0.781,
-      0.7593,
-      0.7734,
-      0.7831,
-      0.7874,
+      0.7699,
       0.7764,
-      0.7653,
-      0.7718,
-      0.7767,
-      0.7812,
-      0.7911,
-      0.8079,
-      0.8236,
-      0.8548,
-      0.8829,
-      0.8887,
-      0.8874,
-      0.8837,
-      0.8886,
-      0.9004,
-      0.9198,
-      0.931,
-      0.9174,
-      0.9238,
-      0.9333,
-      1.1738,
-      1.1738,
-      1.1738,
-      1.1723,
-      1.1081,
-      1.1325,
-      1.1338,
-      1.1057,
-      1.0687,
-      1.0491,
-      1.0402,
-      1.0285,
-      1.0144,
-      0.9928,
-      0.9716,
-      0.9741,
-      0.9774,
-      0.9594,
-      0.943,
-      0.934,
-      0.937,
-      0.9507,
-      0.9554,
-      0.9601,
-      0.9708,
-      0.9675,
-      0.9626
+      0.7813,
+      0.7859,
+      0.7958,
+      0.8126,
+      0.8285,
+      0.8599,
+      0.8881,
+      0.894,
+      0.8927,
+      0.8889,
+      0.8939,
+      0.9057,
+      0.9252,
+      0.9366,
+      0.9229,
+      0.9293,
+      0.9388,
+      1.1807,
+      1.1807,
+      1.1807,
+      1.1793,
+      1.1146,
+      1.1392,
+      1.1405,
+      1.1123,
+      1.075,
+      1.0553,
+      1.0464,
+      1.0346,
+      1.0204,
+      0.9987,
+      0.9773,
+      0.9798,
+      0.9832,
+      0.9651,
+      0.9486,
+      0.9396,
+      0.9426,
+      0.9564,
+      0.961,
+      0.9658,
+      0.9765,
+      0.9732,
+      0.9683
     ],
     "serieCocaBruta": [
       1.0,
@@ -984,26 +984,26 @@
       0.954
     ],
     "coca_rio": {
-      "q24": 216.0,
-      "mw24": 1022,
+      "q24": 214.6,
+      "mw24": 1016,
       "k": 5.25,
       "e": 21.0,
       "tope": 1200.0,
-      "ahora": 207.5,
-      "q72": 289.1,
+      "ahora": 235.0,
+      "q72": 290.9,
       "mediana7": 218.5,
       "crecida": false,
-      "mw_1d": 1009,
-      "mw_3d": 1013,
-      "mw_7d": 872
+      "mw_1d": 1091,
+      "mw_3d": 1036,
+      "mw_7d": 882
     },
     "serie_fecha": "2026-10-30",
     "ccs_paro": {
       "dia": "2026-10-30",
-      "horas": 22.0,
-      "real_mw": 991,
-      "posible_mw": 960,
-      "fraccion": 1.032,
+      "horas": 24.0,
+      "real_mw": 987,
+      "posible_mw": 965,
+      "fraccion": 1.022,
       "paro": false
     },
     "ccs_crecida": {
@@ -1045,172 +1045,172 @@
       "previsto": []
     },
     "otrasRios": {
-      "frac": 0.378,
+      "frac": 0.377,
       "serie": [
         1.0,
-        1.0329,
-        1.1165,
-        1.1126,
-        1.0963,
-        1.0339,
-        0.9687,
-        0.9194,
-        0.8777,
-        0.8673,
-        0.8681,
-        0.8712,
-        0.8746,
-        0.8743,
-        0.8771,
-        0.895,
-        0.9441,
-        0.9417,
-        0.9741,
-        1.0368,
-        1.0814,
-        1.0869,
-        1.0933,
-        1.1274,
-        1.1108,
-        1.0974,
-        1.0839,
-        1.083,
-        1.1062,
-        1.1243,
-        1.1189,
-        1.1076,
+        1.0328,
+        1.1121,
+        1.1082,
+        1.092,
+        1.0336,
+        0.9678,
+        0.918,
+        0.8758,
+        0.8654,
+        0.8662,
+        0.8694,
+        0.8729,
+        0.8728,
+        0.8757,
+        0.8939,
+        0.9436,
+        0.9411,
+        0.9738,
+        1.0371,
+        1.0772,
+        1.0827,
+        1.089,
+        1.1228,
+        1.1064,
+        1.0931,
+        1.0843,
+        1.0833,
+        1.1018,
+        1.1198,
+        1.1144,
         1.1032,
-        1.1219,
-        1.1233,
-        1.1197,
-        1.0674,
-        1.0437,
-        1.0187,
-        1.0133,
-        1.0132,
-        1.0105,
-        1.0079,
-        1.0058,
-        1.005,
-        1.0046,
-        1.0026,
-        1.0039,
-        1.0594,
-        1.1654,
-        1.1676,
-        1.1465,
-        1.1112,
-        1.0595,
-        1.063,
-        1.1075,
-        1.1252,
+        1.0988,
+        1.1174,
+        1.1187,
+        1.1152,
+        1.0669,
+        1.043,
+        1.0176,
+        1.0122,
+        1.0122,
+        1.0095,
+        1.0068,
+        1.0048,
+        1.004,
+        1.0036,
+        1.0016,
+        1.003,
+        1.059,
+        1.1606,
+        1.1627,
+        1.1418,
+        1.111,
+        1.0588,
+        1.0624,
+        1.1074,
+        1.1206,
         1.1189,
-        1.0659,
-        1.0415,
-        1.0362
+        1.0652,
+        1.0405,
+        1.0352
       ]
     },
     "otras_rios_info": {
       "pastaza": {
-        "mw_ayer": 264,
+        "mw_ayer": 260,
         "rel_7d": 1.115,
         "aprendizaje": 0.5,
         "casos": 0
       },
       "zamora": {
-        "mw_ayer": 120,
+        "mw_ayer": 119,
         "rel_7d": 0.877,
         "aprendizaje": 0.5,
         "casos": 0
       },
       "jubones": {
-        "mw_ayer": 241,
+        "mw_ayer": 243,
         "rel_7d": 0.518,
         "aprendizaje": 0.5,
         "casos": 0
       },
-      "mw_total": 624,
+      "mw_total": 623,
       "other": 1650
     },
     "otras_sombra": {
-      "nueva": null,
-      "vieja": null,
-      "casos": 0
+      "nueva": 119,
+      "vieja": 114,
+      "casos": 11
     },
-    "ajuste": 0.837,
+    "ajuste": 0.835,
     "ajuste_info": {
-      "factor": 0.837,
+      "factor": 0.835,
       "dias": 9,
-      "casos": 127,
-      "ratio_mediana": 0.655,
-      "nota": "la realidad bajó 0.66 veces lo predicho; se corrige 0.837 (con 9 días)"
+      "casos": 128,
+      "ratio_mediana": 0.651,
+      "nota": "la realidad bajó 0.65 veces lo predicho; se corrige 0.835 (con 9 días)"
     },
     "prediccion_foto": {
-      "dias_critica": 12.3,
-      "cota_3d": 2124.42,
-      "cota_5d": 2124.61
+      "dias_critica": 12.9,
+      "cota_3d": 2124.91,
+      "cota_5d": 2125.24
     },
     "memoria": [
-      18.56,
-      33.12,
-      17.83,
-      26.56,
-      23.42,
-      18.24,
-      23.13,
-      19.68,
-      19.99,
-      10.97,
-      11.65,
-      12.86,
-      10.03,
-      8.25,
-      12.02,
-      13.57,
-      9.72,
-      17.04,
-      19.33,
-      16.84,
-      13.87,
-      14.22,
-      10.72,
-      2.25,
-      6.14,
-      8.09,
-      7.42,
-      5.55,
-      6.33,
-      5.21,
-      -0.81,
-      2.67,
-      2.86,
-      -5.06,
-      -12.3,
-      2.16,
-      3.2,
-      -3.03,
-      1.5,
+      11.44,
+      21.48,
+      9.11,
+      19.1,
+      17.2,
+      11.82,
+      17.5,
+      15.31,
+      15.93,
+      7.12,
+      9.02,
+      12.1,
+      10.33,
+      7.72,
+      11.7,
+      13.68,
+      8.61,
+      15.78,
+      17.98,
+      15.29,
+      12.42,
+      13.29,
+      10.3,
+      0.8,
+      4.89,
+      6.82,
+      6.0,
+      4.39,
+      5.89,
+      4.98,
+      -2.24,
+      1.55,
+      2.32,
+      -4.42,
+      -11.35,
+      1.35,
+      2.24,
+      -5.55,
+      -0.17,
+      -1.87,
+      -1.3,
+      -0.27,
+      3.37,
+      3.35,
+      -4.65,
+      -1.41,
+      0.34,
+      0.0,
+      -1.61,
+      0.7,
+      2.81,
+      -3.53,
+      -0.07,
+      0.97,
       -0.99,
-      0.01,
-      1.29,
-      4.47,
-      4.12,
-      -2.96,
-      -0.09,
-      1.57,
-      1.16,
-      -0.84,
-      0.75,
-      3.13,
-      -1.77,
-      1.44,
-      2.08,
-      -0.15,
-      -0.94,
-      3.18,
-      4.26,
-      -1.15,
-      5.43
+      -1.58,
+      2.77,
+      3.65,
+      -2.62,
+      4.14
     ],
     "memoria_info": {
       "corridas": 30,
@@ -1218,48 +1218,48 @@
       "nota": "promedio ponderado de las 30 corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"
     },
     "laboratorio": {
-      "actualizado": "2026-10-30T21:00-05:00",
+      "actualizado": "2026-10-30T23:00-05:00",
       "titular_1d_m": null,
       "candidatos": {}
     },
     "prediccion": {
-      "dias_zona_2120": 13.0,
+      "dias_zona_2120": 12.7,
       "rango_zona_2120": [
-        12.6,
-        14.8
+        12.3,
+        14.5
       ],
-      "dias": 16.9,
+      "dias": 16.5,
       "rango": [
-        15.7,
-        24.5
+        15.4,
+        23.7
       ],
       "ritmo_hoy_m_dia": 0.04,
       "numero": {
         "critica": {
-          "dias": 16.7,
+          "dias": 16.4,
           "rango": [
-            12.2,
+            12.1,
             19.1
           ],
           "entran": 1.0
         },
         "parada": {
-          "dias": 17.7,
+          "dias": 17.4,
           "rango": [
-            12.8,
-            20.1
+            12.7,
+            20.0
           ],
           "entran": 1.0
         },
         "corridas": 30,
         "peso_ultima": 0.062,
-        "corregidas_por_cortes": 26,
+        "corregidas_por_cortes": 25,
         "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"
       },
-      "dias_critica": 16.0,
+      "dias_critica": 15.6,
       "rango_critica": [
-        15.0,
-        21.8
+        14.7,
+        21.2
       ],
       "salida_critica": null,
       "parada_en_ventana": true,
@@ -1272,7 +1272,7 @@
       "pronostico": {
         "2120": {
           "7": 0.0,
-          "14": 0.632,
+          "14": 0.684,
           "30": 1.0
         },
         "2116": {
@@ -1283,23 +1283,23 @@
         "2115": {
           "7": 0.0,
           "14": 0.105,
-          "30": 0.842
+          "30": 0.895
         }
       },
       "semana_seca": {
         "2120": {
           "7": 0.0,
-          "14": 0.737,
+          "14": 0.789,
           "30": 1.0
         },
         "2116": {
           "7": 0.0,
-          "14": 0.211,
+          "14": 0.263,
           "30": 0.947
         },
         "2115": {
           "7": 0.0,
-          "14": 0.105,
+          "14": 0.158,
           "30": 0.895
         }
       }
@@ -1307,63 +1307,53 @@
     "aciertos": {
       "por_horizonte": {
         "1": {
-          "n": 156,
+          "n": 157,
           "dias": 13,
           "error_medio_m": 0.37,
           "sesgo_m": -0.13
         },
         "2": {
-          "n": 139,
+          "n": 140,
           "dias": 12,
-          "error_medio_m": 0.72,
+          "error_medio_m": 0.73,
           "sesgo_m": -0.39
         },
         "3": {
-          "n": 129,
+          "n": 130,
           "dias": 11,
           "error_medio_m": 1.13,
           "sesgo_m": -0.85
         },
         "5": {
-          "n": 101,
+          "n": 102,
           "dias": 9,
-          "error_medio_m": 2.36,
-          "sesgo_m": -2.24
+          "error_medio_m": 2.34,
+          "sesgo_m": -2.23
         },
         "7": {
-          "n": 80,
+          "n": 81,
           "dias": 7,
-          "error_medio_m": 4.18,
-          "sesgo_m": -3.99
+          "error_medio_m": 4.13,
+          "sesgo_m": -3.95
         },
         "10": {
-          "n": 36,
+          "n": 37,
           "dias": 4,
-          "error_medio_m": 6.82,
-          "sesgo_m": -6.82
+          "error_medio_m": 6.84,
+          "sesgo_m": -6.84
         }
       },
       "ultimo_1d": {
-        "pred_ts": "2026-10-29T21:00-05:00",
+        "pred_ts": "2026-10-29T23:00-05:00",
         "h": 1,
-        "obj_ts": "2026-10-30T21:00-05:00",
-        "cota0": 2122.92,
-        "pred": 2123.49,
-        "real": 2123.51,
-        "err": -0.02,
+        "obj_ts": "2026-10-30T23:00-05:00",
+        "cota0": 2122.99,
+        "pred": 2123.6,
+        "real": 2123.56,
+        "err": 0.04,
         "origen": "robot"
       },
       "recientes_1d": [
-        {
-          "pred_ts": "2026-10-29T08:00-05:00",
-          "h": 1,
-          "obj_ts": "2026-10-30T08:00-05:00",
-          "cota0": 2122.88,
-          "pred": 2123.04,
-          "real": 2123.35,
-          "err": -0.31,
-          "origen": "robot"
-        },
         {
           "pred_ts": "2026-10-29T09:00-05:00",
           "h": 1,
@@ -1433,50 +1423,60 @@
           "real": 2123.51,
           "err": -0.02,
           "origen": "robot"
+        },
+        {
+          "pred_ts": "2026-10-29T23:00-05:00",
+          "h": 1,
+          "obj_ts": "2026-10-30T23:00-05:00",
+          "cota0": 2122.99,
+          "pred": 2123.6,
+          "real": 2123.56,
+          "err": 0.04,
+          "origen": "robot"
         }
       ],
       "semana": {
         "1": {
-          "n": 88,
-          "mediana_m": 0.19,
+          "n": 89,
+          "mediana_m": 0.17,
           "p90_m": 0.41,
           "error_medio_m": 0.22,
           "persistencia_m": 0.37
         },
         "2": {
-          "n": 88,
+          "n": 89,
           "mediana_m": 0.3,
           "p90_m": 0.63,
-          "error_medio_m": 0.33,
-          "persistencia_m": 0.63
+          "error_medio_m": 0.35,
+          "persistencia_m": 0.64
         },
         "3": {
-          "n": 89,
-          "mediana_m": 0.47,
+          "n": 90,
+          "mediana_m": 0.48,
           "p90_m": 2.94,
           "error_medio_m": 0.81,
-          "persistencia_m": 0.94
+          "persistencia_m": 0.93
         },
         "5": {
-          "n": 88,
-          "mediana_m": 0.53,
+          "n": 89,
+          "mediana_m": 0.48,
           "p90_m": 6.04,
-          "error_medio_m": 2.32,
-          "persistencia_m": 1.17
+          "error_medio_m": 2.3,
+          "persistencia_m": 1.16
         },
         "7": {
-          "n": 80,
-          "mediana_m": 4.82,
-          "p90_m": 8.03,
-          "error_medio_m": 4.18,
-          "persistencia_m": 1.11
+          "n": 81,
+          "mediana_m": 4.79,
+          "p90_m": 7.98,
+          "error_medio_m": 4.13,
+          "persistencia_m": 1.1
         },
         "10": {
-          "n": 36,
-          "mediana_m": 7.55,
+          "n": 37,
+          "mediana_m": 7.47,
           "p90_m": 8.31,
-          "error_medio_m": 6.82,
-          "persistencia_m": 0.92
+          "error_medio_m": 6.84,
+          "persistencia_m": 0.97
         }
       },
       "semana_1d": {
@@ -1567,8 +1567,8 @@
           },
           {
             "dia": "2026-10-30",
-            "n": 13,
-            "n5": 2,
+            "n": 14,
+            "n5": 3,
             "mediana_m": 0.32,
             "mejor": {
               "pred_ts": "2026-10-29T21:00-05:00",
@@ -1580,9 +1580,9 @@
             "paro_h": 0
           }
         ],
-        "n": 88,
-        "n5": 20,
-        "mediana_m": 0.19,
+        "n": 89,
+        "n5": 21,
+        "mediana_m": 0.17,
         "p90_m": 0.41,
         "error_medio_m": 0.22,
         "persistencia_m": 0.37,
