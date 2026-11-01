@@ -589,7 +589,14 @@ def patron_demanda(manual, dias=91, min_por_dia=3):
         dx, dy = dv(xs), dv(ys)
         den = sum(x * x for x in dx)
         parte = max(0.5, min(1.0, sum(x * y for x, y in zip(dx, dy)) / den)) if len(xs) >= 30 and den > 0 else 0.8
-        return [round((x - m) * parte, 1) for x in med]
+        pat = [round((x - m) * parte, 1) for x in med]
+        try:   # último patrón válido: respaldo si los cortes diarios dejan sin días limpios (revisor)
+            with open(os.path.join("registro", "patron_demanda.json"), "w", encoding="utf-8") as fo:
+                json.dump({"fecha": ks[-1], "patron": pat, "parte_paute": round(parte, 3), "dias_regresion": len(xs),
+                           "dias_por_dia": [len(por[i]) for i in range(7)]}, fo)
+        except Exception:
+            pass
+        return pat
     except Exception:
         return None
 
@@ -1499,10 +1506,17 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     # sin cortes ni feriados): el de Paute escalado subestimaba los fines de semana (domingo −117 frente a ≈ −350 real;
     # sábado −25 frente a ≈ −150). Si no hay datos suficientes, se vuelve al patrón de Paute.
     pat = patron_demanda(manual)
+    fuente = "demanda nacional (Cenace, días sin cortes ni feriados) × parte de Paute"
+    if not pat:
+        g = _leer_json(os.path.join("registro", "patron_demanda.json"), {}) or {}
+        if isinstance(g.get("patron"), list) and len(g["patron"]) == 7:
+            pat, fuente = g["patron"], f"último patrón válido de la demanda ({g.get('fecha')})"
     if pat:
+        pd = _leer_json(os.path.join("registro", "patron_demanda.json"), {}) or {}
         mod["deltaDia"] = pat
-        mod["deltaDia_fuente"] = "demanda nacional (Cenace, días sin cortes ni feriados)"
-        log("Día de la semana: patrón de la demanda nacional " + ", ".join(f"{n} {v:+.0f}" for n, v in zip("DLMXJVS", pat)))
+        mod["deltaDia_fuente"] = fuente
+        log(f"Día de la semana ({fuente}; parte de Paute {pd.get('parte_paute')}, {pd.get('dias_regresion')} días): "
+            + ", ".join(f"{n} {v:+.0f}" for n, v in zip("DLMXJVS", pat)))
     else:
         p7 = (fis or {}).get("paute_prom_mw") or 900
         f = par["factor_dia_semana_lun_dom"]
