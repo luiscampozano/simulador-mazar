@@ -170,15 +170,15 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-01T08:17-05:00",
+    "ultima_ejecucion": "2026-11-01T08:22-05:00",
     "registro": [
-      "Memoria: 6 corridas de las últimas 48 h; sin memoria la zona crítica sería en 17.9 días",
+      "Cortes conocidos: 3 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
+      "Memoria: 9 corridas de las últimas 48 h; sin memoria la zona crítica sería en 17.9 días",
       "Laboratorio: coca_rio_real midiendo (-13% a 1 día, 2 días), sin_autoajuste midiendo (-1% a 1 día, 2 días), paute_sin_ajuste midiendo (+2% a 1 día, 2 días), sin_memoria midiendo (-54% a 1 día, 2 días), corrige_error_3 midiendo (-1% a 1 día, 2 días), corrige_error_6 midiendo (+10% a 1 día, 2 días), corrige_error_6_lento midiendo (+10% a 1 día, 2 días), sesgo_plazo_50 midiendo (+13% a 1 día, 2 días), sesgo_plazo_100 midiendo (+25% a 1 día, 2 días), autoajuste_completo midiendo (+1% a 1 día, 2 días), paute_ajuste_completo midiendo (+2% a 1 día, 2 días), coca_mitad midiendo (+2% a 1 día, 2 días), otros_rios_planos midiendo (-4% a 1 día, 2 días), dia_semana_suave midiendo (+4% a 1 día, 2 días), humedo_completo midiendo (+4% a 1 día, 2 días), cortes_siguen_7d midiendo (+0% a 1 día, 1 días), corrige_y_sesgo midiendo (-1% a 1 día, 2 días), ajustes_completos midiendo (+3% a 1 día, 2 días)",
-      "Número grande (promedio ponderado de 6 corridas): zona crítica 24.2 días [14.3, 60.0], parada 24.9 días",
-      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.737}, semana seca {'7': 0.0, '14': 0.105, '30': 0.737}",
-      "Zona crítica (2.116): 17.049886320995114; ventana hasta 34.9533292904488; mínimo {'t': 18.0, 'cota': 2115.0}",
-      "Modelo: 17.9 días hasta 2.115 (rango 16.675538618703392–58.19271577476845); hoy +1.14 m/día",
-      "Predicción guardada en registro/predicciones.json",
+      "Número grande (promedio ponderado de 9 corridas): zona crítica 15.6 días [12.7, 17.9], parada 16.4 días",
+      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.789}, semana seca {'7': 0.0, '14': 0.158, '30': 0.789}",
+      "Zona crítica (2.116): 15.591974607921866; ventana hasta 35.34144354556355; mínimo {'t': 17.0, 'cota': 2115.0}",
+      "Modelo: 16.3 días hasta 2.115 (rango 15.256868018063628–24.73141206831485); hoy +1.14 m/día",
       "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2124.24 y fue 2125.05 (-0.81 m)"
     ],
     "cortes_semana_medida": {
@@ -350,7 +350,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-01T08:17-05:00"
+    "actualizado": "2026-11-01T08:22-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -1248,71 +1248,71 @@
       "cota_5d": 2128.61
     },
     "memoria": [
-      -7.47,
-      -8.69,
-      -10.92,
-      -8.65,
-      -3.33,
-      -2.25,
-      -2.86,
-      -7.97,
-      -2.95,
-      -1.42,
-      -0.64,
-      1.05,
-      3.49,
-      3.33,
-      -2.27,
-      1.23,
-      1.59,
-      3.46,
-      10.48,
-      2.36,
-      5.49,
-      -1.8,
-      2.01,
-      1.32,
-      -1.85,
-      -3.76,
-      -2.83,
-      -2.77,
-      -7.89,
-      -1.33,
-      1.11,
-      4.52,
-      6.6,
-      5.88,
-      4.17,
-      -6.22,
-      1.48,
-      2.57,
-      2.01,
-      2.63,
-      5.11,
-      4.99,
-      -1.83,
-      2.46,
-      2.41,
-      2.47,
-      4.35,
-      6.82,
-      5.41,
+      -15.86,
+      -10.67,
+      -13.67,
+      -10.56,
+      -4.62,
+      -8.81,
+      -12.96,
+      -17.85,
+      -7.19,
+      -6.06,
+      -4.43,
+      -1.93,
+      -0.87,
+      -4.49,
+      -9.74,
+      0.07,
+      -0.35,
+      -0.09,
+      6.61,
+      -4.96,
+      -0.58,
+      -10.7,
+      -2.21,
+      -3.85,
+      -6.87,
+      -8.27,
+      -8.68,
+      -12.28,
+      -17.62,
+      -5.61,
+      -3.72,
+      1.18,
+      4.41,
+      0.62,
+      -4.95,
+      -13.92,
+      -2.38,
+      -1.72,
+      -1.99,
+      -0.9,
+      0.1,
+      -3.57,
+      -10.55,
+      -1.26,
+      -2.3,
+      -1.97,
+      0.66,
+      2.05,
+      -3.13,
+      -11.24,
+      -1.94,
       -2.28,
-      2.16,
-      2.75,
-      3.32,
-      9.57,
-      0.92,
-      5.39,
-      -1.29,
-      2.84,
-      2.9,
-      3.65
+      -1.2,
+      5.75,
+      -6.39,
+      -0.34,
+      -10.04,
+      -1.14,
+      -2.05,
+      -1.09
     ],
     "memoria_info": {
-      "corridas": 6,
+      "corridas": 9,
       "horas": 48,
-      "nota": "promedio ponderado de las 6 corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"
+      "nota": "promedio ponderado de las 9 corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"
     },
     "laboratorio": {
       "actualizado": "2026-11-01T08:00-05:00",
@@ -1411,48 +1411,48 @@
       }
     },
     "prediccion": {
-      "dias_zona_2120": 13.3,
+      "dias_zona_2120": 12.3,
       "rango_zona_2120": [
-        12.7,
-        16.7
+        11.8,
+        15.3
       ],
-      "dias": 17.9,
+      "dias": 16.3,
       "rango": [
-        16.7,
-        58.2
+        15.3,
+        24.7
       ],
       "ritmo_hoy_m_dia": 1.14,
       "numero": {
         "critica": {
-          "dias": 24.2,
+          "dias": 15.6,
           "rango": [
-            14.3,
-            60.0
+            12.7,
+            17.9
           ],
-          "entran": 0.82
+          "entran": 1.0
         },
         "parada": {
-          "dias": 24.9,
+          "dias": 16.4,
           "rango": [
-            15.1,
-            60.0
+            13.3,
+            18.7
           ],
-          "entran": 0.82
+          "entran": 1.0
         },
-        "corridas": 6,
-        "peso_ultima": 0.189,
-        "corregidas_por_cortes": 0,
+        "corridas": 9,
+        "peso_ultima": 0.146,
+        "corregidas_por_cortes": 3,
         "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"
       },
-      "dias_critica": 17.0,
+      "dias_critica": 15.6,
       "rango_critica": [
-        16.0,
-        31.6
+        14.5,
+        22.9
       ],
-      "salida_critica": 35.0,
+      "salida_critica": 35.3,
       "parada_en_ventana": true,
       "minimo_critica": {
-        "t": 18.0,
+        "t": 17.0,
         "cota": 2115.0
       }
     },
@@ -1460,35 +1460,35 @@
       "pronostico": {
         "2120": {
           "7": 0.0,
-          "14": 0.368,
-          "30": 0.947
+          "14": 0.632,
+          "30": 1.0
         },
         "2116": {
           "7": 0.0,
-          "14": 0.105,
-          "30": 0.737
+          "14": 0.211,
+          "30": 0.842
         },
         "2115": {
           "7": 0.0,
           "14": 0.105,
-          "30": 0.737
+          "30": 0.789
         }
       },
       "semana_seca": {
         "2120": {
           "7": 0.0,
-          "14": 0.474,
-          "30": 0.947
+          "14": 0.684,
+          "30": 1.0
         },
         "2116": {
           "7": 0.0,
-          "14": 0.105,
-          "30": 0.737
+          "14": 0.211,
+          "30": 0.842
         },
         "2115": {
           "7": 0.0,
-          "14": 0.105,
-          "30": 0.737
+          "14": 0.158,
+          "30": 0.789
         }
       }
     },
