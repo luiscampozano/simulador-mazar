@@ -1,0 +1,7 @@
+{
+ "fecha": "2026-11-01",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 1.399,
+ "estado": "respuesta sin JSON",
+ "crudo": "```json\n{\n \"propuestas\": [\n  {\n   \"id\": \"sesgo_plazo_y_error6\",\n   \"nombre\": \"Sesgo por plazo entero + corrección lenta (6)\",\n   \"hipotesis\": \"Sumar la corrección por error reciente de 6 verificaciones (que dio +6 % de mejora) sobre el sesgo por plazo entero (+23 % de mejora) reduce el error a 1 día hacia los 5 cm sin desestabilizar el horizonte de 7 a 14 días.\",\n   \"promocion\": \"luis\",\n   \"por_que\": \"En marcador.json, sesgo_plazo_100 es actualmente el modelo más exitoso con una mejora de +22,9 % en 1d (mediana baja a 42,7 cm), mientras que corrige_error_6 aporta +6,2 % por su mayor estabilidad frente a corrige_error_3. La variante existente corrige_y_sesgo combina el error de 3 puntos (que tuvo resultado negativo, -3,8 %)"
+}
