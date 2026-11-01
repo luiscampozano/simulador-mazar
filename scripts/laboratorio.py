@@ -481,6 +481,7 @@ def marcador(reg, conf, ts_ahora):
     desde_corto = t_ahora - timedelta(days=conf["ventana_dias"])                     # 1 a 5 días
     desde_largo = t_ahora - timedelta(days=conf.get("ventana_largo_dias", 14))       # 7, 10 y 14 días
     err = {}            # err[modelo][h] = [(fecha_objetivo, |error|, error)]
+    mov = {}            # mov[modelo][h] = [(movimiento real, movimiento predicho)] desde la cota de la corrida (análisis)
     pares = {}          # pares[modelo][h] = [(|error modelo|, |error titular|)] en las MISMAS corridas
     casos_imp = []      # (rasgos, error del titular a 1 día)
     for x in reg["corridas"]:
@@ -493,6 +494,8 @@ def marcador(reg, conf, ts_ahora):
             for m, tr in x["tray"].items():
                 e = tr[i] - real[obj]
                 err.setdefault(m, {}).setdefault(h, []).append((obj[:10], abs(e), e))
+                if x.get("cota") is not None:
+                    mov.setdefault(m, {}).setdefault(h, []).append((real[obj] - x["cota"], tr[i] - x["cota"]))
                 if m != "titular" and et is not None:
                     pares.setdefault(m, {}).setdefault(h, []).append((abs(e), abs(et)))
             if h == 1 and "titular" in x["tray"]:
@@ -503,6 +506,14 @@ def marcador(reg, conf, ts_ahora):
                                       "error_medio_m": round(sum(a for _, a, _ in v) / len(v), 3),
                                       "sesgo_m": round(sum(e for _, _, e in v) / len(v), 3),
                                       "mediana_m": round(sorted(a for _, a, _ in v)[len(v) // 2], 3)} for h, v in sorted(porh.items())}
+        for h, v in porh.items():   # análisis de aciertos (Luis, 31 oct): tramos acumulados, p90, dirección, eficiencia
+            ab = sorted(round(a, 2) for _, a, _ in v); mv = (mov.get(m) or {}).get(h) or []
+            st_h = res["modelos"][m][str(h)]
+            st_h["hasta"] = {str(c): sum(1 for a in ab if a <= c / 100 + 1e-9) for c in (5, 10, 15, 20, 30, 40)}
+            st_h["p90_m"] = ab[min(len(ab) - 1, int(0.9 * len(ab)))]
+            if mv:
+                st_h["direccion"] = round(sum(1 for r_, p_ in mv if (r_ > 0) == (p_ > 0)) / len(mv), 3)
+                st_h["persistencia_m"] = round(sum(abs(r_) for r_, _ in mv) / len(mv), 3)
         if m in CANDIDATOS:
             res["modelos"][m]["_info"] = {k: CANDIDATOS[m][k] for k in ("hipotesis", "origen", "promocion")}
     # veredicto de cada candidato frente al titular, comparando SOLO las corridas en que corrieron los dos
