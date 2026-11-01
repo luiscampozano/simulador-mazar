@@ -374,8 +374,55 @@ def c_demanda_real_mem(P, ctx, mod): return _demanda_real(P, ctx, mod, memoria=0
 def c_demanda_real_lluvia(P, ctx, mod): return _demanda_real(P, ctx, mod, lluvia_mw=100.0)
 
 
+# ---------- Patrón semanal con distintas ventanas del historial de Paute (Luis, 1 nov) ----------
+# El titular usa los últimos 91 días de demanda nacional × la parte de Paute. Aquí se prueba el patrón medido directo en
+# Paute (Celec Sur 2010–2026) con otras ventanas: 1 año, la misma temporada de años anteriores y todo el historial.
+# Cada día se compara con el promedio de su semana centrada (quita la tendencia) y se toma la MEDIANA por día de la
+# semana (resiste feriados y paros).
+def _patron_paute(filtro, fin):
+    try:
+        from datetime import date as _d
+        h = dict(_leer_json_lab("historial/celec_2010_2022.json") or {}); h.update(_leer_json_lab("historial/celec_diario.json") or {})
+        P = {}
+        for k, v in h.items():
+            try: P[_d.fromisoformat(k)] = ((v.get("maz") or 0) + (v.get("mol") or 0) + (v.get("sop") or 0)) / 24
+            except Exception: pass
+        por = {}
+        for d0 in P:
+            if d0 > fin - timedelta(days=4) or not filtro(d0) or P[d0] < 50: continue
+            w = [P.get(d0 + timedelta(days=i)) for i in range(-3, 4)]
+            if None in w: continue
+            por.setdefault((d0.weekday() + 1) % 7, []).append(P[d0] - sum(w) / 7)
+        if len(por) < 7 or min(len(x) for x in por.values()) < 8: return None
+        med = lambda x: sorted(x)[len(x) // 2]
+        pat = [med(por[i]) for i in range(7)]; m = sum(pat) / 7
+        return [round(x - m, 1) for x in pat]
+    except Exception:
+        return None
+
+
+def _con_patron(P, ctx, mod, filtro_de):
+    from datetime import date as _d
+    ts = str(mod.get("_ts") or "")
+    if len(ts) < 10: return None
+    fin = _d.fromisoformat(ts[:10])
+    pat = _patron_paute(filtro_de(fin), fin)
+    if not pat: return None
+    ctx["deltaDia"] = pat
+    return P, ctx, {"deltaDia": pat}
+
+
+def c_patron_1ano(P, ctx, mod): return _con_patron(P, ctx, mod, lambda fin: (lambda d: d >= fin - timedelta(days=365)))
+def c_patron_temporada(P, ctx, mod):   # mismos meses (±1) de los 3 años anteriores
+    def f(fin):
+        meses = {(fin.month - 2) % 12 + 1, fin.month, fin.month % 12 + 1}
+        return lambda d: fin.year - 3 <= d.year < fin.year and d.month in meses
+    return _con_patron(P, ctx, mod, f)
+def c_patron_historico(P, ctx, mod): return _con_patron(P, ctx, mod, lambda fin: (lambda d: True))
+
+
 def _cand(cid, f, prom, nombre, hip):
-    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-11-01 (patrón semanal)" if cid.startswith("patron_") else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
 
 
 _cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 últimas", "Si el titular viene fallando en la misma dirección, sumar el caudal que explica el error de las 3 últimas verificaciones a 1 día (apagándose en ~1 día) baja el error a 1 día hacia 5 cm.")
@@ -392,6 +439,9 @@ _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute obse
 _cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 72 h, con el patrón semanal de la propia demanda (no de lo que generó Paute en 3 días ni de su patrón) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
 _cand("demanda_real_mem", c_demanda_real_mem, "luis", "Demanda real + media memoria", "Igual, conservando la mitad de la memoria de 48 h por si la memoria corrige algo más que el sesgo de Paute.")
 _cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calor y lluvia en la Costa", "Igual que demanda real, y además un día con lluvia pronosticada en Guayaquil baja ~100 MW la demanda (menos aire acondicionado) frente a uno seco.")
+_cand("patron_1ano", c_patron_1ano, "luis", "Patrón semanal de Paute del último año", "Un año de historial suaviza los 3 meses del titular (domingo ≈ −207 MW en vez de −308): menos sensible a una racha de cortes o lluvias.")
+_cand("patron_temporada", c_patron_temporada, "luis", "Patrón semanal de la misma temporada", "Los mismos meses de los 3 años anteriores (oct–dic): el uso de Paute cambia con la época de lluvias y sequía (domingo ≈ −147 MW).")
+_cand("patron_historico", c_patron_historico, "luis", "Patrón semanal de todo el historial", "Todo el historial de Celec Sur desde 2010 (domingo ≈ −141 MW): el más estable, pero de cuando Paute trabajaba distinto.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
