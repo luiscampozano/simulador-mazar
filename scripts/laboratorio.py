@@ -512,7 +512,9 @@ def marcador(reg, conf, ts_ahora):
             st_h["hasta"] = {str(c): sum(1 for a in ab if a <= c / 100 + 1e-9) for c in (5, 10, 15, 20, 30, 40)}
             st_h["p90_m"] = ab[min(len(ab) - 1, int(0.9 * len(ab)))]
             if mv:
-                st_h["direccion"] = round(sum(1 for r_, p_ in mv if (r_ > 0) == (p_ > 0)) / len(mv), 3)
+                # dirección: solo días en que Mazar de verdad se movió (≥ 1 cm); un pronóstico de "queda igual" (< 1 cm) no acierta
+                dv = [(r_, p_) for r_, p_ in mv if abs(r_) >= 0.01]
+                if dv: st_h["direccion"] = round(sum(1 for r_, p_ in dv if abs(p_) >= 0.01 and (r_ > 0) == (p_ > 0)) / len(dv), 3)
                 st_h["persistencia_m"] = round(sum(abs(r_) for r_, _ in mv) / len(mv), 3)
         if m in CANDIDATOS:
             res["modelos"][m]["_info"] = {k: CANDIDATOS[m][k] for k in ("hipotesis", "origen", "promocion")}

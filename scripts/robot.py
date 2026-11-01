@@ -918,7 +918,9 @@ def resumen_aciertos(ver):
                "n10": sum(1 for x in e if 0.05 < x <= 0.10),   # error de más de 5 y hasta 10 cm (Luis, 31 oct)
                "hasta": {str(c): sum(1 for x in e if x <= c / 100 + 1e-9) for c in (5, 10, 15, 20, 30, 40)},
                "sesgo_m": round(sum(v["err"] for v in sel) / len(sel), 3),
-               "direccion": round(sum(1 for v in sel if (v["real"] - float(v["cota0"]) > 0) == (v["pred"] - float(v["cota0"]) > 0)) / len(sel), 3),
+               # dirección: solo cuando Mazar se movió ≥ 1 cm; predecir "queda igual" (< 1 cm) no cuenta como acierto
+               "direccion": (lambda dv: round(sum(1 for r_, p_ in dv if abs(p_) >= 0.01 and (r_ > 0) == (p_ > 0)) / len(dv), 3) if dv else None)(
+                   [(v["real"] - float(v["cota0"]), v["pred"] - float(v["cota0"])) for v in sel if abs(v["real"] - float(v["cota0"])) >= 0.01]),
                "mediana_m": e[len(e) // 2],
                "p90_m": e[min(len(e) - 1, int(0.9 * len(e)))], "error_medio_m": round(sum(e) / len(e), 2),
                "persistencia_m": round(sum(abs(float(v["cota0"]) - v["real"]) for v in sel) / len(sel), 2),
