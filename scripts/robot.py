@@ -544,9 +544,9 @@ def simular_py(P, ctx, par, horizonte=60):
 
 # Corte de la memoria: solo se promedian corridas hechas con el modelo vigente. Se mueve cuando cambia la forma de
 # calcular (28-oct-2026 20:50: paro de Coca Codo + autoajuste del caudal del Paute), no por datos raros.
-# 1-nov-2026 00:00 (Luis lo aprobó; la corrida de las 00:00 se rehízo con el modelo nuevo): patrón semanal de la demanda nacional; las corridas anteriores suponían Paute ~890 MW
+# 31-oct-2026 18:00 (Luis, 1 nov: un corte más suave que las 00:00, para que pocas corridas no muevan de golpe el número): patrón semanal de la demanda nacional; las corridas anteriores suponían Paute ~890 MW
 # cuando fue ~270 y arrastraban ~−17 m³/s de pesimismo en la memoria (Mazar subió 1,13 m en 24 h, ellas decían ~0).
-MEMORIA_DESDE = "2026-11-01T00:00:00-05:00"
+MEMORIA_DESDE = "2026-10-31T18:00:00-05:00"
 
 
 # Cortes conocidos (Luis, 30-oct-2026): un anuncio de cortes es un HECHO, no ruido. Cada corrida guarda los cortes que
@@ -645,17 +645,18 @@ def ajuste_por_cortes(P, ctx, par, fecha0, plan_hoy, horizonte=60):
     return dz
 
 
-def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, ajuste=None, cortes_base=None):
+def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, ajuste=None, cortes_base=None, guardar=True):
     """Ladrillo a ladrillo: guarda la trayectoria de esta corrida (sin memoria) y calcula cuánto difiere de ella
     el promedio de las corridas de las últimas `horas` (cada una anclada a su propia cota). Devuelve la diferencia
     como caudal de corrección diario (m³/s) para que ningún dato suelto mueva sola la proyección."""
     t_now = datetime.fromisoformat(ts)
     cv = [round(d["cotaV"], 3) for d in diarios]
-    reg = [e for e in _leer_json(F_TRAY, []) if e.get("ts") != ts]
+    reg = [e for e in _leer_json(F_TRAY, []) if not guardar or e.get("ts") != ts]   # sin guardar: se conserva la corrida buena previa
     nueva = {"ts": ts, "cota": cota0, "cv": cv, "al": 1}   # al: trayectoria alineada (cv[k] = cota en el día k)
     if cortes is not None:
         nueva["cortes"] = cortes                          # cortes que suponía esta corrida, por fecha (solo > 0)
-    reg.append(nueva)
+    if guardar:
+        reg.append(nueva)     # una corrida con Celec o Cenace caídos no entra a la memoria (1 nov: una así movió el número 15 → 26 días)
     reg = [e for e in reg if (t_now - datetime.fromisoformat(e["ts"])).total_seconds() <= 72 * 3600]
     reg.sort(key=lambda e: e["ts"])
     os.makedirs("registro", exist_ok=True)
@@ -1761,8 +1762,11 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         except Exception as e:
             plan_hoy, aj_cortes, plan_sin_fer = None, None, None
             log(f"Cortes conocidos: {e}")
+        sano = all((fuentes.get(k) or {}).get("ok", True) for k in ("celec", "cenace"))
+        if not sano:
+            log("Memoria: Celec o Cenace fallaron en esta corrida; no se guarda en la memoria (se usan las anteriores)")
         mem, n_mem, numero_corridas = memoria_corridas(ts_mem, datos["cota"], diarios, par, cortes=plan_hoy, ajuste=aj_cortes,
-                                                       cortes_base=plan_sin_fer)
+                                                       cortes_base=plan_sin_fer, guardar=sano)
         if numero_corridas and numero_corridas.get("corregidas_por_cortes"):
             log(f"Cortes conocidos: {numero_corridas['corregidas_por_cortes']} corridas de las últimas 48 h corregidas con el plan de cortes de hoy")
         mod["prediccion_foto"] = {"dias_critica": round(zc_foto["entrada"], 1) if zc_foto["entrada"] is not None else None,
