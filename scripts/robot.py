@@ -559,7 +559,7 @@ FERIADOS_PASADOS = {"2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "202
 
 
 def patron_demanda(manual, dias=91, min_por_dia=3):
-    """Patrón semanal de la demanda nacional (MW sobre su promedio; 0 = domingo) con el balance diario del Cenace
+    """Patrón semanal de la demanda nacional por la parte que toma Paute (MW; 0 = domingo) con el balance diario del Cenace
     (registro/generacion.json) de los últimos `dias`, solo días SIN cortes registrados/planificados ni feriados.
     None si falta algún día de la semana con al menos `min_por_dia` datos."""
     try:
@@ -576,7 +576,20 @@ def patron_demanda(manual, dias=91, min_por_dia=3):
         if len(por) < 7 or min(len(x) for x in por.values()) < min_por_dia: return None
         med = [sum(por[i]) / len(por[i]) for i in range(7)]
         m = sum(med) / 7
-        return [round(x - m, 1) for x in med]
+        # En el modelo toda variación de demanda cae sobre Paute (la térmica queda fija); en la realidad Paute toma solo una
+        # parte. Se mide esa parte con los desvíos dentro de la semana (demanda vs Paute, mismos días): hoy ≈ 0,8.
+        cp = _leer_json(F_HIST, {}) or {}
+        xs, ys = [], []
+        for k in ks:
+            v, c = b[k], cp.get(k) or {}
+            pa = ((c.get("maz") or 0) + (c.get("mol") or 0) + (c.get("sop") or 0)) / 24
+            if not isinstance(v.get("total"), (int, float)) or pa < 50: continue
+            xs.append(v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)); ys.append(pa)
+        dv = lambda a: [a[i] - sum(a[max(0, i - 3):i + 4]) / len(a[max(0, i - 3):i + 4]) for i in range(len(a))]
+        dx, dy = dv(xs), dv(ys)
+        den = sum(x * x for x in dx)
+        parte = max(0.5, min(1.0, sum(x * y for x, y in zip(dx, dy)) / den)) if len(xs) >= 30 and den > 0 else 0.8
+        return [round((x - m) * parte, 1) for x in med]
     except Exception:
         return None
 
