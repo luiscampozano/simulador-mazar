@@ -284,8 +284,71 @@ def c_cortes_siguen_7d(P, ctx, mod):
     return P, ctx, {"cutPlan": plan}
 
 
+# ---------- Demanda real del Cenace + clima de la Costa (Luis, 1 nov) ----------
+# El titular deduce la demanda de lo que generó Paute en los últimos días (vida media ~3 días), así que tarda 2–3 días en
+# notar una baja brusca (lluvia en la Costa, menos aire acondicionado, fin de semana o feriado). El 31 oct supuso Paute
+# ~890 MW y fue ~270. Estos candidatos parten de la demanda REAL de las últimas 24 h (Cenace, cada 30 min) y la mueven
+# día a día con el pronóstico de Guayaquil (temperatura máxima: 50 MW por °C, el mismo coeficiente del titular; y, en
+# una variante, lluvia). Como la memoria de 48 h del titular compensa justamente el sesgo de su Paute, aquí se apaga o
+# se reduce (si no, se corregiría dos veces).
+def _demanda_real(P, ctx, mod, lluvia_mw=0.0, memoria=0.0):
+    try:
+        pts = (_leer_json_lab("serie_cenace.json") or {}).get("puntos") or {}
+        ks = sorted(pts)[-48:]
+        ds = [float(pts[k]["d"]) for k in ks if isinstance(pts[k].get("d"), (int, float))]
+        if len(ds) < 36: return None
+        d24 = sum(ds) / len(ds)
+        datos = _leer_json_lab("datos.json") or {}
+        man = datos.get("manual") or {}
+        hoy = (datos.get("fecha") or "")[:10]
+        if not hoy: return None
+        from datetime import date as _d
+        f0 = _d.fromisoformat(hoy)
+        ayer = (f0 - timedelta(days=1)).isoformat()
+        reg = dict(man.get("cortes_plan") or {}); reg.update(man.get("cortes_registro") or {})
+        hora = int((datos.get("fecha") or "T12")[11:13] or 12); w = hora / 24.0
+        cut24 = w * float(reg.get(hoy) or 0) + (1 - w) * float(reg.get(ayer) or 0)       # cortes que ya bajaron la demanda medida
+        dd = ctx.get("deltaDia") or [0] * 7; d0 = ctx["diaSemana0"]
+        dia24 = w * dd[d0] + (1 - w) * dd[(d0 - 1) % 7]                                    # efecto del día de la semana en esas 24 h
+        P["demanda"] = round(d24 + cut24 - dia24, 1)
+        # pronóstico de Guayaquil por día (Open-Meteo, lo guarda el robot): máxima y lluvia (≥ 2 mm = día lluvioso)
+        g = _leer_json_lab("registro/gye_pronostico.json") or {}
+        por = {t: (mx, ll) for t, mx, ll in zip(g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []) if mx is not None}
+        def tm(k):
+            x = por.get((f0 + timedelta(days=k)).isoformat())
+            return (float(x[0]), (x[1] or 0) >= 2) if x else None
+        base = tm(0)
+        if not base: return None
+        plan = list(ctx.get("cutPlan") or [])
+        plan += [None] * max(0, 61 - len(plan))
+        ult = base
+        for k in range(61):
+            dia = (d0 + k) % 7
+            v = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else (P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+            t = tm(k) or ult; ult = t
+            extra = 50 * (t[0] - base[0]) - lluvia_mw * (int(t[1]) - int(base[1]))           # MW de demanda extra frente a hoy
+            plan[k] = round(v - extra, 1)                                                  # va como corte equivalente (negativo = más demanda)
+        ctx["cutPlan"] = plan
+        mem = ctx.get("memoria")
+        ctx["memoria"] = [round(x * memoria, 3) for x in mem] if (mem and memoria) else None
+        return P, ctx, {"demanda": P["demanda"], "cutPlan": plan[:15], "memoria": ctx["memoria"]}
+    except Exception:
+        return None
+
+
+def _leer_json_lab(ruta):
+    try:
+        with open(ruta, encoding="utf-8") as f: return json.load(f)
+    except Exception: return None
+
+
+def c_demanda_real(P, ctx, mod): return _demanda_real(P, ctx, mod)
+def c_demanda_real_mem(P, ctx, mod): return _demanda_real(P, ctx, mod, memoria=0.5)
+def c_demanda_real_lluvia(P, ctx, mod): return _demanda_real(P, ctx, mod, lluvia_mw=100.0)
+
+
 def _cand(cid, f, prom, nombre, hip):
-    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": "Claude 2026-10-30 (tanda)", "nombre": nombre, "hipotesis": hip}
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
 
 
 _cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 últimas", "Si el titular viene fallando en la misma dirección, sumar el caudal que explica el error de las 3 últimas verificaciones a 1 día (apagándose en ~1 día) baja el error a 1 día hacia 5 cm.")
@@ -299,6 +362,9 @@ _cand("coca_mitad", c_coca_mitad, "auto", "Río Coca a medio camino", "Punto med
 _cand("otros_rios_planos", c_otros_rios_planos, "auto", "Otras centrales sin su serie propia", "Comprobar si la serie de Pastaza, Zamora y Jubones ayuda o solo mete ruido.")
 _cand("dia_semana_suave", c_dia_semana_suave, "auto", "Demanda por día de la semana a la mitad", "El patrón semanal de demanda pesa demasiado en épocas de cortes; a la mitad se acerca más.")
 _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute observado", "Combinación de los dos cambios que apuntan contra el pesimismo del titular.")
+_cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 24 h (no de lo que generó Paute en 3 días) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
+_cand("demanda_real_mem", c_demanda_real_mem, "luis", "Demanda real + media memoria", "Igual, conservando la mitad de la memoria de 48 h por si la memoria corrige algo más que el sesgo de Paute.")
+_cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calor y lluvia en la Costa", "Igual que demanda real, y además un día con lluvia pronosticada en Guayaquil baja ~100 MW la demanda (menos aire acondicionado) frente a uno seco.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
