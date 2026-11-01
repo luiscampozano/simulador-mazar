@@ -1737,7 +1737,11 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     P_base, ctx_base = json.loads(json.dumps(P)), json.loads(json.dumps(ctx))
     try:
         import laboratorio as LAB
-        P, ctx, _prom = LAB.aplicar_titular(P, ctx, mod, log)
+        mod["_ts"] = datetime.fromisoformat(datos["fecha"]).isoformat(timespec="minutes")   # candidatos que usan la hora (revisor)
+        try:
+            P, ctx, _prom = LAB.aplicar_titular(P, ctx, mod, log)
+        finally:
+            mod.pop("_ts", None)
     except Exception as e:
         LAB = None
         log(f"Laboratorio (titular): {e}")
