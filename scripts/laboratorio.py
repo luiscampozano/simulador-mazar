@@ -820,15 +820,18 @@ def _sesgo_reciente(mod, n_min=10):
     ver = _leer_json_lab(os.path.join("registro", "verificacion.json"))
     if not isinstance(ver, list):
         return {}
-    ahora = str(mod.get("_ts") or "9999")[:16]
-    por = {}
+    if not mod.get("_ts"):
+        return {}            # sin la hora de la corrida no se puede asegurar que no hay datos del futuro (revisor)
+    ahora = str(mod["_ts"])[:16]
+    por, dias = {}, {}
     for x in ver:
         try:
             if str(x["pred_ts"])[:16] >= VER_DESDE and str(x["obj_ts"])[:16] <= ahora and isinstance(x.get("err"), (int, float)):
                 por.setdefault(int(x["h"]), []).append(float(x["err"]))
+                dias.setdefault(int(x["h"]), set()).add(str(x["pred_ts"])[:10])
         except Exception:
             continue
-    return {h: sum(v) / len(v) for h, v in por.items() if len(v) >= n_min}
+    return {h: sum(v) / len(v) for h, v in por.items() if len(v) >= n_min and len(dias.get(h, ())) >= 2}
 
 
 def c_sesgo_plazo_reciente(P, ctx, mod):
@@ -877,11 +880,12 @@ def _cand_1nov(cid, f, nombre, hip, origen="auditor 2026-11-01"):
 _cand_1nov("sesgo_plazo_reciente", c_sesgo_plazo_reciente, "Sesgo por plazo solo del modelo corregido",
            "El sesgo por plazo con todas las verificaciones mezcla versiones viejas del modelo (−0,15 m a 1 día); medido solo "
            "desde el modelo corregido del 28 oct es −0,31 m a 1 día y −1,24 a 3. Quitar ese sesgo reciente entero baja el "
-           "error a 1 y 3 días más que sesgo_plazo_100 y, como no extrapola más allá de lo medido, no sobrecorrige a 7–14 días.")
+           "error a 1 y 3 días más que sesgo_plazo_100 y, como no extrapola más allá de lo medido, no sobrecorrige a 7–14 días. "
+           "Ojo: la ventana crece desde el 28 oct, así que los plazos de 5–14 días se irán sumando a medida que lleguen a 10 casos de ≥ 2 días.")
 _cand_1nov("sesgo_y_error6", c_sesgo_y_error6, "Error de las 6 últimas + sesgo entero",
            "Las dos correcciones que van mejor por separado (sesgo_plazo_100 +20 % y corrige_error_6 +1 % a 1 día) juntas, sin "
-           "contar dos veces el primer día: el error reciente arregla mañana y el sesgo entero los días 2–14.",
+           "contar dos veces el primer día (el sesgo empieza el día 1; la cola del error aún suma ~13 m³/s ese día): el error reciente arregla mañana y el sesgo entero los días 2–14.",
            origen="idea de Gemini 2026-11-01 (respuesta cortada), armada por el auditor")
 _cand_1nov("ajustes_y_sesgo50", c_ajustes_y_sesgo50, "Ajustes sin recortar + mitad del sesgo",
            "Si parte del pesimismo es físico (autoajuste y Paute recortados), corregirlo en la causa (ajustes_completos) y "
-           "quitar solo la mitad del sesgo restante acierta como sesgo_plazo_100 a 1 día sin sobrecorregir a 7 y 14 días.")
+           "quitar además la mitad del sesgo medido del titular acierta como sesgo_plazo_100 a 1 día sin sobrecorregir a 7 y 14 días.")
