@@ -309,7 +309,7 @@ def _patron_demanda():
     b = (_leer_json_lab("registro/generacion.json") or {}).get("balance") or {}
     por = {}
     for k, v in b.items():
-        if k >= "2026-10-11" or not isinstance(v.get("total"), (int, float)): continue
+        if k >= "2026-10-11" or k in ("2026-08-10", "2026-10-09") or not isinstance(v.get("total"), (int, float)): continue   # sin cortes ni feriados
         dem = v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)
         por.setdefault((_d.fromisoformat(k).weekday() + 1) % 7, []).append(dem)
     if len(por) < 7 or min(len(x) for x in por.values()) < 3: return None
@@ -388,7 +388,7 @@ _cand("coca_mitad", c_coca_mitad, "auto", "Río Coca a medio camino", "Punto med
 _cand("otros_rios_planos", c_otros_rios_planos, "auto", "Otras centrales sin su serie propia", "Comprobar si la serie de Pastaza, Zamora y Jubones ayuda o solo mete ruido.")
 _cand("dia_semana_suave", c_dia_semana_suave, "auto", "Demanda por día de la semana a la mitad", "El patrón semanal de demanda pesa demasiado en épocas de cortes; a la mitad se acerca más.")
 _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute observado", "Combinación de los dos cambios que apuntan contra el pesimismo del titular.")
-_cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 72 h (con el patrón semanal de la demanda, no el de Paute) (no de lo que generó Paute en 3 días) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
+_cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 72 h, con el patrón semanal de la propia demanda (no de lo que generó Paute en 3 días ni de su patrón) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
 _cand("demanda_real_mem", c_demanda_real_mem, "luis", "Demanda real + media memoria", "Igual, conservando la mitad de la memoria de 48 h por si la memoria corrige algo más que el sesgo de Paute.")
 _cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calor y lluvia en la Costa", "Igual que demanda real, y además un día con lluvia pronosticada en Guayaquil baja ~100 MW la demanda (menos aire acondicionado) frente a uno seco.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
