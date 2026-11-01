@@ -292,6 +292,13 @@ def pronostico(ahora):
     i_hoy = gye["time"].index(hoy)
     i_t = i_hoy + 1 if ahora.hour >= 18 else i_hoy  # en la noche se usa el pronóstico de mañana
     tmax = gye["temperature_2m_max"][i_t]
+    try:   # pronóstico diario de Guayaquil para el laboratorio (candidatos de demanda + clima, Luis 1 nov)
+        os.makedirs("registro", exist_ok=True)
+        with open(os.path.join("registro", "gye_pronostico.json"), "w", encoding="utf-8") as fo:
+            json.dump({"generado": ahora.isoformat(timespec="minutes"), "dias": gye["time"], "tmax": gye["temperature_2m_max"],
+                       "lluvia_mm": gye["precipitation_sum"]}, fo, separators=(",", ":"))
+    except Exception:
+        pass
 
     def cuenca(idx):
         pas, fut = [], []
