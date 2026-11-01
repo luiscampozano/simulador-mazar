@@ -139,7 +139,7 @@
     "lluviaCoca": "Cuenca del Coca: 49 mm en los últimos 7 días y 48 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "demanda": "Equivale a los últimos días: Paute generó 455 MW en promedio ponderado del 2026-10-22 al 2026-10-31 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~231 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 3891 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1675 MW (día completo 2026-10-29, Cenace, automático). El complejo Paute generó 392 MW en ese mismo periodo.",
-    "cortes": "30/10: Gobierno amplía desconexión AV1 (185 industrias) dom 1–mié 4 nov; MV sin cortes 1–6 nov (Teleamazonas/El Diario 30/10). 31/10 sin cortes. 300 MW/día"
+    "cortes": "1/11: sigue desconexión AV1 (185 industrias) dom 1–mié 4 nov; MV sin cortes 1–6 nov (Teleamazonas/Extra 30/10). 31/10 sin cortes programados. 300 MW/día"
   },
   "robot": {
     "ultima_lectura": "2026-11-01T09:00:00-05:00",
@@ -170,16 +170,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-01T09:48-05:00",
+    "ultima_ejecucion": "2026-11-01T09:53-05:00",
     "registro": [
+      "Cortes conocidos: 3 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
       "Memoria: 10 corridas de las últimas 48 h; sin memoria la zona crítica sería en 16.6 días",
       "Laboratorio: coca_rio_real midiendo (-11% a 1 día, 2 días), sin_autoajuste midiendo (-1% a 1 día, 2 días), paute_sin_ajuste midiendo (+1% a 1 día, 2 días), sin_memoria midiendo (-51% a 1 día, 2 días), corrige_error_3 midiendo (-4% a 1 día, 2 días), corrige_error_6 midiendo (+6% a 1 día, 2 días), corrige_error_6_lento midiendo (+6% a 1 día, 2 días), sesgo_plazo_50 midiendo (+12% a 1 día, 2 días), sesgo_plazo_100 midiendo (+23% a 1 día, 2 días), autoajuste_completo midiendo (+2% a 1 día, 2 días), paute_ajuste_completo midiendo (+2% a 1 día, 2 días), coca_mitad midiendo (+2% a 1 día, 2 días), otros_rios_planos midiendo (-3% a 1 día, 2 días), dia_semana_suave midiendo (+3% a 1 día, 2 días), humedo_completo midiendo (+3% a 1 día, 2 días), cortes_siguen_7d midiendo (+0% a 1 día, 1 días), corrige_y_sesgo midiendo (-4% a 1 día, 2 días), ajustes_completos midiendo (+3% a 1 día, 2 días)",
       "Número grande (promedio ponderado de 10 corridas): zona crítica 15.8 días [12.7, 17.9], parada 16.5 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.789}, semana seca {'7': 0.0, '14': 0.105, '30': 0.737}",
       "Zona crítica (2.116): 15.801295686411693; ventana hasta 35.50090221035164; mínimo {'t': 17.0, 'cota': 2115.0}",
       "Modelo: 16.6 días hasta 2.115 (rango 15.455206192719375–29.7341768669673); hoy +1.18 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 7 comparaciones nuevas; última a 1 día: dijo 2124.27 y fue 2125.13 (-0.86 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2124.27 y fue 2125.13 (-0.86 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-22",
@@ -351,7 +351,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-01T09:48-05:00"
+    "actualizado": "2026-11-01T09:53-05:00"
   },
   "modelo": {
     "curva_mazar": {
