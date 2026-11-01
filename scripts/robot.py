@@ -544,7 +544,9 @@ def simular_py(P, ctx, par, horizonte=60):
 
 # Corte de la memoria: solo se promedian corridas hechas con el modelo vigente. Se mueve cuando cambia la forma de
 # calcular (28-oct-2026 20:50: paro de Coca Codo + autoajuste del caudal del Paute), no por datos raros.
-MEMORIA_DESDE = "2026-10-28T20:00:00-05:00"
+# 1-nov-2026 01:00 (Luis lo aprobó): patrón semanal de la demanda nacional; las corridas anteriores suponían Paute ~890 MW
+# cuando fue ~270 y arrastraban ~−17 m³/s de pesimismo en la memoria (Mazar subió 1,13 m en 24 h, ellas decían ~0).
+MEMORIA_DESDE = "2026-11-01T01:00:00-05:00"
 
 
 # Cortes conocidos (Luis, 30-oct-2026): un anuncio de cortes es un HECHO, no ruido. Cada corrida guarda los cortes que
