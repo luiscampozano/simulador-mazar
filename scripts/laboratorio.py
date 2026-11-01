@@ -337,7 +337,8 @@ def _demanda_real(P, ctx, mod, lluvia_mw=0.0, memoria=0.0):
         # base: demanda medida (72 h) + los cortes que ya la bajaron − el efecto de cada día (semana y feriados)
         vals = [pts[k]["d"] + _corte_dia_lab(man, P["cut"], _d.fromisoformat(k[:10])) - efecto(_d.fromisoformat(k[:10])) for k in ks]
         P["demanda"] = round(sum(vals) / len(vals), 1)
-        ctx["deltaDia"] = pat                                    # el patrón de la demanda reemplaza al de Paute (feriados → domingo en simular)
+        # hacia adelante se usa el patrón del titular (demanda × parte que toma Paute); el patrón completo solo sirve
+        # para quitarle a la demanda medida el efecto de cada día
         # pronóstico de Guayaquil por día (Open-Meteo, lo guarda el robot): máxima y lluvia (≥ 2 mm = día lluvioso)
         g = _leer_json_lab("registro/gye_pronostico.json") or {}
         por = {t: (float(mx), (ll or 0) >= 2) for t, mx, ll in zip(g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []) if mx is not None}
@@ -357,7 +358,7 @@ def _demanda_real(P, ctx, mod, lluvia_mw=0.0, memoria=0.0):
         ctx["memoria"] = [round(v_ * memoria, 3) for v_ in mem] if (mem and memoria) else None
         # PARA PROMOVER (requiere a Luis): la página no lee modelo.demanda ni deltaDia propios, el cutPlan publicado se corta
         # a 15 días y aplicar_titular corre antes de la memoria; habría que adaptar robot.py, index.html y pestanas.js.
-        return P, ctx, {"demanda": P["demanda"], "deltaDia": pat, "cutPlan": plan[:15], "memoria": ctx["memoria"]}
+        return P, ctx, {"demanda": P["demanda"], "cutPlan": plan[:15], "memoria": ctx["memoria"]}
     except Exception:
         return None
 

@@ -555,6 +555,52 @@ MEMORIA_DESDE = "2026-10-28T20:00:00-05:00"
 CORTES_DESDE = "2026-10-30T17:00:00-05:00"
 
 
+FERIADOS_PASADOS = {"2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-05-01", "2026-05-25", "2026-08-10", "2026-10-09"}
+
+
+def patron_demanda(manual, dias=91, min_por_dia=3):
+    """Patrón semanal de la demanda nacional por la parte que toma Paute (MW; 0 = domingo) con el balance diario del Cenace
+    (registro/generacion.json) de los últimos `dias`, solo días SIN cortes registrados/planificados ni feriados.
+    None si falta algún día de la semana con al menos `min_por_dia` datos."""
+    try:
+        b = (_leer_json(os.path.join("registro", "generacion.json"), {}) or {}).get("balance") or {}
+        reg = dict((manual.get("cortes_plan") or {})); reg.update(manual.get("cortes_registro") or {})
+        fer = FERIADOS_PASADOS | set((manual.get("feriados") or {}).keys())
+        ks = sorted(b)[-dias:]
+        por = {}
+        for k in ks:
+            v = b[k]
+            if not isinstance(v.get("total"), (int, float)) or k in fer or (reg.get(k) or 0) > 0: continue
+            dem = v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)
+            por.setdefault((datetime.fromisoformat(k).weekday() + 1) % 7, []).append(dem)
+        if len(por) < 7 or min(len(x) for x in por.values()) < min_por_dia: return None
+        med = [sum(por[i]) / len(por[i]) for i in range(7)]
+        m = sum(med) / 7
+        # En el modelo toda variación de demanda cae sobre Paute (la térmica queda fija); en la realidad Paute toma solo una
+        # parte. Se mide esa parte con los desvíos dentro de la semana (demanda vs Paute, mismos días): hoy ≈ 0,8.
+        cp = _leer_json(F_HIST, {}) or {}
+        xs, ys = [], []
+        for k in ks:
+            v, c = b[k], cp.get(k) or {}
+            pa = ((c.get("maz") or 0) + (c.get("mol") or 0) + (c.get("sop") or 0)) / 24
+            if not isinstance(v.get("total"), (int, float)) or pa < 50: continue
+            xs.append(v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)); ys.append(pa)
+        dv = lambda a: [a[i] - sum(a[max(0, i - 3):i + 4]) / len(a[max(0, i - 3):i + 4]) for i in range(len(a))]
+        dx, dy = dv(xs), dv(ys)
+        den = sum(x * x for x in dx)
+        parte = max(0.5, min(1.0, sum(x * y for x, y in zip(dx, dy)) / den)) if len(xs) >= 30 and den > 0 else 0.8
+        pat = [round((x - m) * parte, 1) for x in med]
+        try:   # último patrón válido: respaldo si los cortes diarios dejan sin días limpios (revisor)
+            with open(os.path.join("registro", "patron_demanda.json"), "w", encoding="utf-8") as fo:
+                json.dump({"fecha": ks[-1], "patron": pat, "parte_paute": round(parte, 3), "dias_regresion": len(xs),
+                           "dias_por_dia": [len(por[i]) for i in range(7)]}, fo)
+        except Exception:
+            pass
+        return pat
+    except Exception:
+        return None
+
+
 def cortes_efectivos(P, ctx, fecha0, dias=60):
     """MW de corte que la simulación usa en cada fecha (misma regla que simular_py). Solo fechas con corte.
     Un feriado (Luis, 31 oct) cuenta como corte equivalente: lo que Paute baja ese día frente a un día normal de esa
@@ -1456,11 +1502,27 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                 log("Amaluza: se usa la última cota del historial diario")
             except Exception:
                 mod["amaluzaCota"] = 1980.0; mod["amaluzaRitmo"] = 0.0; mod["amaluzaVolumen"] = None
-    # Paute según el día de la semana (MW sobre o bajo su promedio)
-    p7 = (fis or {}).get("paute_prom_mw") or 900
-    f = par["factor_dia_semana_lun_dom"]
-    js = [f[6]] + f[:6]
-    mod["deltaDia"] = [round((x - 1) * p7, 1) for x in js]
+    # Día de la semana (MW sobre o bajo el promedio). Luis, 1 nov: se usa el patrón de la DEMANDA nacional del Cenace (días
+    # sin cortes ni feriados): el de Paute escalado subestimaba los fines de semana (domingo −117 frente a ≈ −350 real;
+    # sábado −25 frente a ≈ −150). Si no hay datos suficientes, se vuelve al patrón de Paute.
+    pat = patron_demanda(manual)
+    fuente = "demanda nacional (Cenace, días sin cortes ni feriados) × parte de Paute"
+    if not pat:
+        g = _leer_json(os.path.join("registro", "patron_demanda.json"), {}) or {}
+        if isinstance(g.get("patron"), list) and len(g["patron"]) == 7:
+            pat, fuente = g["patron"], f"último patrón válido de la demanda ({g.get('fecha')})"
+    if pat:
+        pd = _leer_json(os.path.join("registro", "patron_demanda.json"), {}) or {}
+        mod["deltaDia"] = pat
+        mod["deltaDia_fuente"] = fuente
+        log(f"Día de la semana ({fuente}; parte de Paute {pd.get('parte_paute')}, {pd.get('dias_regresion')} días): "
+            + ", ".join(f"{n} {v:+.0f}" for n, v in zip("DLMXJVS", pat)))
+    else:
+        p7 = (fis or {}).get("paute_prom_mw") or 900
+        f = par["factor_dia_semana_lun_dom"]
+        js = [f[6]] + f[:6]
+        mod["deltaDia"] = [round((x - 1) * p7, 1) for x in js]
+        mod["deltaDia_fuente"] = "Paute (respaldo)"
     cd = manual.get("cut_dias")
     mod["cutDias"] = cd if (isinstance(cd, list) and len(cd) == 7) else None
     # Cortes ya anunciados o de emergencia por fecha (manual.cortes_plan, y cortes_registro para hoy):
