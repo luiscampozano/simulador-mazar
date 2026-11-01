@@ -291,47 +291,73 @@ def c_cortes_siguen_7d(P, ctx, mod):
 # día a día con el pronóstico de Guayaquil (temperatura máxima: 50 MW por °C, el mismo coeficiente del titular; y, en
 # una variante, lluvia). Como la memoria de 48 h del titular compensa justamente el sesgo de su Paute, aquí se apaga o
 # se reduce (si no, se corregiría dos veces).
+def _corte_dia_lab(manual, cut, fecha):
+    """Copia de robot.corte_del_dia (el laboratorio no importa robot): registro > plan > cut_dias > cut; 0–700 MW."""
+    k = fecha.isoformat()
+    v = (manual.get("cortes_registro") or {}).get(k)
+    if v is None: v = (manual.get("cortes_plan") or {}).get(k)
+    if isinstance(v, (int, float)) and not isinstance(v, bool): return float(max(0, min(700, v)))
+    cd = manual.get("cut_dias")
+    if isinstance(cd, list) and len(cd) == 7: return float(cut) if cd[(fecha.weekday() + 1) % 7] else 0.0
+    return float(cut)
+
+
+def _patron_demanda():
+    """Patrón semanal de la DEMANDA nacional (MW sobre su promedio, 0 = domingo), de los días SIN cortes a empresas
+    (balance diario del Cenace antes del 11 oct). Distinto del de Paute (deltaDia): domingo ≈ −350, sábado ≈ −150."""
+    from datetime import date as _d
+    b = (_leer_json_lab("registro/generacion.json") or {}).get("balance") or {}
+    por = {}
+    for k, v in b.items():
+        if k >= "2026-10-11" or not isinstance(v.get("total"), (int, float)): continue
+        dem = v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)
+        por.setdefault((_d.fromisoformat(k).weekday() + 1) % 7, []).append(dem)
+    if len(por) < 7 or min(len(x) for x in por.values()) < 3: return None
+    m = sum(sum(x) / len(x) for x in por.values()) / 7
+    return [round(sum(por[i]) / len(por[i]) - m, 1) for i in range(7)]
+
+
 def _demanda_real(P, ctx, mod, lluvia_mw=0.0, memoria=0.0):
     try:
-        pts = (_leer_json_lab("serie_cenace.json") or {}).get("puntos") or {}
-        ks = sorted(pts)[-48:]
-        ds = [float(pts[k]["d"]) for k in ks if isinstance(pts[k].get("d"), (int, float))]
-        if len(ds) < 36: return None
-        d24 = sum(ds) / len(ds)
-        datos = _leer_json_lab("datos.json") or {}
-        man = datos.get("manual") or {}
-        hoy = (datos.get("fecha") or "")[:10]
-        if not hoy: return None
         from datetime import date as _d
-        f0 = _d.fromisoformat(hoy)
-        ayer = (f0 - timedelta(days=1)).isoformat()
-        reg = dict(man.get("cortes_plan") or {}); reg.update(man.get("cortes_registro") or {})
-        hora = int((datos.get("fecha") or "T12")[11:13] or 12); w = hora / 24.0
-        cut24 = w * float(reg.get(hoy) or 0) + (1 - w) * float(reg.get(ayer) or 0)       # cortes que ya bajaron la demanda medida
-        dd = ctx.get("deltaDia") or [0] * 7; d0 = ctx["diaSemana0"]
-        dia24 = w * dd[d0] + (1 - w) * dd[(d0 - 1) % 7]                                    # efecto del día de la semana en esas 24 h
-        P["demanda"] = round(d24 + cut24 - dia24, 1)
+        ts = str(mod.get("_ts") or "")
+        if len(ts) < 16: return None
+        t0 = ts[:16]                                             # hora local de ESTA corrida (no la de datos.json, que es la anterior)
+        f0 = _d.fromisoformat(ts[:10])
+        t_ini = (datetime.fromisoformat(t0) - timedelta(hours=72)).isoformat(timespec="minutes")
+        pts = (_leer_json_lab("serie_cenace.json") or {}).get("puntos") or {}
+        ks = [k for k in sorted(pts) if t_ini < k <= t0 and isinstance(pts[k].get("d"), (int, float))]
+        if len(ks) < 96: return None                             # al menos 48 h de datos en las últimas 72 h
+        if (datetime.fromisoformat(t0) - datetime.fromisoformat(ks[-1])).total_seconds() > 4 * 3600: return None   # Cenace caído
+        pat = _patron_demanda()
+        if not pat: return None
+        man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+        fer = set((man.get("feriados") or {}).keys())
+        efecto = lambda f: pat[0] if f.isoformat() in fer else pat[(f.weekday() + 1) % 7]   # feriado = domingo
+        # base: demanda medida (72 h) + los cortes que ya la bajaron − el efecto de cada día (semana y feriados)
+        vals = [pts[k]["d"] + _corte_dia_lab(man, P["cut"], _d.fromisoformat(k[:10])) - efecto(_d.fromisoformat(k[:10])) for k in ks]
+        P["demanda"] = round(sum(vals) / len(vals), 1)
+        ctx["deltaDia"] = pat                                    # el patrón de la demanda reemplaza al de Paute (feriados → domingo en simular)
         # pronóstico de Guayaquil por día (Open-Meteo, lo guarda el robot): máxima y lluvia (≥ 2 mm = día lluvioso)
         g = _leer_json_lab("registro/gye_pronostico.json") or {}
-        por = {t: (mx, ll) for t, mx, ll in zip(g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []) if mx is not None}
-        def tm(k):
-            x = por.get((f0 + timedelta(days=k)).isoformat())
-            return (float(x[0]), (x[1] or 0) >= 2) if x else None
-        base = tm(0)
-        if not base: return None
-        plan = list(ctx.get("cutPlan") or [])
-        plan += [None] * max(0, 61 - len(plan))
-        ult = base
+        por = {t: (float(mx), (ll or 0) >= 2) for t, mx, ll in zip(g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []) if mx is not None}
+        dias_v = [k[:10] for k in ks]
+        cl = [por[d] for d in dias_v if d in por]
+        if len(cl) < len(dias_v) * 0.8: return None
+        tb = sum(x[0] for x in cl) / len(cl); lb = sum(1 for x in cl if x[1]) / len(cl)   # clima de la ventana medida
+        plan = list(ctx.get("cutPlan") or []); plan += [None] * max(0, 61 - len(plan))
         for k in range(61):
-            dia = (d0 + k) % 7
+            f = f0 + timedelta(days=k); dia = (ctx["diaSemana0"] + k) % 7
             v = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else (P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
-            t = tm(k) or ult; ult = t
-            extra = 50 * (t[0] - base[0]) - lluvia_mw * (int(t[1]) - int(base[1]))           # MW de demanda extra frente a hoy
-            plan[k] = round(v - extra, 1)                                                  # va como corte equivalente (negativo = más demanda)
+            x = por.get(f.isoformat())
+            extra = (50 * (x[0] - tb) - lluvia_mw * (int(x[1]) - lb)) if x else 0.0        # sin pronóstico: sin ajuste
+            plan[k] = round(v - extra, 1)                        # corte equivalente (negativo = más demanda que en la ventana)
         ctx["cutPlan"] = plan
         mem = ctx.get("memoria")
-        ctx["memoria"] = [round(x * memoria, 3) for x in mem] if (mem and memoria) else None
-        return P, ctx, {"demanda": P["demanda"], "cutPlan": plan[:15], "memoria": ctx["memoria"]}
+        ctx["memoria"] = [round(v_ * memoria, 3) for v_ in mem] if (mem and memoria) else None
+        # PARA PROMOVER (requiere a Luis): la página no lee modelo.demanda ni deltaDia propios, el cutPlan publicado se corta
+        # a 15 días y aplicar_titular corre antes de la memoria; habría que adaptar robot.py, index.html y pestanas.js.
+        return P, ctx, {"demanda": P["demanda"], "deltaDia": pat, "cutPlan": plan[:15], "memoria": ctx["memoria"]}
     except Exception:
         return None
 
@@ -362,7 +388,7 @@ _cand("coca_mitad", c_coca_mitad, "auto", "Río Coca a medio camino", "Punto med
 _cand("otros_rios_planos", c_otros_rios_planos, "auto", "Otras centrales sin su serie propia", "Comprobar si la serie de Pastaza, Zamora y Jubones ayuda o solo mete ruido.")
 _cand("dia_semana_suave", c_dia_semana_suave, "auto", "Demanda por día de la semana a la mitad", "El patrón semanal de demanda pesa demasiado en épocas de cortes; a la mitad se acerca más.")
 _cand("humedo_completo", c_humedo_completo, "auto", "Río Coca real + Paute observado", "Combinación de los dos cambios que apuntan contra el pesimismo del titular.")
-_cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 24 h (no de lo que generó Paute en 3 días) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
+_cand("demanda_real", c_demanda_real, "luis", "Demanda real del Cenace + calor de la Costa", "Partir de la demanda medida en las últimas 72 h (con el patrón semanal de la demanda, no el de Paute) (no de lo que generó Paute en 3 días) y moverla con la máxima pronosticada de Guayaquil hace que el modelo note al instante las bajas por lluvia, fin de semana o feriado (el 31 oct supuso Paute ~890 MW y fue ~270).")
 _cand("demanda_real_mem", c_demanda_real_mem, "luis", "Demanda real + media memoria", "Igual, conservando la mitad de la memoria de 48 h por si la memoria corrige algo más que el sesgo de Paute.")
 _cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calor y lluvia en la Costa", "Igual que demanda real, y además un día con lluvia pronosticada en Guayaquil baja ~100 MW la demanda (menos aire acondicionado) frente a uno seco.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
