@@ -1022,8 +1022,9 @@ def _corr_error_pesos(P, ctx, mod, pesos, tau):
     rec = sorted(rec, key=_obj_ts)[-k:]
     try:
         hoy = datetime.fromisoformat(str(mod.get("_ts") or rec[-1]["obj_ts"]))
-        if (hoy - datetime.fromisoformat(rec[-1]["obj_ts"])).total_seconds() > 12 * 3600:
-            return None           # verificaciones viejas: no corrige
+        dif = (hoy - datetime.fromisoformat(rec[-1]["obj_ts"])).total_seconds()
+        if dif > 12 * 3600 or dif < 0:
+            return None           # verificaciones viejas (o posteriores a la corrida): no corrige
     except Exception:
         pass
     e = sum(x["err"] * w for x, w in zip(rec, pesos)) / float(sum(pesos))
@@ -1124,7 +1125,8 @@ _cand_2nov("sesgo_reciente_7d", c_sesgo_reciente_7d, "Sesgo por plazo de los úl
            "El sesgo cambia con el régimen (31 oct +12 cm, 1–2 nov −35 a −45 cm a 1 día). Medirlo solo con la última semana "
            "(plazos con ≥ 10 casos de ≥ 2 días) sigue el cambio de sequía a lluvias y baja el error a 1–3 días; como no "
            "extrapola más allá de lo medido, no sobrecorrige a 7–14 días. Hasta el 4 nov es igual a sesgo_plazo_reciente "
-           "(la ventana empieza en el modelo corregido del 28 oct); se separan desde el 5 nov.")
+           "(la ventana empieza en el modelo corregido del 28 oct 20:00); se separan desde el 4 nov a las 20:00.")
 _cand_2nov("demanda_real_y_sesgo50", c_demanda_real_y_sesgo50, "Demanda real + mitad del sesgo",
            "Las dos mejores ideas por separado (demanda_real +39 % a 1 día con 5 casos; sesgo_plazo_50 +9 % con 21) atacan "
-           "causas distintas (cuánto genera Paute y el pesimismo que crece con el plazo): juntas deberían sumar.")
+           "causas distintas (cuánto genera Paute y el pesimismo que crece con el plazo): juntas deberían sumar. Ojo: como "
+           "demanda_real, va SIN la memoria de 48 h (la memoria es solo la corrección del sesgo) y el sesgo restado es el del titular.")
