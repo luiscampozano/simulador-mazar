@@ -52,7 +52,8 @@ while x < date.today():
             if v: poner(d, dia, v); pre.add(dia); print("prelim", dia)
             else: break                                   # todavía no publicado: se intenta la próxima semana
     x += timedelta(days=1)
-d["faltan"] = quedan; d["prelim"] = sorted(pre)
+hay = set().union(*[set(k for k, v in c.items() if v is not None) for c in d["ciudades"].values()])
+d["faltan"] = [x for x in quedan if x not in hay]; d["prelim"] = sorted(pre)
 for c in d["ciudades"]: d["ciudades"][c] = dict(sorted(d["ciudades"][c].items()))
 json.dump(d, open(F, "w"), separators=(",", ":"))
 print("faltan", quedan, "prelim", len(pre), "hasta", max(max(s) for s in d["ciudades"].values()))
