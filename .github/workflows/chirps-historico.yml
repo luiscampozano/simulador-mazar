@@ -1,0 +1,48 @@
+# Lluvia diaria histórica CHIRPS v3 (1981–hoy) en las ciudades del clima de DataLab Ec. A mano; corre en paralelo por décadas.
+name: Clima · historial diario CHIRPS
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        tramo: ["1981 1985", "1986 1990", "1991 1995", "1996 2000", "2001 2005", "2006 2010", "2011 2015", "2016 2020", "2021 2026"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet rasterio
+      - run: python3 scripts/chirps_diario.py ${{ matrix.tramo }} parte.json
+      - uses: actions/upload-artifact@v4
+        with: { name: "parte-${{ strategy.job-index }}", path: parte.json }
+  unir:
+    needs: bajar
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: partes }
+      - name: Unir y guardar
+        run: |
+          python3 - <<'PY'
+          import json, glob
+          todo, faltan = {}, []
+          for f in sorted(glob.glob("partes/*/parte.json")):
+              d = json.load(open(f)); faltan += d["faltan"]
+              for c, s in d["ciudades"].items(): todo.setdefault(c, {}).update(s)
+          import os; os.makedirs("historial", exist_ok=True)
+          json.dump({"fuente": "CHIRPS v3.0 diario (rnl), Climate Hazards Center UCSB", "faltan": sorted(faltan),
+                     "ciudades": {c: dict(sorted(s.items())) for c, s in todo.items()}}, open("historial/chirps_diario.json", "w"), separators=(",", ":"))
+          print({c: len(s) for c, s in list(todo.items())[:3]}, "faltan", len(faltan))
+          PY
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B h origin/main
+            git add historial/chirps_diario.json && git commit -q -m "Historial diario CHIRPS [skip ci]" || exit 0
+            git push -q origin h:main && exit 0; sleep 5
+          done
+          exit 1
