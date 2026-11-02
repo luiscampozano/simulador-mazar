@@ -1532,18 +1532,31 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     # mandan sobre el patrón semanal en esos días.
     plan_m = manual.get("cortes_plan") or {}
     reg_m = manual.get("cortes_registro") or {}
+    try:
+        auto = noticias_auto(hoy_d)
+    except Exception as e:
+        log(f"Vigía de noticias: error ({str(e)[:100]}); se sigue sin noticias automáticas"); auto = {"cortes_plan": {}, "feriados": {}}
+    veto = manual.get("bloqueo_auto") if isinstance(manual.get("bloqueo_auto"), dict) else {}
+    usadas = {}
     cplan = []
     for k in range(61):
         fk = (hoy_d + timedelta(days=k)).isoformat()
         v = plan_m.get(fk) if isinstance(plan_m, dict) else None
         if v is None and isinstance(reg_m, dict):
             v = reg_m.get(fk)
+        if v is None and fk in auto["cortes_plan"] and fk not in veto:   # lo manual siempre gana
+            v = auto["cortes_plan"][fk]; usadas[fk] = f"corte {v:.0f} MW"
         cplan.append(float(clamp(v, 0, 1500)) if isinstance(v, (int, float)) and not isinstance(v, bool) else None)
     mod["cutPlan"] = cplan if any(x is not None for x in cplan) else None
     # Feriados nacionales (manual.feriados {"AAAA-MM-DD": nombre}): Paute se comporta como un domingo. Historial de Celec
     # Sur 2010–2026 (178 feriados en días laborables): Paute baja ~175 MW, igual que el domingo vecino (~190 MW).
-    fer_m = manual.get("feriados") or {}
-    fer = [isinstance(fer_m, dict) and (hoy_d + timedelta(days=k)).isoformat() in fer_m for k in range(61)]
+    fer_m = dict(manual.get("feriados") or {}) if isinstance(manual.get("feriados"), dict) else {}
+    for fk, nom in auto["feriados"].items():
+        if fk not in fer_m and fk not in veto:
+            fer_m[fk] = nom; usadas[fk] = (usadas.get(fk, "") + f" feriado ({nom})").strip()
+    mod["noticias_auto"] = {"usadas": usadas, "actualizado": auto.get("actualizado")} if usadas else None
+    if usadas: log("Vigía de noticias (automático): " + ", ".join(f"{d} {x}" for d, x in sorted(usadas.items())))
+    fer = [(hoy_d + timedelta(days=k)).isoformat() in fer_m for k in range(61)]
     mod["feriados"] = fer if any(fer) else None
     mod["feriados_txt"] = [{"fecha": (hoy_d + timedelta(days=k)).isoformat(), "nombre": fer_m[(hoy_d + timedelta(days=k)).isoformat()]}
                            for k in range(61) if fer[k]] or None
@@ -1887,6 +1900,40 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
         else:
             txt += "."
     notas["calibracion"] = txt
+
+def noticias_auto(hoy_d):
+    """Cortes y feriados de noticias CONFIRMADAS por el vigía (datalab-ec: equipo/traductor.py → /d/c/aplicables.json;
+    Luis, 1 nov: se aplican solos). Solo se usan para PROYECTAR de hoy en adelante (cutPlan y feriados del modelo):
+    no se escriben en el bloque manual, no tocan el pasado ni la demanda medida, y lo que Claude o Luis fijen a mano
+    (manual.cortes_plan, cortes_registro, feriados) siempre gana. Veto: manual.bloqueo_auto {"AAAA-MM-DD": motivo}.
+    Si el sitio no responde se usa la última copia (registro/noticias_aplicables.json) si tiene menos de 3 días."""
+    F = os.path.join("registro", "noticias_aplicables.json")
+
+    def limpio(a):
+        if not isinstance(a, dict): return None
+        cp, fe = a.get("cortes_plan"), a.get("feriados")
+        if not isinstance(cp, dict) or not isinstance(fe, dict): return None
+        ok_f = lambda k: isinstance(k, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", k) is not None
+        return {"cortes_plan": {k: float(v) for k, v in cp.items() if ok_f(k) and isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 700},
+                "feriados": {k: str(v)[:60] for k, v in fe.items() if ok_f(k) and isinstance(v, str)},
+                "actualizado": str(a.get("actualizado") or "")[:25]}
+    a = None
+    try:
+        a = limpio(_json_url("https://datalabecuador.com/d/c/aplicables.json", intentos=2))
+        if a: json.dump(a, open(F, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    except Exception as e:
+        log(f"Vigía de noticias: no se pudo leer ({str(e)[:80]}); se usa la última copia")
+    if not a:
+        a = limpio(_leer_json(F, None))
+        try:
+            if a and (datetime.now(EC) - datetime.fromisoformat(a["actualizado"])).days >= 3: a = None
+        except Exception:
+            a = None
+    if not a: return {"cortes_plan": {}, "feriados": {}}
+    h = hoy_d.isoformat()
+    return {"cortes_plan": {k: v for k, v in a["cortes_plan"].items() if k >= h},
+            "feriados": {k: v for k, v in a["feriados"].items() if k >= h}, "actualizado": a.get("actualizado")}
+
 
 # ---------------------------------------------------------------- principal
 def main():
