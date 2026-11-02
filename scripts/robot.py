@@ -1888,6 +1888,38 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
             txt += "."
     notas["calibracion"] = txt
 
+def integrar_auto(manual, hoy_d, notas):
+    """Hechos confirmados por el vigía de noticias (datalab-ec: equipo/traductor.py → /d/c/aplicables.json; Luis, 1 nov:
+    se aplican solos, sin esperar su autorización). De hoy en adelante: los cortes automáticos mandan (son la noticia más reciente); los feriados se suman
+    (si Claude ya puso uno, queda su nombre). El pasado no se toca (lo corrige cortes_registro)."""
+    F = os.path.join("registro", "noticias_aplicables.json")
+    try:
+        auto = _json_url("https://datalabecuador.com/d/c/aplicables.json")
+        if not isinstance(auto, dict) or "cortes_plan" not in auto: raise ValueError("formato")
+        json.dump(auto, open(F, "w", encoding="utf-8"), ensure_ascii=False, indent=1)   # copia por si mañana no responde
+    except Exception as e:
+        log(f"Vigía de noticias: no se pudo leer ({str(e)[:80]}); se usa la última copia")
+        try:
+            auto = json.load(open(F, encoding="utf-8"))
+        except Exception:
+            return
+    hoy_txt = hoy_d.isoformat()
+    plan = manual.setdefault("cortes_plan", {})
+    fer = manual.setdefault("feriados", {})
+    n = 0
+    for d, mw in (auto.get("cortes_plan") or {}).items():
+        if d >= hoy_txt and isinstance(mw, (int, float)) and not isinstance(mw, bool) and 0 <= mw <= 1500 and plan.get(d) != mw:
+            plan[d] = mw; n += 1
+    for d, nom in (auto.get("feriados") or {}).items():
+        if d >= hoy_txt and isinstance(nom, str) and d not in fer:
+            fer[d] = nom; n += 1
+    manual["cortes_plan"] = dict(sorted(plan.items())); manual["feriados"] = dict(sorted(fer.items()))
+    nt = auto.get("notas") or {}
+    if nt:
+        notas["cortes_auto"] = f"Vigía de noticias ({max(nt)}): {nt[max(nt)]}"
+    if n: log(f"Vigía de noticias: {n} cambio(s) automático(s) en cortes/feriados")
+
+
 # ---------------------------------------------------------------- principal
 def main():
     ahora = datetime.now(EC)
@@ -1896,6 +1928,7 @@ def main():
     hoy = datos["hoy"]
     notas = datos.setdefault("notas", {})
     manual = datos.setdefault("manual", {"cut": hoy.get("cut", 300)})
+    integrar_auto(manual, ahora.date(), notas)
     robot = datos.setdefault("robot", {})
     fuentes = robot.setdefault("fuentes", {})
     hoy_txt = ahora.date().isoformat()
