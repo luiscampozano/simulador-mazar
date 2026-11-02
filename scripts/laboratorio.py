@@ -1003,3 +1003,130 @@ _cand_1nov("sesgo_y_error6", c_sesgo_y_error6, "Error de las 6 últimas + sesgo 
 _cand_1nov("ajustes_y_sesgo50", c_ajustes_y_sesgo50, "Ajustes sin recortar + mitad del sesgo",
            "Si parte del pesimismo es físico (autoajuste y Paute recortados), corregirlo en la causa (ajustes_completos) y "
            "quitar además la mitad del sesgo medido del titular acierta como sesgo_plazo_100 a 1 día sin sobrecorregir a 7 y 14 días.")
+
+
+# ---------- Auditor 2 nov: 3 propuestas de Gemini (frenadas por la validación automática solo por usar una función
+# interna o lambda, no por riesgo; armadas aquí con los mismos ayudantes) + 2 hipótesis del auditor. Todas "luis":
+# cambian la metodología (memoria/corrección por error o sesgo, o la demanda).
+# Marcador al 2 nov 13:00 (3 días, 27 casos a 1 día): titular mediana 44 cm ("lejos"), sesgo −0,45 m a 1 día; la cota
+# subió +1,09 m en 24 h y el error a 1 día se fue cerrando (−0,70 → −0,05 → +0,06 m en las últimas corridas).
+
+def _corr_error_pesos(P, ctx, mod, pesos, tau):
+    """Como _corr_error, pero promedio PONDERADO de las últimas len(pesos) verificaciones a 1 día (la última pesa
+    pesos[-1]): sigue antes el giro del error cuando la racha ya se está cerrando."""
+    ac = mod.get("aciertos") or {}
+    rec = [x for x in (ac.get("recientes_1d") or []) if isinstance(x.get("err"), (int, float)) and x.get("obj_ts")]
+    k = len(pesos)
+    if len(rec) < k:
+        return None
+    rec = sorted(rec, key=_obj_ts)[-k:]
+    try:
+        hoy = datetime.fromisoformat(str(mod.get("_ts") or rec[-1]["obj_ts"]))
+        dif = (hoy - datetime.fromisoformat(rec[-1]["obj_ts"])).total_seconds()
+        if dif > 12 * 3600 or dif < 0:
+            return None           # verificaciones viejas (o posteriores a la corrida): no corrige
+    except Exception:
+        pass
+    e = sum(x["err"] * w for x, w in zip(rec, pesos)) / float(sum(pesos))
+    q0 = max(-60.0, min(60.0, -e * _dvdz(ctx, mod) / 0.0864))
+    corr = [q0 * math.exp(-d / tau) for d in range(60)]
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m}
+
+
+def _obj_ts(x):
+    return str(x.get("obj_ts"))
+
+
+def c_sesgo_plazo_75(P, ctx, mod):
+    return _sesgo_plazo(P, ctx, mod, 0.75)
+
+
+def c_coca_real_y_sesgo50(P, ctx, mod):
+    """coca_rio_real + la mitad del sesgo por plazo. Estricta: si falta una pieza, no corre."""
+    r = c_coca_rio_real(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, cm = r
+    r2 = _sesgo_plazo(P, ctx, mod, 0.5)
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {**cm, "memoria": ctx["memoria"]}
+
+
+def c_corrige_tendencia_3(P, ctx, mod):
+    return _corr_error_pesos(P, ctx, mod, (1.0, 2.0, 3.0), 1.0)
+
+
+def _sesgo_ventana(mod, dias=7, n_min=10):
+    """Sesgo medio (predicho − real, m) por plazo con verificaciones de corridas de los últimos `dias` días (y desde el
+    modelo corregido, VER_DESDE) cuyo objetivo ya pasó: sin datos del futuro."""
+    ver = _leer_json_lab(os.path.join("registro", "verificacion.json"))
+    if not isinstance(ver, list) or not mod.get("_ts"):
+        return {}
+    ahora = str(mod["_ts"])[:16]
+    try:
+        desde = max(VER_DESDE, (datetime.fromisoformat(ahora) - timedelta(days=dias)).isoformat(timespec="minutes")[:16])
+    except Exception:
+        return {}
+    por, dd = {}, {}
+    for x in ver:
+        try:
+            if str(x["pred_ts"])[:16] >= desde and str(x["obj_ts"])[:16] <= ahora and isinstance(x.get("err"), (int, float)):
+                por.setdefault(int(x["h"]), []).append(float(x["err"]))
+                dd.setdefault(int(x["h"]), set()).add(str(x["pred_ts"])[:10])
+        except Exception:
+            continue
+    return {h: sum(v) / len(v) for h, v in por.items() if len(v) >= n_min and len(dd.get(h, ())) >= 2}
+
+
+def c_sesgo_reciente_7d(P, ctx, mod):
+    """Como sesgo_plazo_reciente, con ventana móvil de 7 días (sugerencia del revisor independiente, 1 nov): olvida
+    los regímenes viejos (sequía de fines de octubre) cuando cambia el tiempo."""
+    s_h = _sesgo_ventana(mod, 7)
+    if len(s_h) < 2:
+        return None
+    m2 = dict(mod)
+    m2["aciertos"] = {"por_horizonte": {str(h): {"n": 30, "sesgo_m": v} for h, v in s_h.items()}}
+    return _sesgo_plazo(P, ctx, m2, 1.0)
+
+
+def c_demanda_real_y_sesgo50(P, ctx, mod):
+    """demanda_real (demanda medida del Cenace, sin memoria) + la mitad del sesgo por plazo. Estricta."""
+    r = _demanda_real(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, cm = r
+    r2 = _sesgo_plazo(P, ctx, mod, 0.5)
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {**cm, "memoria": ctx["memoria"]}
+
+
+def _cand_2nov(cid, f, nombre, hip, origen="auditor 2026-11-02"):
+    CANDIDATOS[cid] = {"f": f, "promocion": "luis", "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_cand_2nov("sesgo_plazo_75", c_sesgo_plazo_75, "Quita 75 % del sesgo por plazo",
+           "Punto intermedio entre sesgo_plazo_50 (+9 % a 1 día) y sesgo_plazo_100 (+18 %): casi toda la ganancia a 1 día con "
+           "menos riesgo de sobrecorregir a 7 y 14 días si cambia el régimen.",
+           origen="Gemini 2026-11-02 (frenada por la validación por una función interna; armada por el auditor)")
+_cand_2nov("coca_real_y_sesgo50", c_coca_real_y_sesgo50, "Río Coca real + mitad del sesgo",
+           "El río Coca con su pronóstico real (menos pesimista a 2–3 días) más la mitad del sesgo por plazo (mejor a 1 día): "
+           "juntos bajan el error a 1 día sin el pesimismo del titular a 3–14 días.",
+           origen="Gemini 2026-11-02 (frenada por la validación por una función interna; armada por el auditor)")
+_cand_2nov("corrige_tendencia_3", c_corrige_tendencia_3, "Corrige el error reciente (la última pesa más)",
+           "Como corrige_error_3, pero con pesos 1-2-3 (la verificación más nueva pesa la mitad): cuando el error ya se está "
+           "cerrando (−0,70 → −0,05 m el 2 nov) no arrastra tanto los errores viejos.",
+           origen="Gemini 2026-11-02 (frenada por la validación por usar lambda; armada por el auditor)")
+_cand_2nov("sesgo_reciente_7d", c_sesgo_reciente_7d, "Sesgo por plazo de los últimos 7 días",
+           "El sesgo cambia con el régimen (31 oct +12 cm, 1–2 nov −35 a −45 cm a 1 día). Medirlo solo con la última semana "
+           "(plazos con ≥ 10 casos de ≥ 2 días) sigue el cambio de sequía a lluvias y baja el error a 1–3 días; como no "
+           "extrapola más allá de lo medido, no sobrecorrige a 7–14 días. Hasta el 4 nov es igual a sesgo_plazo_reciente "
+           "(la ventana empieza en el modelo corregido del 28 oct 20:00); se separan desde el 4 nov a las 20:00.")
+_cand_2nov("demanda_real_y_sesgo50", c_demanda_real_y_sesgo50, "Demanda real + mitad del sesgo",
+           "Las dos mejores ideas por separado (demanda_real +39 % a 1 día con 5 casos; sesgo_plazo_50 +9 % con 21) atacan "
+           "causas distintas (cuánto genera Paute y el pesimismo que crece con el plazo): juntas deberían sumar. Ojo: como "
+           "demanda_real, va SIN la memoria de 48 h (la memoria es solo la corrección del sesgo) y el sesgo restado es el del titular.")
