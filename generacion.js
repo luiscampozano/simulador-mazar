@@ -1,4 +1,4 @@
-/* Pestañas "Hidroeléctricas", "Térmicas", "Otras fuentes y Colombia" y "Ríos y centrales".
+/* Pestañas "Demanda real", "Hidroeléctricas", "Térmicas", "Otras fuentes y Colombia" y "Ríos y centrales".
    Mismo archivo en los dos simuladores; cada página pone su estilo con window.GEN_CFG y las variables --g-*.
    Solo leen registro/generacion.json (lo escribe el robot cada 2 h); no tocan el modelo ni el número grande. */
 (function () {
@@ -44,9 +44,18 @@
 .g-dos{display:grid;gap:12px;grid-template-columns:1fr}@media(min-width:900px){.g-dos{grid-template-columns:3fr 2fr}}`;
 
   /* ---------- pestañas y paneles ---------- */
-  const TABS = [["hidro", "Hidroeléctricas"], ["term", "Térmicas"], ["otras", "Otras fuentes y Colombia"], ["rios", "Ríos y centrales"]];
+  const TABS = [["dem", "Demanda real"], ["hidro", "Hidroeléctricas"], ["term", "Térmicas"], ["otras", "Otras fuentes y Colombia"], ["rios", "Ríos y centrales"]];
   const leyenda = (real, txtReal) => `<div class="g-legend"><span><i style="background:${real};height:4px"></i>${txtReal}</span><span><i class="d"></i>lo que usó el modelo</span></div>`;
   const PANEL = {
+    dem: () => `<div style="display:grid;gap:6px;max-width:75ch"><h2 class="${CFG.h2}">Demanda real de electricidad</h2>
+      <p class="${CFG.lede}">Cuánta electricidad está usando el país ahora mismo y cada empresa distribuidora (CNEL Guayaquil, Empresa Eléctrica Quito…). Si la demanda cae (lluvia, apagones, feriado, cortes), Paute genera menos y Mazar se recupera más rápido.</p></div>
+      <div class="g-kpis" id="g-dem-kpis"></div>
+      <div class="g-box g-col"><div><h3 class="g-h3">Demanda nacional hoy, cada media hora</h3><div class="g-sub">Comparada con ayer y anteayer a la misma hora</div></div>
+      <div class="g-legend"><span><i style="background:var(--g-real);height:4px"></i>hoy</span><span><i style="background:var(--g-muted)"></i>ayer</span><span><i class="d"></i>anteayer</span></div>
+      <div class="g-chart"><svg id="g-dem-dia" role="img" aria-label="Demanda nacional de hoy, ayer y anteayer"></svg></div><p class="g-txt" id="g-dem-txt"></p></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Por empresa distribuidora</h3><div class="g-sub" id="g-dist-sub">Lectura del Cenace en este momento</div></div></div>
+      <div id="g-dist" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(128px,1fr))"></div></div>
+      <p class="g-note" id="g-dem-nota"></p>`,
     hidro: () => `<div class="g-head"><div style="display:grid;gap:6px;max-width:70ch"><h2 class="${CFG.h2}">Generación hidroeléctrica</h2>
       <p class="${CFG.lede}">Cuánto genera cada central durante el día. La línea gruesa es lo que generó de verdad (Cenace); la punteada, lo que el modelo suponía en cada corrida. Así se ve dónde acierta y dónde no.</p></div>
       <div class="g-seg" role="group" aria-label="Día" id="g-dias"></div></div>
@@ -400,8 +409,77 @@
       `Fuentes: Celec (caudales medidos y Coca Codo hora a hora), Cenace (generación de cada central), GloFAS de Copernicus vía Open-Meteo (pronóstico). Actualizado: ${esc((G.actualizado || "").replace("T", " "))}.`;
   }
 
+  /* ---------- demanda real ---------- */
+  let DIST = null, cargDist = false;
+  const NOMBRES_DIST = { "CNEL GUAYAQUIL": "CNEL Guayaquil", "E.E. QUITO": "Empresa Eléctrica Quito", "CNEL MANABÍ": "CNEL Manabí",
+    "CNEL GUAYAS LOS RÍOS": "CNEL Guayas–Los Ríos", "CNEL EL ORO": "CNEL El Oro", "CNEL MILAGRO": "CNEL Milagro", "E.E. CENTRO SUR": "Centrosur (Cuenca)",
+    "CNEL SANTA ELENA": "CNEL Santa Elena", "CNEL SANTO DOMINGO": "CNEL Santo Domingo", "CNEL ESMERALDAS": "CNEL Esmeraldas", "E.E. AMBATO": "Empresa Eléctrica Ambato",
+    "EMELNORTE": "Emelnorte (Ibarra)", "CNEL LOS RÍOS": "CNEL Los Ríos", "ELEPCO": "Elepco (Cotopaxi)", "CNEL SUCUMBÍOS": "CNEL Sucumbíos",
+    "E.E. REGIONAL SUR": "Empresa Eléctrica Regional Sur (Loja)", "E.E. RIOBAMBA": "Empresa Eléctrica Riobamba", "E.E. AZOGUES": "Empresa Eléctrica Azogues", "CNEL LOS BOLÍVAR": "CNEL Bolívar" };
+  const NOM_DIST = n => NOMBRES_DIST[n] || n;
+  function dem() {
+    const P = PUNTOS().filter(p => p.dem != null);
+    if (!P.length) return;
+    const ult = P[P.length - 1], dia = ult.k.slice(0, 10);
+    const dd = k => { const d = new Date(dia + "T12:00:00"); d.setDate(d.getDate() - k); return d.toISOString().slice(0, 10); };
+    const serie = d => P.filter(p => p.k.slice(0, 10) === d).map(p => [+p.k.slice(11, 13) + (+p.k.slice(14, 16)) / 60, p.dem]);
+    const hoy = serie(dia), ayer = serie(dd(1)), ante = serie(dd(2));
+    const enHora = (s, h) => { const x = s.find(q => Math.abs(q[0] - h) < 0.01); return x ? x[1] : null; };
+    const hU = hoy[hoy.length - 1][0], prev = hoy.length > 1 ? hoy[hoy.length - 2][1] : null;
+    const vAyer = enHora(ayer, hU), media = a => a.length ? a.reduce((x, y) => x + y[1], 0) / a.length : null;
+    const comp = (a, b) => b == null ? "" : `<div class="g-fila"><span>${a}</span><b class="${ult.dem - b < 0 ? "g-ok" : "g-ko"}">${ult.dem - b > 0 ? "+" : ""}${f(ult.dem - b)} MW</b></div>`;
+    const hh = h => String(Math.floor(h)).padStart(2, "0") + ":" + (h % 1 ? "30" : "00");
+    $("g-dem-kpis").innerHTML =
+      `<div class="g-box"><div class="g-lbl">Demanda del país, ${hh(hU)}</div><div class="g-big">${f(ult.dem)}<small>MW</small></div>${comp("frente a media hora antes", prev)}${comp("frente a ayer a esta hora", vAyer)}</div>` +
+      `<div class="g-box"><div class="g-lbl">Promedio de hoy (hasta ${hh(hU)})</div><div class="g-big">${f(media(hoy))}<small>MW</small></div><div class="g-fila"><span>ayer, mismas horas</span><b>${f(media(ayer.filter(q => q[0] <= hU)))}</b></div></div>` +
+      `<div class="g-box"><div class="g-lbl">Máximo de hoy</div><div class="g-big">${f(Math.max(...hoy.map(q => q[1])))}<small>MW</small></div><div class="g-fila"><span>máximo de ayer</span><b>${f(ayer.length ? Math.max(...ayer.map(q => q[1])) : null)}</b></div></div>`;
+    const todos = hoy.concat(ayer, ante).map(q => q[1]);
+    const y0 = Math.floor(Math.min(...todos) / 500) * 500, y1 = Math.ceil(Math.max(...todos) / 500) * 500;
+    const yt = []; for (let v = y0; v <= y1; v += 500) yt.push(v);
+    grafico("g-dem-dia", { x0: 0, x1: 24, y0, y1, yt, xt: [0, 3, 6, 9, 12, 15, 18, 21, 24].map(h => [h, h + ":00"]),
+      series: [{ d: ante, c: "var(--g-muted)", w: 1.2, dash: "4 4" }, { d: ayer, c: "var(--g-muted)", w: 1.6 }, { d: hoy, c: "var(--g-real)", w: 3 }] });
+    const dif = vAyer != null ? ult.dem - vAyer : null;
+    $("g-dem-txt").textContent = dif == null ? "" : Math.abs(dif) < 100 ? `A las ${hh(hU)} el país consume casi lo mismo que ayer a esta hora.`
+      : `A las ${hh(hU)} el país consume ${f(Math.abs(dif))} MW ${dif < 0 ? "menos" : "más"} que ayer a esta hora${dif < 0 ? ": menos demanda significa que Paute puede guardar agua en Mazar." : "."}`;
+    distribuidoras();
+    const L = (DIST && DIST.lecturas) || [], u = L[L.length - 1];
+    if (u && u.total && new Date(u.ts).getTime() > ult.t + 10 * 60000) {
+      const ant = u.anterior;
+      $("g-dem-kpis").firstElementChild.outerHTML = `<div class="g-box"><div class="g-lbl">Demanda del país ahora (${u.ts.slice(11, 16)})</div><div class="g-big">${f(u.total)}<small>MW</small></div>` +
+        (ant ? `<div class="g-fila"><span>frente a media hora antes</span><b class="${u.total - ant < 0 ? "g-ok" : "g-ko"}">${u.total - ant > 0 ? "+" : ""}${f(u.total - ant)} MW</b></div>` : "") +
+        (enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)) != null ? `<div class="g-fila"><span>frente a ayer a esta hora</span><b>${f(u.total - enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)))} MW</b></div>` : "") + `</div>`;
+    }
+    $("g-dem-nota").textContent = "Fuente: Cenace, información operativa (datos preliminares del SCADA, cada media hora). La demanda por empresa se guarda desde el 1 de noviembre de 2026 a las 23:00; con más días se podrá comparar cada empresa con su valor normal.";
+  }
+  function distribuidoras() {
+    if (!DIST) {
+      if (!cargDist) { cargDist = true; fetch(CFG.url.replace("generacion.json", "demanda_distribuidoras.json") + "?t=" + Date.now(), { cache: "no-store" })
+        .then(r => r.ok ? r.json() : null).then(j => { DIST = j || { lecturas: [] }; if (ultimo === "dem") dem(); }).catch(() => { DIST = { lecturas: [] }; }); }
+      return;
+    }
+    const L = DIST.lecturas || [];
+    if (!L.length) { $("g-dist").innerHTML = `<p class="g-note">Todavía no hay lecturas por empresa.</p>`; return; }
+    const u = L[L.length - 1], dia = u.ts.slice(0, 10);
+    const hoyL = L.filter(r => r.ts.slice(0, 10) === dia);
+    $("g-dist-sub").textContent = `Lectura del Cenace de las ${u.ts.slice(11, 16)} · total ${f(u.total)} MW (CNEL ${f(u.cnel)} · empresas eléctricas ${f(u.empresas)})`;
+    const orden = Object.entries(u.d).sort((a, b) => b[1] - a[1]);
+    $("g-dist").innerHTML = orden.map(([n, v], i) => {
+      const s = hoyL.map(r => [new Date(r.ts).getTime(), r.d[n]]).filter(q => q[1] != null);
+      const ant = L.length > 1 ? L[L.length - 2].d[n] : null;
+      return `<div class="g-box" style="display:grid;gap:6px"><div class="g-lbl" style="padding-right:28px">${esc(NOM_DIST(n))}</div><div class="g-big" style="font-size:24px">${f(v)}<small>MW</small></div>` +
+        (ant != null ? `<div class="g-fila"><span>frente a la lectura anterior</span><b class="${v - ant < 0 ? "g-ok" : v - ant > 0 ? "g-ko" : ""}">${v - ant > 0 ? "+" : ""}${f(v - ant)}</b></div>` : "") +
+        `<div class="g-chart"><svg id="g-dist-${i}" role="img" aria-label="Demanda de ${esc(NOM_DIST(n))} hoy"></svg></div></div>`;
+    }).join("");
+    orden.forEach(([n], i) => {
+      const s = hoyL.map(r => [+r.ts.slice(11, 13) + (+r.ts.slice(14, 16)) / 60, r.d[n]]).filter(q => q[1] != null);
+      if (s.length < 2) { const el = $("g-dist-" + i); if (el) el.parentNode.innerHTML = `<p class="g-note">La curva aparece con más lecturas.</p>`; return; }
+      const top = Math.max(...s.map(q => q[1])) * 1.15;
+      grafico("g-dist-" + i, { h: 90, x0: 0, x1: 24, y0: 0, y1: top, yt: [], xt: [[0, "0h"], [12, "12h"], [24, "24h"]], series: [{ d: s, c: "var(--g-real)", w: 2 }] });
+    });
+  }
+
   /* ---------- carga y dibujo ---------- */
-  const DIBUJA = { hidro, term, otras, rios };
+  const DIBUJA = { dem, hidro, term, otras, rios };
   function dibujar(tab) {
     if (!DIBUJA[tab]) return;
     ultimo = tab;
