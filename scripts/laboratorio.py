@@ -421,8 +421,94 @@ def c_patron_temporada(P, ctx, mod):   # mismos meses (±1) de los 3 años anter
 def c_patron_historico(P, ctx, mod): return _con_patron(P, ctx, mod, lambda fin: (lambda d: True))
 
 
+# ---------- Cortes medidos (Luis, 1 nov: "habría que ver cuánto fue lo que se cortó a las empresas") ----------
+F_CORTE_MED = os.path.join(DIR, "corte_medido.json")
+
+
+def _clima_gye(desde, hasta):
+    """Máxima y lluvia diarias medidas en Guayaquil (Open-Meteo, archivo histórico + últimos días)."""
+    import urllib.request
+    out = {}
+    for url in (f"https://archive-api.open-meteo.com/v1/archive?latitude=-2.19&longitude=-79.89&start_date={desde}&end_date={hasta}"
+                "&daily=temperature_2m_max,precipitation_sum&timezone=America%2FGuayaquil",
+                "https://api.open-meteo.com/v1/forecast?latitude=-2.19&longitude=-79.89&past_days=10&forecast_days=1"
+                "&daily=temperature_2m_max,precipitation_sum&timezone=America%2FGuayaquil"):
+        try:
+            j = json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "DataLab Ec"}), timeout=60).read())
+            d = j["daily"]
+            for t, tx, pr in zip(d["time"], d["temperature_2m_max"], d["precipitation_sum"]):
+                if tx is not None and t not in out: out[t] = (tx, pr or 0.0)
+        except Exception:
+            pass
+    return out
+
+
+def corte_medido(hoy_txt):
+    """MW que de verdad bajó la demanda nacional en los días con cortes, separado en laborable y fin de semana.
+    Regresión con la demanda diaria del Cenace (generación + importación − exportación, generacion.json 'balance'):
+    demanda = día de la semana + b·máxima de Guayaquil + c·lluvia (tope 30 mm) + g_lab·corte_laborable + g_fin·corte_fin.
+    Días con corte = manual.cortes_registro > 0 (los registrados en 0 y los anteriores al primer registro, sin cortes).
+    Se excluyen feriados. Se recalcula una vez al día. Devuelve {"laborable": MW, "fin": MW, ...} o None si faltan datos."""
+    prev = _leer(F_CORTE_MED, {})
+    if prev.get("fecha") == hoy_txt: return prev.get("res")
+    res = None
+    try:
+        import numpy as np
+        bal = (_leer_json_lab(os.path.join("registro", "generacion.json")) or {}).get("balance") or {}
+        man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+        reg = man.get("cortes_registro") or {}
+        fer = set((man.get("feriados") or {}).keys()) | {"2026-08-10", "2026-10-09", "2026-11-02", "2026-11-03"}
+        primero = min(reg) if reg else "9999"
+        dias = sorted(d for d, v in bal.items() if isinstance(v.get("total"), (int, float)) and d not in fer and d < hoy_txt)
+        if len(dias) < 30: raise ValueError("pocos días")
+        clima = _clima_gye(dias[0], dias[-1])
+        X, y, info = [], [], {"lab": 0, "fin": 0, "sin": 0}
+        for d in dias:
+            if d not in clima: continue
+            v = bal[d]
+            dem = v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)
+            w = datetime.fromisoformat(d).weekday()   # 0 = lunes
+            c = (reg.get(d) or 0) > 0 if d >= primero else False
+            fin = w >= 5
+            tx, pr = clima[d]
+            X.append([1.0 if w == k else 0.0 for k in range(7)] + [tx, min(pr, 30.0), 1.0 if (c and not fin) else 0.0, 1.0 if (c and fin) else 0.0])
+            y.append(dem)
+            info["lab" if (c and not fin) else "fin" if c else "sin"] += 1
+        if info["lab"] < 6 or info["sin"] < 15: raise ValueError(f"pocos días con y sin cortes {info}")
+        X, y = np.array(X), np.array(y)
+        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+        resid = y - X @ coef
+        sig = float(np.sqrt((resid ** 2).sum() / max(len(y) - X.shape[1], 1)))
+        cov = sig ** 2 * np.linalg.pinv(X.T @ X)
+        lab, fin = -float(coef[9]), -float(coef[10]) if info["fin"] >= 2 else None
+        res = {"laborable": round(max(0.0, min(700.0, lab))), "fin": (round(max(0.0, min(700.0, fin))) if fin is not None else None),
+               "error_laborable": round(float(np.sqrt(cov[9, 9]))), "mw_por_grado": round(float(coef[7]), 1),
+               "mw_por_mm_lluvia": round(float(coef[8]), 1), "dias": info, "desde": dias[0], "hasta": dias[-1]}
+    except Exception as e:
+        res = {"error": str(e)[:150]}
+    _escribir(F_CORTE_MED, {"fecha": hoy_txt, "res": res})
+    return res if res and "laborable" in res else None
+
+
+def c_corte_medido(P, ctx, mod):
+    """En los días con corte del plan (cutPlan), usa el ahorro medido: laborable o fin de semana (si no hay estimación del
+    fin de semana, 0). Fuera de esos días no cambia nada."""
+    plan = list(ctx.get("cutPlan") or [])
+    if not any(isinstance(x, (int, float)) and x > 0 for x in plan): return None
+    hoy_txt = str(mod.get("_ts") or datetime.now().isoformat())[:10]
+    m = corte_medido(hoy_txt)
+    if not m: return None
+    d0 = mod.get("diaSemana0", 0)   # 0 = domingo (JS)
+    for k, x in enumerate(plan):
+        if isinstance(x, (int, float)) and x > 0:
+            js = (d0 + k) % 7
+            plan[k] = float(m["fin"] or 0.0) if js in (0, 6) else float(m["laborable"])
+    ctx["cutPlan"] = plan
+    return P, ctx, {"cutPlan": plan[:15]}
+
+
 def _cand(cid, f, prom, nombre, hip):
-    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-11-01 (patrón semanal)" if cid.startswith("patron_") else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-11-01 (patrón semanal)" if cid.startswith("patron_") else "Claude 2026-11-01 (cortes medidos)" if cid == "corte_medido" else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
 
 
 _cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 últimas", "Si el titular viene fallando en la misma dirección, sumar el caudal que explica el error de las 3 últimas verificaciones a 1 día (apagándose en ~1 día) baja el error a 1 día hacia 5 cm.")
@@ -442,6 +528,7 @@ _cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calo
 _cand("patron_1ano", c_patron_1ano, "luis", "Patrón semanal de Paute del último año", "Un año de historial suaviza los 3 meses del titular (domingo ≈ −207 MW en vez de −308): menos sensible a una racha de cortes o lluvias.")
 _cand("patron_temporada", c_patron_temporada, "luis", "Patrón semanal de la misma temporada", "Los mismos meses de los 3 años anteriores (oct–dic): el uso de Paute cambia con la época de lluvias y sequía (domingo ≈ −147 MW).")
 _cand("patron_historico", c_patron_historico, "luis", "Patrón semanal de todo el historial", "Todo el historial de Celec Sur desde 2010 (domingo ≈ −141 MW): el más estable, pero de cuando Paute trabajaba distinto.")
+_cand("corte_medido", c_corte_medido, "luis", "Cortes con los MW medidos (laborable / fin de semana)", "Los 300 MW fijos por día de corte no son lo medido: con la demanda real del Cenace, separando día de la semana, calor y lluvia de Guayaquil, el ahorro entre semana sale ~330 MW y el fin de semana casi 0 (las industrias desconectadas no trabajan igual). Usar lo medido en los días con corte proyecta mejor a Paute.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
