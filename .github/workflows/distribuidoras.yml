@@ -1,0 +1,28 @@
+# Demanda por distribuidora (Cenace, cada 30 min): guarda cada lectura para tener la curva del día.
+name: Demanda por distribuidora
+on:
+  schedule:
+    - cron: "4,34 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: distribuidoras, cancel-in-progress: false }
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/distribuidoras.py
+      - name: Guardar
+        run: |
+          git diff --quiet registro/demanda_distribuidoras.json 2>/dev/null && [ -z "$(git status --porcelain registro/demanda_distribuidoras.json)" ] && exit 0
+          git config user.name "robot-simulador" && git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp registro/demanda_distribuidoras.json /tmp/dd.json
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B d origin/main
+            cp /tmp/dd.json registro/demanda_distribuidoras.json && git add registro/demanda_distribuidoras.json
+            git commit -q -m "Demanda por distribuidora [skip ci]" || exit 0
+            git push -q origin d:main && exit 0; sleep 5
+          done
+          exit 1
