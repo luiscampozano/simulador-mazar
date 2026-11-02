@@ -1,0 +1,28 @@
+# Completa el historial diario CHIRPS (días faltantes + días recientes preliminares). Semanal y a mano.
+name: Clima · completar historial CHIRPS
+on:
+  schedule:
+    - cron: "37 14 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: chirps-historial, cancel-in-progress: false }
+jobs:
+  completar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet rasterio
+      - run: python3 scripts/chirps_completar.py
+      - name: Guardar
+        run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          rm -rf /tmp/h && cp -r historial /tmp/h
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B h origin/main
+            cp /tmp/h/chirps_diario.json historial/ && cp /tmp/h/clima_hist/*.json historial/clima_hist/
+            git add historial/chirps_diario.json historial/clima_hist && git commit -q -m "Historial CHIRPS completado [skip ci]" || exit 0
+            git push -q origin h:main && exit 0; sleep 5
+          done
+          exit 1

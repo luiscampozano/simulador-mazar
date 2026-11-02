@@ -15,7 +15,8 @@ for c, s in d["ciudades"].items():
     v, x = [], d0
     while x <= d1:
         y = s.get(x.isoformat()); v.append(None if y is None else round(y * 10)); x += timedelta(days=1)
-    json.dump({"c": c, "desde": ks[0], "hasta": ks[-1], "v": v}, open(os.path.join(R, "historial", "clima_hist", slug(c) + ".json"), "w"), separators=(",", ":"))
+    pre = sorted(x for x in d.get("prelim", []) if x in s)
+    json.dump({"c": c, "desde": ks[0], "hasta": ks[-1], "prelim_desde": pre[0] if pre else None, "v": v}, open(os.path.join(R, "historial", "clima_hist", slug(c) + ".json"), "w"), separators=(",", ":"))
     idx[c] = slug(c)
 json.dump({"fuente": "CHIRPS v3.0 diario (rnl): total de 5 días del Climate Hazards Center (UCSB) repartido por día con ERA5",
            "ciudades": idx}, open(os.path.join(R, "historial", "clima_hist", "indice.json"), "w"), ensure_ascii=False, separators=(",", ":"))
