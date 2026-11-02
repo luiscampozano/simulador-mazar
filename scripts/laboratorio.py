@@ -443,35 +443,42 @@ def _clima_gye(desde, hasta):
     return out
 
 
-def corte_medido(hoy_txt):
+def corte_medido(hoy_txt, tendencia=False):
     """MW que de verdad bajó la demanda nacional en los días con cortes, separado en laborable y fin de semana.
     Regresión con la demanda diaria del Cenace (generación + importación − exportación, generacion.json 'balance'):
-    demanda = día de la semana + b·máxima de Guayaquil + c·lluvia (tope 30 mm) + g_lab·corte_laborable + g_fin·corte_fin.
-    Días con corte = manual.cortes_registro > 0 (los registrados en 0 y los anteriores al primer registro, sin cortes).
-    Se excluyen feriados. Se recalcula una vez al día. Devuelve {"laborable": MW, "fin": MW, ...} o None si faltan datos."""
+    demanda = día de la semana + b·máxima de Guayaquil + c·lluvia (tope 30 mm) [+ tendencia lineal] + g_lab·corte_lab + g_fin·corte_fin.
+    Días con corte = manual.cortes_registro > 0 (antes del primer registro, sin cortes). Sin feriados.
+    OJO (revisor, 1 nov): los cortes empiezan el 14 oct y la demanda ya venía bajando (~−228 MW/mes antes de los cortes),
+    así que "corte" se confunde con la tendencia: sin tendencia ~339 MW, con tendencia ~140 MW. Por eso hay dos
+    candidatos (con y sin tendencia) y el laboratorio dirá cuál proyecta mejor. Se recalcula una vez al día (si falla,
+    se reintenta en la próxima corrida). "fin" es None si hay menos de 6 días de corte en fin de semana."""
     prev = _leer(F_CORTE_MED, {})
-    if prev.get("fecha") == hoy_txt: return prev.get("res")
-    res = None
+    clave = "tendencia" if tendencia else "simple"
+    if prev.get("fecha") == hoy_txt and (prev.get(clave) or {}).get("laborable") is not None: return prev[clave]
+    if prev.get("fecha") != hoy_txt: prev = {"fecha": hoy_txt}
     try:
         import numpy as np
         bal = (_leer_json_lab(os.path.join("registro", "generacion.json")) or {}).get("balance") or {}
         man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
         reg = man.get("cortes_registro") or {}
-        fer = set((man.get("feriados") or {}).keys()) | {"2026-08-10", "2026-10-09", "2026-11-02", "2026-11-03"}
+        fer = set((man.get("feriados") or {}).keys()) | FERIADOS_LAB
         primero = min(reg) if reg else "9999"
         dias = sorted(d for d, v in bal.items() if isinstance(v.get("total"), (int, float)) and d not in fer and d < hoy_txt)
         if len(dias) < 30: raise ValueError("pocos días")
         clima = _clima_gye(dias[0], dias[-1])
-        X, y, info = [], [], {"lab": 0, "fin": 0, "sin": 0}
+        t0 = datetime.fromisoformat(dias[0])
+        X, y, info = [], [], {"lab": 0, "fin": 0, "sin": 0, "sin_clima": 0}
         for d in dias:
-            if d not in clima: continue
+            if d not in clima: info["sin_clima"] += 1; continue
             v = bal[d]
             dem = v["total"] + (v.get("imp_col") or 0) + (v.get("imp_peru") or 0) - (v.get("exp_col") or 0) - (v.get("exp_peru") or 0)
             w = datetime.fromisoformat(d).weekday()   # 0 = lunes
             c = (reg.get(d) or 0) > 0 if d >= primero else False
             fin = w >= 5
             tx, pr = clima[d]
-            X.append([1.0 if w == k else 0.0 for k in range(7)] + [tx, min(pr, 30.0), 1.0 if (c and not fin) else 0.0, 1.0 if (c and fin) else 0.0])
+            fila = [1.0 if w == k else 0.0 for k in range(7)] + [tx, min(pr, 30.0)]
+            if tendencia: fila.append((datetime.fromisoformat(d) - t0).days / 30.0)
+            X.append(fila + [1.0 if (c and not fin) else 0.0, 1.0 if (c and fin) else 0.0])
             y.append(dem)
             info["lab" if (c and not fin) else "fin" if c else "sin"] += 1
         if info["lab"] < 6 or info["sin"] < 15: raise ValueError(f"pocos días con y sin cortes {info}")
@@ -480,35 +487,54 @@ def corte_medido(hoy_txt):
         resid = y - X @ coef
         sig = float(np.sqrt((resid ** 2).sum() / max(len(y) - X.shape[1], 1)))
         cov = sig ** 2 * np.linalg.pinv(X.T @ X)
-        lab, fin = -float(coef[9]), -float(coef[10]) if info["fin"] >= 2 else None
-        res = {"laborable": round(max(0.0, min(700.0, lab))), "fin": (round(max(0.0, min(700.0, fin))) if fin is not None else None),
-               "error_laborable": round(float(np.sqrt(cov[9, 9]))), "mw_por_grado": round(float(coef[7]), 1),
-               "mw_por_mm_lluvia": round(float(coef[8]), 1), "dias": info, "desde": dias[0], "hasta": dias[-1]}
+        il, ifn = X.shape[1] - 2, X.shape[1] - 1
+        lab = -float(coef[il]); fin = -float(coef[ifn])
+        res = {"laborable": round(max(0.0, min(700.0, lab))), "error_laborable": round(float(np.sqrt(cov[il, il]))),
+               "fin": (round(max(0.0, min(700.0, fin))) if info["fin"] >= 6 else None),
+               "fin_crudo": round(fin), "error_fin": round(float(np.sqrt(cov[ifn, ifn]))),
+               "mw_por_grado": round(float(coef[7]), 1), "mw_por_mm_lluvia": round(float(coef[8]), 1),
+               "tendencia_mw_mes": (round(float(coef[9]), 1) if tendencia else None),
+               "dias": info, "desde": dias[0], "hasta": dias[-1]}
     except Exception as e:
-        res = {"error": str(e)[:150]}
-    _escribir(F_CORTE_MED, {"fecha": hoy_txt, "res": res})
-    return res if res and "laborable" in res else None
+        prev[clave + "_error"] = {"ts": datetime.now().isoformat(timespec="minutes"), "error": str(e)[:150]}
+        _escribir(F_CORTE_MED, prev)
+        return None   # sin resultado del día: se reintenta en la próxima corrida
+    prev[clave] = res; prev.pop(clave + "_error", None)
+    _escribir(F_CORTE_MED, prev)
+    return res
 
 
-def c_corte_medido(P, ctx, mod):
-    """En los días con corte del plan (cutPlan), usa el ahorro medido: laborable o fin de semana (si no hay estimación del
-    fin de semana, 0). Fuera de esos días no cambia nada."""
+FERIADOS_LAB = {"2026-08-10", "2026-10-09", "2026-11-02", "2026-11-03"}
+
+
+def _con_corte_medido(P, ctx, mod, tendencia):
+    """En los días con corte del plan (cutPlan), escala los MW por lo medido / valor de siempre (300): laborable o fin de
+    semana. Feriados cuentan como fin de semana. Si el fin de semana no tiene estimación (menos de 6 días), ese día queda
+    como en el titular. Fuera de los días con corte no cambia nada."""
     plan = list(ctx.get("cutPlan") or [])
     if not any(isinstance(x, (int, float)) and x > 0 for x in plan): return None
     hoy_txt = str(mod.get("_ts") or datetime.now().isoformat())[:10]
-    m = corte_medido(hoy_txt)
+    m = corte_medido(hoy_txt, tendencia)
     if not m: return None
-    d0 = mod.get("diaSemana0", 0)   # 0 = domingo (JS)
+    cut = float(P.get("cut") or 300.0) or 300.0
+    d0 = mod.get("diaSemana0", 0)   # 0 = domingo (JS), índice 0 = hoy
+    fer = list(ctx.get("feriados") or mod.get("feriados") or [])
     for k, x in enumerate(plan):
         if isinstance(x, (int, float)) and x > 0:
-            js = (d0 + k) % 7
-            plan[k] = float(m["fin"] or 0.0) if js in (0, 6) else float(m["laborable"])
+            libre = ((d0 + k) % 7 in (0, 6)) or (k < len(fer) and bool(fer[k]))
+            est = m["fin"] if libre else m["laborable"]
+            if est is None: continue
+            plan[k] = round(x * est / cut, 1)
     ctx["cutPlan"] = plan
-    return P, ctx, {"cutPlan": plan[:15]}
+    return P, ctx, {"cutPlan": plan}
+
+
+def c_corte_medido(P, ctx, mod): return _con_corte_medido(P, ctx, mod, False)
+def c_corte_medido_tend(P, ctx, mod): return _con_corte_medido(P, ctx, mod, True)
 
 
 def _cand(cid, f, prom, nombre, hip):
-    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-11-01 (patrón semanal)" if cid.startswith("patron_") else "Claude 2026-11-01 (cortes medidos)" if cid == "corte_medido" else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": ("Claude 2026-11-01 (demanda y clima)" if cid.startswith("demanda_real") else "Claude 2026-11-01 (patrón semanal)" if cid.startswith("patron_") else "Claude 2026-11-01 (cortes medidos)" if cid.startswith("corte_medido") else "Claude 2026-10-30 (tanda)"), "nombre": nombre, "hipotesis": hip}
 
 
 _cand("corrige_error_3", c_corrige_error_3, "luis", "Corrige el error de las 3 últimas", "Si el titular viene fallando en la misma dirección, sumar el caudal que explica el error de las 3 últimas verificaciones a 1 día (apagándose en ~1 día) baja el error a 1 día hacia 5 cm.")
@@ -528,7 +554,8 @@ _cand("demanda_real_lluvia", c_demanda_real_lluvia, "luis", "Demanda real + calo
 _cand("patron_1ano", c_patron_1ano, "luis", "Patrón semanal de Paute del último año", "Un año de historial suaviza los 3 meses del titular (domingo ≈ −207 MW en vez de −308): menos sensible a una racha de cortes o lluvias.")
 _cand("patron_temporada", c_patron_temporada, "luis", "Patrón semanal de la misma temporada", "Los mismos meses de los 3 años anteriores (oct–dic): el uso de Paute cambia con la época de lluvias y sequía (domingo ≈ −147 MW).")
 _cand("patron_historico", c_patron_historico, "luis", "Patrón semanal de todo el historial", "Todo el historial de Celec Sur desde 2010 (domingo ≈ −141 MW): el más estable, pero de cuando Paute trabajaba distinto.")
-_cand("corte_medido", c_corte_medido, "luis", "Cortes con los MW medidos (laborable / fin de semana)", "Los 300 MW fijos por día de corte no son lo medido: con la demanda real del Cenace, separando día de la semana, calor y lluvia de Guayaquil, el ahorro entre semana sale ~330 MW y el fin de semana casi 0 (las industrias desconectadas no trabajan igual). Usar lo medido en los días con corte proyecta mejor a Paute.")
+_cand("corte_medido", c_corte_medido, "luis", "Cortes medidos (sin tendencia)", "Los 300 MW fijos por día de corte no son lo medido. Con la demanda real del Cenace, separando día de la semana, calor y lluvia de Guayaquil, el ahorro entre semana sale ~339 MW (±55); el fin de semana se usa recién con 6 días medidos. Puede exagerar si la demanda ya venía bajando por la temporada.")
+_cand("corte_medido_tend", c_corte_medido_tend, "luis", "Cortes medidos (con tendencia)", "Igual, pero descontando que la demanda ya venía bajando antes de los cortes (~−228 MW/mes): el ahorro entre semana sale ~140 MW (±55). El laboratorio dirá cuál de las dos lecturas proyecta mejor a Paute.")
 _cand("cortes_siguen_7d", c_cortes_siguen_7d, "luis", "Los cortes siguen 7 días", "Si el esquema de cortes a empresas continúa, la demanda baja también los próximos días y Mazar sube más de lo que dice el titular.")
 
 
