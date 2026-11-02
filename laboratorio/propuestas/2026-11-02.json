@@ -1,0 +1,41 @@
+{
+ "fecha": "2026-11-02",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 1.95,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sesgo_plazo_75",
+    "nombre": "Quita 75 % del sesgo por plazo",
+    "hipotesis": "Quitar el 75 % del sesgo medido por plazo acerca el error a 1 día hacia la meta como sesgo_plazo_100 (+19 % actual), pero con menor riesgo de sobrecorregir a 7 y 14 días cuando cambie el régimen hidrológico.",
+    "promocion": "luis",
+    "por_que": "En el marcador actual (20 casos, 3 días), los modelos que corrigen el sesgo por plazo son los que más reducen el error del titular: sesgo_plazo_100 mejora un +18,8 % (error medio 0,520 m) y sesgo_plazo_50 mejora un +9,7 % (0,579 m). Dado que el sesgo histórico acumulado mezcla distintas etapas del modelo (−0,18 m a 1 día y −3,36 m a 7 días), un punto intermedio al 75 % aprovecha casi toda la ganancia a corto plazo amortiguando posibles excesos a 7 y 14 días.",
+    "codigo": "def c_sesgo_plazo_75(P, ctx, mod):\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)] + sorted((int(h), v[\"sesgo_m\"]) for h, v in ph.items() if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None)\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = [max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.75)) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "coca_real_y_sesgo50",
+    "nombre": "Río Coca real + mitad del sesgo por plazo",
+    "hipotesis": "Combinar el pronóstico real del río Coca con la corrección de la mitad del sesgo por plazo reduce el error a 1 día (+10 %) y elimina el fuerte pesimismo a 2 y 3 días (donde coca_rio_real baja el error de 0,76 m a 0,04 m).",
+    "promocion": "luis",
+    "por_que": "El marcador muestra que coca_rio_real es extraordinario a 2 y 3 días (baja el error medio de 0,640 m a 0,464 m a 2 días, y de 0,761 m a 0,044 m a 3 días), pero a 1 día no logra superar al titular (-3,6 %). Por su parte, sesgo_plazo_50 mejora un +9,7 % a 1 día. Al unir ambos mecanismos, se corrige el pesimismo inmediato de las primeras 24 horas mediante el sesgo y se sostiene la trayectoria física real del río Coca hacia los plazos de 3, 7 y 14 días.",
+    "codigo": "def c_coca_real_y_sesgo50(P, ctx, mod):\n    s_coca = mod.get(\"serieCocaRio\")\n    if not s_coca:\n        return None\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)] + sorted((int(h), v[\"sesgo_m\"]) for h, v in ph.items() if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None)\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = [max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"serieCoca\"] = list(s_coca)\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"serieCoca\": list(s_coca), \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_tendencia_3",
+    "nombre": "Corrige el error reciente ponderando lo último",
+    "hipotesis": "Ponderar las últimas 3 verificaciones dando más peso a la más reciente (50 %, 33 %, 17 %) evita sobrecorregir cuando el error ya se está cerrando y mejora a corrige_error_3 en cambios de régimen.",
+    "promocion": "luis",
+    "por_que": "En datos.json (recientes_1d) se observa que el error a 1 día evolucionó rápidamente de −0,92 m (hace 10 h) a −0,33 m, −0,11 m y −0,16 m en las últimas tres corridas a medida que el modelo absorbió la subida de Mazar. Los candidatos corrige_error_3 y corrige_error_6 hacen un promedio simple y reaccionan tarde cuando la racha ya se está corrigiendo; dar el triple de peso al último error frente al antepenúltimo sigue de cerca el giro real sin arrastrar errores pasados.",
+    "codigo": "def c_corrige_tendencia_3(P, ctx, mod):\n    ac = mod.get(\"aciertos\") or {}\n    rec = [x for x in (ac.get(\"recientes_1d\") or []) if isinstance(x.get(\"err\"), (int, float)) and x.get(\"obj_ts\")]\n    if len(rec) < 3:\n        return None\n    rec = sorted(rec, key=lambda x: x[\"obj_ts\"])[-3:]\n    e = (rec[0][\"err\"] * 1.0 + rec[1][\"err\"] * 2.0 + rec[2][\"err\"] * 3.0) / 6.0\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    q0 = max(-60.0, min(60.0, -e * dvdz / 0.0864))\n    corr = [q0 * math.exp(-d / 1.0) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "estado": "rechazada por validación: no se permite Lambda"
+  }
+ ],
+ "estado": "0 de 3 listas para revisión"
+}
