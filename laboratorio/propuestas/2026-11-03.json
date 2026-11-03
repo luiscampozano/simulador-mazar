@@ -1,0 +1,75 @@
+{
+ "fecha": "2026-11-03",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 2.531,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sesgo_semana",
+    "nombre": "Corrige el sesgo de la semana desde los resúmenes",
+    "hipotesis": "Usar el sesgo medido en la última semana para el día 1 (`semana_1d.sesgo_m`, hoy −0,145 m) y el sesgo histórico desde el día 2 adapta el primer día al cambio de régimen sin perder estabilidad a 3–14 días.",
+    "promocion": "luis",
+    "por_que": "El sesgo a 1 día cambió rápido con el régimen (de −0,45 m a +0,32 m hoy); `semana_1d.sesgo_m` (−0,145 m en 88 casos) refleja mejor la situación actual que el acumulado histórico (−0,16 m en 205 casos) sin depender de leer archivos en disco. Del día 2 en adelante mantiene la corrección de sesgo por horizonte que ya mejora los plazos de 2 y 3 días en el marcador.",
+    "codigo": "def c_sesgo_semana(P, ctx, mod):\n    ac = mod.get('aciertos') or {}\n    ph = ac.get('por_horizonte') or {}\n    s1 = (ac.get('semana_1d') or {}).get('sesgo_m')\n    pts = [(0, 0.0)]\n    for h_str, v in ph.items():\n        h = int(h_str)\n        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:\n            val = float(s1) if (h == 1 and isinstance(s1, (int, float))) else float(v['sesgo_m'])\n            pts.append((h, val))\n    pts = sorted(pts)\n    if len(pts) < 3:\n        return None\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    k = (c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)) / 0.0864\n    corr = []\n    for d in range(60):\n        v_d = pts[-1][1]\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if d <= h1:\n                v_d = v0 + (v1 - v0) * (d - h0) / (h1 - h0)\n                break\n        v_d1 = pts[-1][1]\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if (d + 1) <= h1:\n                v_d1 = v0 + (v1 - v0) * ((d + 1) - h0) / (h1 - h0)\n                break\n        corr.append(max(-80.0, min(80.0, -(v_d1 - v_d) * k)))\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = out\n    return P, ctx, {'memoria': out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.91,
+     2124.71,
+     2116.24
+    ],
+    "candidato_1_7_14": [
+     2128.05,
+     2128.09,
+     2126.28
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "freno_optimismo_3",
+    "nombre": "Corrige el error reciente a la mitad si es optimista",
+    "hipotesis": "Cuando las 3 últimas verificaciones muestran que el modelo fue optimista (err > 0, como hoy con +0,32 m), aplicar solo la mitad de la corrección evita sobrecorregir tras feriados o lluvias, mejorando los 0,747 m de `corrige_error_3`.",
+    "promocion": "luis",
+    "por_que": "En las últimas 8 verificaciones (`recientes_1d`), el titular pasó a ser optimista (+0,26 a +0,33 m) por la baja de demanda en el feriado. `corrige_error_3` tiene un error medio alto (0,747 m vs 0,454 m del titular) porque reacciona con toda la fuerza a errores transitorios; frenar a la mitad cuando `e > 0` protege contra este rebote manteniendo la reacción rápida cuando el modelo se queda corto (`e < 0`).",
+    "codigo": "def c_freno_optimismo_3(P, ctx, mod):\n    ac = mod.get('aciertos') or {}\n    rec = [x for x in (ac.get('recientes_1d') or []) if isinstance(x.get('err'), (int, float)) and x.get('obj_ts')]\n    if len(rec) < 3:\n        return None\n    rec = sorted(rec[-3:], key=lambda x: str(x['obj_ts']))\n    e = sum(float(x['err']) for x in rec) / 3.0\n    if e > 0:\n        e = e * 0.5\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)\n    q0 = max(-60.0, min(60.0, -e * dvdz / 0.0864))\n    corr = [q0 * math.exp(-d / 1.0) for d in range(60)]\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = out\n    return P, ctx, {'memoria': out}"
+   },
+   "estado": "rechazada por validación: no se permite Lambda"
+  },
+  {
+   "propuesta": {
+    "id": "coca_real_cortes_7d",
+    "nombre": "Río Coca real + cortes siguen 7 días",
+    "hipotesis": "Combinar la extensión de cortes por 7 días con el pronóstico real del río Coca reduce el error a 1–3 días (como `cortes_siguen_7d`, hoy 0,317 m a 1d y 0,519 m a 3d) y quita además el pesimismo de Coca Codo a 3–14 días.",
+    "promocion": "luis",
+    "por_que": "En el marcador, `cortes_siguen_7d` logra el menor error medio a 2 y 3 días (0,418 m y 0,519 m frente a 0,626 m y 0,968 m del titular) y `coca_rio_real` baja el error a 3 días de 0,968 m a 0,709 m. Como atacan dos fuentes independientes de pesimismo (demanda industrial y generación de Coca Codo), su combinación debería acercar más la trayectoria de 1 a 14 días.",
+    "codigo": "def c_coca_real_cortes_7d(P, ctx, mod):\n    s = mod.get('serieCocaRio')\n    plan = list(ctx.get('cutPlan') or [])\n    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) else None\n    if not s and not hoy:\n        return None\n    cambios = {}\n    if s:\n        ctx['serieCoca'] = list(s)\n        cambios['serieCoca'] = list(s)\n    if hoy:\n        plan = plan + [None] * max(0, 8 - len(plan))\n        for d in range(1, 8):\n            if plan[d] is None:\n                plan[d] = hoy\n        ctx['cutPlan'] = plan\n        cambios['cutPlan'] = plan\n    return P, ctx, cambios"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.91,
+     2124.71,
+     2116.24
+    ],
+    "candidato_1_7_14": [
+     2127.91,
+     2127.02,
+     2119.94
+    ],
+    "cambios_mod": [
+     "cutPlan",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-03"
+}

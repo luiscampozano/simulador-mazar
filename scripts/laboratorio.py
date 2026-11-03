@@ -606,6 +606,67 @@ CANDIDATOS["sin_memoria_paute_bruto"] = {"f": c_sin_memoria_paute_bruto, "promoc
     "hipotesis": "Los dos cambios que mejor van a 1 día (sin_memoria y paute_sin_ajuste) suman: el error a 1 día baja más que con cada uno por separado."}
 
 
+def c_sesgo_semana(P, ctx, mod):
+    ac = mod.get('aciertos') or {}
+    ph = ac.get('por_horizonte') or {}
+    s1 = (ac.get('semana_1d') or {}).get('sesgo_m')
+    pts = [(0, 0.0)]
+    for h_str, v in ph.items():
+        h = int(h_str)
+        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:
+            val = float(s1) if (h == 1 and isinstance(s1, (int, float))) else float(v['sesgo_m'])
+            pts.append((h, val))
+    pts = sorted(pts)
+    if len(pts) < 3:
+        return None
+    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}
+    k = (c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)) / 0.0864
+    corr = []
+    for d in range(60):
+        v_d = pts[-1][1]
+        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+            if d <= h1:
+                v_d = v0 + (v1 - v0) * (d - h0) / (h1 - h0)
+                break
+        v_d1 = pts[-1][1]
+        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+            if (d + 1) <= h1:
+                v_d1 = v0 + (v1 - v0) * ((d + 1) - h0) / (h1 - h0)
+                break
+        corr.append(max(-80.0, min(80.0, -(v_d1 - v_d) * k)))
+    base = list(ctx.get('memoria') or [])
+    n = max(len(base), len(corr))
+    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['memoria'] = out
+    return P, ctx, {'memoria': out}
+
+
+CANDIDATOS["sesgo_semana"] = {"f": c_sesgo_semana, "promocion": "luis", "origen": "Gemini 2026-11-03", "nombre": "Corrige el sesgo de la semana desde los resúmenes", "hipotesis": "Usar el sesgo medido en la última semana para el día 1 (`semana_1d.sesgo_m`, hoy −0,145 m) y el sesgo histórico desde el día 2 adapta el primer día al cambio de régimen sin perder estabilidad a 3–14 días."}
+
+
+def c_coca_real_cortes_7d(P, ctx, mod):
+    s = mod.get('serieCocaRio')
+    plan = list(ctx.get('cutPlan') or [])
+    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) else None
+    if not s and not hoy:
+        return None
+    cambios = {}
+    if s:
+        ctx['serieCoca'] = list(s)
+        cambios['serieCoca'] = list(s)
+    if hoy:
+        plan = plan + [None] * max(0, 8 - len(plan))
+        for d in range(1, 8):
+            if plan[d] is None:
+                plan[d] = hoy
+        ctx['cutPlan'] = plan
+        cambios['cutPlan'] = plan
+    return P, ctx, cambios
+
+
+CANDIDATOS["coca_real_cortes_7d"] = {"f": c_coca_real_cortes_7d, "promocion": "luis", "origen": "Gemini 2026-11-03", "nombre": "Río Coca real + cortes siguen 7 días", "hipotesis": "Combinar la extensión de cortes por 7 días con el pronóstico real del río Coca reduce el error a 1–3 días (como `cortes_siguen_7d`, hoy 0,317 m a 1d y 0,519 m a 3d) y quita además el pesimismo de Coca Codo a 3–14 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
