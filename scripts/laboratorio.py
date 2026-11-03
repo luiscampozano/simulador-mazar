@@ -676,6 +676,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
         except Exception as e:
             log(f"Laboratorio: anterior falló: {e}")
     mod = _con_previo(mod, ts)
+    mod["_tit_1d"] = round(d_tit[1]["cota"], 3)   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
             continue
@@ -1130,3 +1131,110 @@ _cand_2nov("demanda_real_y_sesgo50", c_demanda_real_y_sesgo50, "Demanda real + m
            "Las dos mejores ideas por separado (demanda_real +39 % a 1 día con 5 casos; sesgo_plazo_50 +9 % con 21) atacan "
            "causas distintas (cuánto genera Paute y el pesimismo que crece con el plazo): juntas deberían sumar. Ojo: como "
            "demanda_real, va SIN la memoria de 48 h (la memoria es solo la corrección del sesgo) y el sesgo restado es el del titular.")
+
+
+# ---------------------------------------------------------------- 3 nov: el caudal de hoy desde la pendiente de la cota
+def _ts_dt(x):
+    return datetime.fromisoformat(str(x)[:16])
+
+
+def _entrada_por_pendiente(P, ctx, mod, horas):
+    """Investigador (Fable) y Luis, 3 nov. Con Mazar en 0 MWh la subida de la cota ES el caudal de entrada, pero el titular
+    usa el caudal del Celec de las 08:00 (del día anterior) más la memoria de 48 h: va ~1,5 días atrasado y dice de menos
+    cuando la lluvia arrecia y de más cuando afloja. Cambia UNA pieza: el caudal de los días 0 y 1, que se acerca al que
+    muestra la pendiente observada de la cota en las últimas `horas` horas. Del día 2 en adelante el caudal es igual al
+    del titular (la cota queda desplazada ~2·corrección a 3, 7 y 14 días, lo que también se mide).
+    Freno por desaceleración (revisor, 3 nov): no corrige hacia arriba si la pendiente de 6 h es menor que la de 12 h
+    (el río ya está bajando), ni hacia abajo si es mayor.
+    Freno antinervios: solo corrige si la diferencia entre la pendiente observada y la del titular pasa de 0,25 m/día, con
+    el mismo signo, en esta corrida y en la anterior; peso 0,6 si llovió >10 mm en el Paute en 2 de los 3 días previos
+    (si no, 0,3); la corrección tope es ±0,3 m/día. Si no corresponde corregir, devuelve el titular sin cambios (así se
+    compara en todas las corridas). Solo usa datos anteriores a la corrida (sin datos del futuro)."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    if not mod.get("_ts"):
+        return None
+    ahora = _ts_dt(mod["_ts"]); hoy = ahora.date().isoformat()
+    cel = _leer_json_lab(os.path.join("historial", "celec_diario.json")) or {}
+    dias_cel = [d for d in sorted(cel) if d < hoy]
+    if not dias_cel or float(cel[dias_cel[-1]].get("maz") or 0) > 0:
+        return sin_cambio                      # Mazar turbinando: la pendiente ya no es solo el caudal
+    runs = []
+    for x in _leer(os.path.join("registro", "predicciones.json"), []) or []:
+        try:
+            if isinstance(x.get("cota"), (int, float)) and _ts_dt(x["ts"]) < ahora:
+                runs.append((_ts_dt(x["ts"]), float(x["cota"]), (x.get("cota_pred") or {}).get("1")))
+        except Exception:
+            continue
+    runs.sort(key=lambda r: r[0])
+    if len(runs) < 3 or (ahora - runs[-1][0]).total_seconds() > 5 * 3600:
+        return sin_cambio
+    def pendiente(t_fin, c_fin, h=horas):
+        tol = 3 if h >= 12 else 2
+        obj = t_fin - timedelta(hours=h)
+        cand = [r for r in runs if r[0] < t_fin and abs((r[0] - obj).total_seconds()) <= tol * 3600]
+        if not cand:
+            return None
+        r0 = min(cand, key=lambda r: abs((r[0] - obj).total_seconds()))
+        dt_d = (t_fin - r0[0]).total_seconds() / 86400
+        return (c_fin - r0[1]) / dt_d if dt_d > 0.1 else None
+
+    def dif(t_fin, c_fin, previa):      # pendiente observada − pendiente a 1 día del titular de la corrida previa
+        s = pendiente(t_fin, c_fin)
+        if s is None or not isinstance(previa[2], (int, float)):
+            return None
+        return s - (float(previa[2]) - previa[1])
+
+    s_hoy = pendiente(ahora, float(ctx["cota"]))
+    tit1 = mod.get("_tit_1d")
+    d_hoy = (s_hoy - (float(tit1) - float(ctx["cota"]))) if (s_hoy is not None and isinstance(tit1, (int, float))) else dif(ahora, float(ctx["cota"]), runs[-1])
+    d_ant = dif(runs[-1][0], runs[-1][1], runs[-2])
+    if d_hoy is None or d_ant is None or abs(d_hoy) < 0.25 or abs(d_ant) < 0.25 or d_hoy * d_ant < 0:
+        return sin_cambio
+    g = _leer(os.path.join("registro", "generacion.json"), {}) or {}
+    ll = g.get("lluvia") or {}
+    previos = [v for d, v in zip(ll.get("dias") or [], ll.get("paute") or []) if d < hoy][-3:]
+    peso = 0.6 if sum(1 for v in previos if isinstance(v, (int, float)) and v > 10) >= 2 else 0.3
+    corr_m = max(-0.3, min(0.3, peso * d_hoy))          # m/día
+    s6, s12 = pendiente(ahora, float(ctx["cota"]), 6), pendiente(ahora, float(ctx["cota"]), 12)
+    if s6 is not None and s12 is not None and ((corr_m > 0 and s6 < s12) or (corr_m < 0 and s6 > s12)):
+        return sin_cambio                                # ya cambió el ritmo: seguir la pendiente vieja sería otro retraso
+    q = corr_m * _dvdz(ctx, mod) / 0.0864               # m³/s que explican esa pendiente
+    m = _sumar_memoria(ctx, [q, q] + [0.0] * 58)        # ceros: simular repite el último valor de la memoria
+    _anotar_activacion(mod["_ts"], horas, corr_m)
+    return P, ctx, {"memoria": m}
+
+
+def _anotar_activacion(ts, horas, corr_m):
+    """Registro de cuándo se activó (laboratorio/activaciones_pendiente.json): antes de promover se exige ver varios
+    episodios, no solo días de empate con el titular."""
+    try:
+        f = os.path.join(DIR, "activaciones_pendiente.json")
+        reg = _leer(f, []) or []
+        cid = "entrada_por_pendiente" + ("" if horas >= 12 else "_6h")
+        reg = [x for x in reg if not (x.get("ts") == str(ts)[:16] and x.get("cid") == cid)]
+        reg.append({"ts": str(ts)[:16], "cid": cid, "corr_m": round(corr_m, 3)})
+        _escribir(f, reg[-500:])
+    except Exception:
+        pass
+
+
+def c_entrada_por_pendiente(P, ctx, mod):
+    return _entrada_por_pendiente(P, ctx, mod, 12)
+
+
+def c_entrada_por_pendiente_6h(P, ctx, mod):
+    return _entrada_por_pendiente(P, ctx, mod, 6)
+
+
+def _cand_3nov(cid, f, nombre, hip, origen="Investigador (Fable) 2026-11-03, encargo de Luis"):
+    CANDIDATOS[cid] = {"f": f, "promocion": "luis", "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_cand_3nov("entrada_por_pendiente", c_entrada_por_pendiente, "Caudal de hoy según la subida de la cota (12 h)",
+           "Con Mazar en 0 MWh el error a 1 día ≈ (caudal de hace ~1,5 días − caudal de hoy)/60 m: el titular reacciona tarde "
+           "(1 nov −0,70 m, 2 nov +0,33 m). Si la pendiente de la cota de las últimas 12 h se aparta más de 0,25 m/día de la "
+           "del titular en dos corridas seguidas, los días 0 y 1 usan un caudal más cercano al observado (peso 0,6 con "
+           "lluvia sostenida en el Paute, 0,3 si no; tope ±0,3 m/día). Del día 2 en adelante, igual al titular.")
+_cand_3nov("entrada_por_pendiente_6h", c_entrada_por_pendiente_6h, "Caudal de hoy según la subida de la cota (6 h)",
+           "Igual que entrada_por_pendiente con ventana de 6 h: reacciona antes al cambio de ritmo; sirve para medir cuánto "
+           "nerviosismo agrega frente a la ventana de 12 h.")
