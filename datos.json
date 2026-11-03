@@ -138,7 +138,7 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 51 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 222 m³/s en promedio de 24 h; a las 09:00 iba en 205 m³/s. Con ese río Coca Codo puede generar ~1047 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 925 MW de promedio hoy. En el modelo equivale a 201 m³/s (rendimiento aplicado 95.8 %).",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 222 m³/s en promedio de 24 h; a las 09:00 iba en 205 m³/s. Con ese río Coca Codo puede generar ~1051 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 925 MW de promedio hoy. En el modelo equivale a 201 m³/s (rendimiento aplicado 95.8 %).",
     "importacion": "Promedio de las últimas 24 h: 7 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 0 MW y para eso Mazar suelta ≈ 0 m³/s mientras le entran 51: hoy sube ≈ 0,85 m/día. Promedio real de los últimos 7 días: sube 0,60 m/día.",
     "termica": "Promedio de las últimas 24 h: 932 MW térmicos + 21 MW renovables no convencionales (Cenace, automático).",
@@ -178,16 +178,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-03T09:50-05:00",
+    "ultima_ejecucion": "2026-11-03T10:00-05:00",
     "registro": [
+      "Cortes conocidos: 1 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
       "Memoria: 24 corridas de las últimas 48 h; sin memoria la zona crítica sería en 16.2 días",
       "Laboratorio: coca_rio_real midiendo (-4% a 1 día, 4 días), sin_autoajuste midiendo (-1% a 1 día, 4 días), paute_sin_ajuste midiendo (+1% a 1 día, 4 días), sin_memoria midiendo (-35% a 1 día, 4 días), corrige_error_3 midiendo (-42% a 1 día, 4 días), corrige_error_6 midiendo (-41% a 1 día, 4 días), corrige_error_6_lento midiendo (-41% a 1 día, 4 días), sesgo_plazo_50 midiendo (+4% a 1 día, 4 días), sesgo_plazo_100 midiendo (+8% a 1 día, 4 días), autoajuste_completo midiendo (+1% a 1 día, 4 días), paute_ajuste_completo midiendo (+0% a 1 día, 4 días), coca_mitad midiendo (+1% a 1 día, 4 días), otros_rios_planos midiendo (-0% a 1 día, 4 días), dia_semana_suave midiendo (+0% a 1 día, 4 días), humedo_completo midiendo (+2% a 1 día, 4 días), cortes_siguen_7d midiendo (+0% a 1 día, 3 días), corrige_y_sesgo midiendo (-42% a 1 día, 4 días), ajustes_completos midiendo (+2% a 1 día, 4 días), memoria_mitad midiendo (-10% a 1 día, 3 días), memoria_desde_dia3 midiendo (-22% a 1 día, 3 días), sin_memoria_paute_bruto midiendo (-22% a 1 día, 3 días), demanda_real midiendo (+5% a 1 día, 2 días), demanda_real_mem midiendo (+4% a 1 día, 2 días), demanda_real_lluvia midiendo (+5% a 1 día, 2 días), patron_1ano midiendo (+4% a 1 día, 2 días), patron_temporada midiendo (+6% a 1 día, 2 días), patron_historico midiendo (+7% a 1 día, 2 días), sesgo_plazo_reciente midiendo (-135% a 1 día, 2 días), sesgo_y_error6 midiendo (-307% a 1 día, 2 días), ajustes_y_sesgo50 midiendo (-31% a 1 día, 2 días), corte_medido midiendo (+0% a 1 día, 2 días), corte_medido_tend midiendo (+0% a 1 día, 2 días)",
       "Número grande (promedio ponderado de 24 corridas): zona crítica 14.4 días [12.1, 16.3], parada 16.8 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.263, '30': 0.737}, semana seca {'7': 0.0, '14': 0.0, '30': 0.263}",
       "Zona crítica (2.116): 14.20050987035186; ventana hasta 32.99758675290154; mínimo {'t': 16.0, 'cota': 2115.0}",
       "Modelo: 15.0 días hasta 2.115 (rango 13.544110229392167–57.11305418265445); hoy +0.85 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 7 comparaciones nuevas; última a 1 día: dijo 2127.44 y fue 2127.12 (+0.32 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2127.44 y fue 2127.12 (+0.32 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-24",
@@ -359,7 +359,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-03T09:50-05:00"
+    "actualizado": "2026-11-03T10:00-05:00"
   },
   "modelo": {
     "curva_mazar": {
