@@ -1238,3 +1238,126 @@ _cand_3nov("entrada_por_pendiente", c_entrada_por_pendiente, "Caudal de hoy seg�
 _cand_3nov("entrada_por_pendiente_6h", c_entrada_por_pendiente_6h, "Caudal de hoy según la subida de la cota (6 h)",
            "Igual que entrada_por_pendiente con ventana de 6 h: reacciona antes al cambio de ritmo; sirve para medir cuánto "
            "nerviosismo agrega frente a la ventana de 12 h.")
+
+
+# ---------- Auditor 3 nov: tendencia de 24 h + propuestas de Gemini corregidas ----------
+# Marcador al 3 nov (4 días, 35 casos a 1 día): titular mediana 32,5 cm, error medio 0,45 m, sesgo −0,28 m; a 3 días
+# sesgo −0,97 m. La familia "corrige con el error reciente" pierde 42 % a 1 día (el error cambia de signo de un día a otro:
+# corregir con el de ayer lo amplifica) y el sesgo por plazo completo pierde a 1 día cuando cambia el régimen
+# (sesgo_plazo_reciente −135 %, 8 casos), pero sesgo_plazo_50 gana ~38 % a 3 días. Prueba fuera de línea con las
+# corridas guardadas (31 casos a 1 día): mover la cota a 1 día la mitad de la distancia entre lo que predice el titular
+# y lo que la cota se movió de verdad en las últimas 24 h baja el error medio 0,425 → 0,383 m (−10 %), a 2 días −3 % y a
+# 3 días −2 %.
+
+def _cota_hace(mod, horas, tol_h=3):
+    """Cota real de la corrida guardada más cercana a `horas` antes de esta (registro/predicciones.json, solo corridas
+    ANTERIORES a esta: sin datos del futuro). None si no hay una a ±tol_h horas."""
+    if not mod.get("_ts"):
+        return None
+    try:
+        ahora = _ts_dt(mod["_ts"])
+    except Exception:
+        return None
+    obj = ahora - timedelta(hours=horas)
+    mejor = None
+    for x in _leer(os.path.join("registro", "predicciones.json"), []) or []:
+        try:
+            if not isinstance(x.get("cota"), (int, float)):
+                continue
+            t = _ts_dt(x["ts"])
+            if t >= ahora:
+                continue
+            dt = abs((t - obj).total_seconds())
+            if dt <= tol_h * 3600 and (mejor is None or dt < mejor[0]):
+                mejor = (dt, float(x["cota"]))
+        except Exception:
+            continue
+    return mejor[1] if mejor else None
+
+
+def _tendencia_24h(P, ctx, mod, peso=0.5, tope=0.5):
+    """El día 0 suma el caudal que mueve la cota a 1 día `peso` × (movimiento real de las últimas 24 h − movimiento a
+    1 día del titular de ESTA corrida), con tope ±`tope` m. Desde el día 1 el caudal es el del titular (la cota queda
+    desplazada esa cantidad a 3, 7 y 14 días). Sin dato de hace 24 h: devuelve el titular sin cambios (se compara en
+    todas las corridas)."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    c24 = _cota_hace(mod, 24)
+    tit1 = mod.get("_tit_1d")
+    if c24 is None or not isinstance(tit1, (int, float)):
+        return sin_cambio
+    cota = float(ctx["cota"])
+    mov_real, mov_tit = cota - c24, float(tit1) - cota
+    if abs(mov_real) > 3.0:          # dato raro (más de 3 m en 24 h): no corrige
+        return sin_cambio
+    delta = max(-tope, min(tope, peso * (mov_real - mov_tit)))
+    q = delta * _dvdz(ctx, mod) / 0.0864
+    m = _sumar_memoria(ctx, [q] + [0.0] * 59)    # ceros: desde el día 1 la memoria del titular
+    return P, ctx, {"memoria": m}
+
+
+def c_tendencia_24h_mitad(P, ctx, mod):
+    return _tendencia_24h(P, ctx, mod, 0.5)
+
+
+def c_tendencia_y_sesgo50_largo(P, ctx, mod):
+    """tendencia_24h_mitad en el día 0 + la mitad del sesgo por plazo desde el día 1 (el sesgo ayuda a 3 días y estorba
+    a 1). Estricta: si falta el sesgo por plazo, no corre."""
+    r = _tendencia_24h(P, ctx, mod, 0.5)
+    P, ctx, _ = r
+    r2 = _sesgo_plazo(P, ctx, mod, 0.5, desde=1)
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {"memoria": list(ctx.get("memoria") or [])}
+
+
+def c_sesgo_semana(P, ctx, mod):
+    """Propuesto por Gemini (3 nov), corregido por el auditor según el revisor independiente: como sesgo_plazo_100, pero
+    el punto de 1 día usa el sesgo de la última semana (aciertos.semana_1d, con ≥ 30 casos); desde el día 2, el histórico."""
+    ac = mod.get("aciertos") or {}
+    s1 = ac.get("semana_1d") or {}
+    if not isinstance(s1.get("sesgo_m"), (int, float)) or (s1.get("n") or 0) < 30:
+        return None
+    ph = dict(ac.get("por_horizonte") or {})
+    if "1" not in ph:
+        return None
+    ph["1"] = {**ph["1"], "sesgo_m": float(s1["sesgo_m"]), "n": max(30, ph["1"].get("n") or 0)}
+    m2 = dict(mod)
+    m2["aciertos"] = {**ac, "por_horizonte": ph}
+    return _sesgo_plazo(P, ctx, m2, 1.0)
+
+
+def c_coca_real_cortes_7d(P, ctx, mod):
+    """Propuesto por Gemini (3 nov), corregido por el auditor según el revisor independiente: coca_rio_real +
+    cortes_siguen_7d. Estricta: si falta el pronóstico del río o no hay corte hoy, no corre. A 1 día no cambia nada."""
+    r = c_coca_rio_real(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c1 = r
+    r2 = c_cortes_siguen_7d(P, ctx, mod)
+    if not r2:
+        return None
+    P, ctx, c2 = r2
+    return P, ctx, {**c1, **c2}
+
+
+def _cand_aud3(cid, f, nombre, hip, origen="auditor 2026-11-03"):
+    CANDIDATOS[cid] = {"f": f, "promocion": "luis", "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_cand_aud3("tendencia_24h_mitad", c_tendencia_24h_mitad, "Cota de mañana a medio camino de la tendencia de 24 h",
+           "El titular va atrasado respecto al ritmo real de la cota. Mover la cota a 1 día la mitad de la distancia entre lo "
+           "que predice el titular y lo que la cota se movió de verdad en las últimas 24 h (tope ±0,5 m) baja el error medio "
+           "a 1 día ~10 % (prueba con 31 corridas: 0,425 → 0,383 m) sin empeorar a 2–3 días (−3 % y −2 %).")
+_cand_aud3("tendencia_y_sesgo50_largo", c_tendencia_y_sesgo50_largo, "Tendencia de 24 h + medio sesgo desde el día 2",
+           "tendencia_24h_mitad para el día 1 y la mitad del sesgo por plazo solo desde el día 2: a 1 día igual a "
+           "tendencia_24h_mitad, y a 3–14 días corrige el pesimismo (sesgo −0,97 m a 3 días; sesgo_plazo_50 −38 % de error "
+           "a 3 días en las mismas corridas).")
+_cand_aud3("sesgo_semana", c_sesgo_semana, "Sesgo por plazo con el de la última semana a 1 día",
+           "Como sesgo_plazo_100, pero a 1 día usa el sesgo de la última semana (semana_1d, ≥30 casos; hoy −0,135 m) en vez "
+           "del acumulado: sigue antes los cambios de régimen. Desde el día 2, igual a sesgo_plazo_100.",
+           origen="Gemini 2026-11-03 (corregido por el auditor)")
+_cand_aud3("coca_real_cortes_7d", c_coca_real_cortes_7d, "Río Coca real + cortes siguen 7 días",
+           "Suma dos fuentes independientes de pesimismo a 3–14 días: el pronóstico real del río Coca (coca_rio_real) y que "
+           "los cortes de hoy sigan 7 días (cortes_siguen_7d). A 1 día no cambia nada; se mide a 3, 7 y 14 días.",
+           origen="Gemini 2026-11-03 (corregido por el auditor)")
