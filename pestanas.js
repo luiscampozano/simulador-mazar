@@ -274,7 +274,7 @@
       { id: "baja", txt: `baja 15 % (${q15} m³/s)`, q: q15, w: "auto", ex: { serieCoca: uno } },
     ];
     const paute = [{ id: "lluvia", txt: "lluvia pronosticada", ex: {} }];
-    if (m.serieMazarSeca) paute.push({ id: "seca", txt: "semana seca como la anterior", ex: { serieMazar: m.serieMazarSeca } });
+    if (m.serieMazarSeca) paute.push({ id: "seca", txt: "semana seca (mitad de la lluvia normal)", ex: { serieMazar: m.serieMazarSeca } });
     ModeloMazar.configurar(D.modelo);
     const out = [];
     for (const c of coca) for (const p of paute) {
