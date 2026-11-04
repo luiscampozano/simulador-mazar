@@ -328,7 +328,7 @@
     }
     const NUM = (D.modelo.prediccion || {}).numero;   // mismo número grande que la pestaña principal
     $("regPrin").textContent = NUM ? (NUM.critica.dias >= 59 ? "más de 60 días" : fecha(NUM.critica.dias)) : (pr.Z.entrada !== null ? fecha(pr.Z.entrada) : "no entra");
-    if (NUM) { $("regPrinTxt").textContent = "Igual que el número grande: promedio ponderado de las corridas de las últimas 48 h"; $("regTardeBox").classList.remove("fuera"); }
+    if (NUM) { $("regPrinTxt").textContent = "Igual que el número grande: trayectoria promedio de las corridas de las últimas 48 h"; $("regTardeBox").classList.remove("fuera"); }
 
     // tabla
     $("regTbl").innerHTML = `<tr><th>Escenario</th><th style="text-align:right">Entra a 2.116</th><th style="text-align:right">Llega a 2.115</th></tr>` +
