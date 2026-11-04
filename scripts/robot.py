@@ -743,6 +743,17 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
             if c[k] <= U:
                 return d + k - 1 + (c[k - 1] - U) / max(1e-6, c[k - 1] - c[k])
         return None
+    def cruce_cb(U):
+        n = len(cv) - 1
+        prev = cb(0)
+        if prev <= U:
+            return 0.0
+        for k in range(1, n + 1):
+            c = cb(k)
+            if c <= U:
+                return k - 1 + (prev - U) / max(1e-6, prev - c)
+            prev = c
+        return None
     def num(U):
         vals = []
         for (e, o), w in zip(usadas, pesos):
@@ -757,11 +768,16 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
                 lo = v
             if hi is None and acum >= 0.9:
                 hi = v
-        return {"dias": round(dias, 1), "rango": [round(lo, 1), round(hi, 1)],
-                "entran": round(sum(w for _, w, x in vals if x) / sw, 2)}
+        # Luis, 3 nov: el número es la fecha en que la TRAYECTORIA PROMEDIO (cb, la misma de la gráfica) cruza U, no el
+        # promedio de las fechas: si una corrida queda rozando la línea por centímetros, contarla como "60 días" movía el
+        # número una semana (3 nov 21:00: promedio de fechas 21,2 días; trayectoria promedio ~14,5). El rango sigue
+        # saliendo de las fechas de cada corrida, porque es la incertidumbre.
+        c_prom = cruce_cb(U)
+        return {"dias": round(c_prom if c_prom is not None else 60.0, 1), "rango": [round(lo, 1), round(hi, 1)],
+                "entran": round(sum(w for _, w, x in vals if x) / sw, 2), "promedio_fechas": round(dias, 1)}
     numero = {"critica": num(2116.0), "parada": num(2115.0), "corridas": len(usadas),
               "peso_ultima": round(pesos[-1] / sw, 3), "corregidas_por_cortes": n_cortes,
-              "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"}
+              "nota": "fecha en que la trayectoria promedio ponderada de las corridas de las últimas 48 h (antigüedad y acierto) cruza la cota; el rango sale de las fechas de cada corrida"}
     return mem, len(usadas), numero
 
 
