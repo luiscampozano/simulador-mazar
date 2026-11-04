@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 F = os.path.join(RAIZ, "laboratorio", "gasto_gemini.json")
 PRECIO = {"gemini-4-argon": (2.00, 10.00), "gemini-3.8-flash": (0.75, 3.75)}   # US$ por millón de tokens (entrada, salida)
-SOLO_FLASH, PARAR = 4.0, 7.0   # Luis (4 nov): tope a US$ 7. Antes: Luis (1 nov): pone la diferencia para el equipo; total Gemini ≈ US$ 40/mes (clima 34 + Mazar 6)
+SOLO_FLASH, PARAR = 5.0, 7.0   # Luis (4 nov): Argón hasta US$ 5, tope US$ 7. Antes: Luis (1 nov): pone la diferencia para el equipo; total Gemini ≈ US$ 40/mes (clima 34 + Mazar 6)
 EC = timezone(timedelta(hours=-5))
 
 
