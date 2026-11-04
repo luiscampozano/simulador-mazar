@@ -142,7 +142,7 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 45 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 194 m³/s en promedio de 24 h; a las 09:00 iba en 192 m³/s. Con ese río Coca Codo puede generar ~910 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 833 MW de promedio hoy. En el modelo equivale a 174 m³/s (rendimiento aplicado 95.8 %).",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 194 m³/s en promedio de 24 h; a las 09:00 iba en 192 m³/s. Con ese río Coca Codo puede generar ~908 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 833 MW de promedio hoy. En el modelo equivale a 174 m³/s (rendimiento aplicado 95.8 %).",
     "importacion": "Promedio de las últimas 24 h: 62 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 506 MW y para eso Mazar suelta ≈ 28 m³/s mientras le entran 45: hoy sube ≈ 0,28 m/día. Promedio real de los últimos 7 días: sube 0,76 m/día.",
     "termica": "Promedio de las últimas 24 h: 1170 MW térmicos + 25 MW renovables no convencionales (Cenace, automático).",
@@ -182,16 +182,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-04T09:50-05:00",
+    "ultima_ejecucion": "2026-11-04T10:00-05:00",
     "registro": [
+      "Cortes conocidos: 12 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
       "Memoria: 25 corridas de las últimas 48 h; sin memoria la zona crítica sería en 16.6 días",
       "Laboratorio: coca_rio_real midiendo (-4% a 1 día, 5 días), sin_autoajuste midiendo (-1% a 1 día, 5 días), paute_sin_ajuste midiendo (+1% a 1 día, 5 días), sin_memoria midiendo (-28% a 1 día, 5 días), corrige_error_3 midiendo (-39% a 1 día, 5 días), corrige_error_6 midiendo (-41% a 1 día, 5 días), corrige_error_6_lento midiendo (-41% a 1 día, 5 días), sesgo_plazo_50 midiendo (-2% a 1 día, 5 días), sesgo_plazo_100 midiendo (-4% a 1 día, 5 días), autoajuste_completo midiendo (+1% a 1 día, 5 días), paute_ajuste_completo midiendo (+0% a 1 día, 5 días), coca_mitad midiendo (+0% a 1 día, 5 días), otros_rios_planos midiendo (+1% a 1 día, 5 días), dia_semana_suave midiendo (+2% a 1 día, 5 días), humedo_completo midiendo (+1% a 1 día, 5 días), cortes_siguen_7d midiendo (+0% a 1 día, 4 días), corrige_y_sesgo midiendo (-39% a 1 día, 5 días), ajustes_completos midiendo (+1% a 1 día, 5 días), memoria_mitad midiendo (-5% a 1 día, 4 días), memoria_desde_dia3 midiendo (-12% a 1 día, 4 días), sin_memoria_paute_bruto midiendo (-12% a 1 día, 4 días), demanda_real midiendo (+14% a 1 día, 3 días), demanda_real_mem midiendo (+8% a 1 día, 3 días), demanda_real_lluvia midiendo (+14% a 1 día, 3 días), patron_1ano midiendo (+6% a 1 día, 3 días), patron_temporada midiendo (+13% a 1 día, 3 días), patron_historico midiendo (+15% a 1 día, 3 días), sesgo_plazo_reciente midiendo (-164% a 1 día, 3 días), sesgo_y_error6 midiendo (-175% a 1 día, 3 días), ajustes_y_sesgo50 midiendo (-40% a 1 día, 3 días), corte_medido midiendo (+0% a 1 día, 3 días), corte_medido_tend midiendo (+0% a 1 día, 3 días), sesgo_plazo_75 midiendo (-81% a 1 día, 2 días), coca_real_y_sesgo50 midiendo (-57% a 1 día, 2 días), corrige_tendencia_3 midiendo (-5% a 1 día, 2 días), sesgo_reciente_7d midiendo (-207% a 1 día, 2 días), demanda_real_y_sesgo50 midiendo (-23% a 1 día, 2 días), entrada_por_pendiente midiendo (+0% a 1 día, 1 días), entrada_por_pendiente_6h midiendo (+0% a 1 día, 1 días)",
       "Número grande (trayectoria promedio de 25 corridas): zona crítica 14.9 días [13.1, 59.6], parada 19.7 días",
       "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.263, '30': 0.421}, semana seca {'7': 0.0, '14': 0.0, '30': 0.0}",
       "Zona crítica (2.116): 14.877775233759147; ventana hasta 31.41552433416294; mínimo {'t': 18.0, 'cota': 2115.0}",
       "Modelo: 17.3 días hasta 2.115 (rango 13.984584774485251–None); hoy +0.28 m/día",
-      "Predicción guardada en registro/predicciones.json",
-      "Verificación: 7 comparaciones nuevas; última a 1 día: dijo 2127.91 y fue 2127.86 (+0.05 m)"
+      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2127.91 y fue 2127.86 (+0.05 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-25",
@@ -363,7 +363,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-04T09:50-05:00"
+    "actualizado": "2026-11-04T10:00-05:00"
   },
   "modelo": {
     "curva_mazar": {
