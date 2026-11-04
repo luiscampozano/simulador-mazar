@@ -606,6 +606,65 @@ CANDIDATOS["sin_memoria_paute_bruto"] = {"f": c_sin_memoria_paute_bruto, "promoc
     "hipotesis": "Los dos cambios que mejor van a 1 día (sin_memoria y paute_sin_ajuste) suman: el error a 1 día baja más que con cada uno por separado."}
 
 
+def c_memoria_mitad_coca_real(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    if not mem or not s:
+        return None
+    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]
+    nueva_coca = list(s)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["memoria_mitad_coca_real"] = {"f": c_memoria_mitad_coca_real, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + río Coca real", "hipotesis": "Combinar la reducción a la mitad de la memoria de 48 h (que baja el error por rezago a 1 día) con la serie del río Coca real (que reduce el error a 3 y 5 días) mejora tanto el corto como el mediano plazo frente al titular."}
+
+
+def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not mem:
+        return None
+    base = [float(x) * 0.5 for x in mem]
+    ph = (mod.get("aciertos") or {}).get("por_horizonte") or {}
+    pts = [(0, 0.0)]
+    for h, v in ph.items():
+        if (v.get("n") or 0) >= 30 and v.get("sesgo_m") is not None:
+            pts.append((int(h), float(v["sesgo_m"])))
+    pts.sort()
+    if len(pts) < 3:
+        return None
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    dvdz = c["a"] + c["b"] * max(0.0, float(ctx["cota"]) - 2115.0)
+    k = dvdz / 0.0864
+    corr = []
+    for d in range(60):
+        if d < 1:
+            corr.append(0.0)
+        else:
+            t0 = d
+            s0 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t0 <= h1:
+                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)
+                    break
+            t1 = d + 1
+            s1 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t1 <= h1:
+                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)
+                    break
+            val = -(s1 - s0) * k * 0.5
+            corr.append(max(-80.0, min(80.0, val)))
+    n = max(len(base), len(corr))
+    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx["memoria"] = out
+    return P, ctx, {"memoria": out}
+
+
+CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
