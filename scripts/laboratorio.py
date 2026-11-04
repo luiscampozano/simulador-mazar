@@ -1361,3 +1361,82 @@ _cand_aud3("coca_real_cortes_7d", c_coca_real_cortes_7d, "Río Coca real + corte
            "Suma dos fuentes independientes de pesimismo a 3–14 días: el pronóstico real del río Coca (coca_rio_real) y que "
            "los cortes de hoy sigan 7 días (cortes_siguen_7d). A 1 día no cambia nada; se mide a 3, 7 y 14 días.",
            origen="Gemini 2026-11-03 (corregido por el auditor)")
+
+
+# ---------- Auditor 4 nov: el caudal de Mazar de 24 h va con rezago ----------
+# El caudal que usa el titular (promedio de Celec de las últimas 24 h) llega con rezago: el 31 oct marcaba ~47 m³/s y la
+# cota subió 1,4 m en un día (el titular dijo +0,4); el 1 nov subió a 82 m³/s cuando la cota ya subía menos (dijo +1,2,
+# fue +0,9). En 41 corridas el error a 1 día del titular sube con ese caudal (Spearman +0,84 en importancia_1d).
+# Hipótesis: llevar el caudal de los días 0–1 hacia su promedio de las últimas 72 h (de corridas ANTERIORES) quita parte
+# de ese rezago. Se suma como caudal en la memoria: día 0 entero, día 1 a la mitad, desde el día 2 igual al titular.
+
+def _q_mazar_previo(mod, horas=72, n_min=6):
+    """Promedio del caudal de Mazar (rasgo q_mazar) de las corridas del laboratorio de las últimas `horas`, solo
+    ANTERIORES a esta corrida (sin datos del futuro). None si hay menos de n_min corridas."""
+    if not mod.get("_ts"):
+        return None
+    try:
+        ahora = _ts_dt(mod["_ts"])
+    except Exception:
+        return None
+    vals = []
+    for x in (_leer(F_PRED, {"corridas": []}).get("corridas") or []):
+        try:
+            t = _ts_dt(x["ts"])
+            q = (x.get("rasgos") or {}).get("q_mazar")
+            if ahora - timedelta(hours=horas) <= t < ahora and isinstance(q, (int, float)) and q > 0:
+                vals.append(float(q))
+        except Exception:
+            continue
+    return sum(vals) / len(vals) if len(vals) >= n_min else None
+
+
+def _caudal_hacia_72h(P, ctx, mod, beta=0.5, tope=30.0):
+    """Día 0: suma beta × (promedio 72 h − caudal de hoy), con tope ±tope m³/s; día 1: la mitad; después, nada.
+    Estricta: sin promedio de 72 h no corre."""
+    qb = _q_mazar_previo(mod)
+    q0 = P.get("qMazar")
+    if qb is None or not isinstance(q0, (int, float)):
+        return None
+    dq = max(-tope, min(tope, beta * (qb - float(q0))))
+    m = _sumar_memoria(ctx, [dq, dq / 2.0] + [0.0] * 58)
+    return P, ctx, {"memoria": m}
+
+
+def c_caudal_72h_mitad(P, ctx, mod):
+    return _caudal_hacia_72h(P, ctx, mod, 0.5)
+
+
+def c_caudal_72h_entero(P, ctx, mod):
+    return _caudal_hacia_72h(P, ctx, mod, 1.0)
+
+
+def c_patron_hist_y_caudal72(P, ctx, mod):
+    """patron_historico (deltaDia de todo el historial de Paute) + caudal_72h_mitad. Estricta: si falta uno, no corre."""
+    r = c_patron_historico(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c1 = r
+    r2 = _caudal_hacia_72h(P, ctx, mod, 0.5)
+    if not r2:
+        return None
+    P, ctx, c2 = r2
+    return P, ctx, {**c1, **c2}
+
+
+def _cand_aud4(cid, f, nombre, hip, origen="auditor 2026-11-04"):
+    CANDIDATOS[cid] = {"f": f, "promocion": "luis", "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_cand_aud4("caudal_72h_mitad", c_caudal_72h_mitad, "Caudal de Mazar a medio camino de su promedio de 72 h",
+           "El caudal de 24 h de Celec llega con rezago (el error a 1 día del titular sube con él). Llevar el caudal de los "
+           "días 0–1 la mitad del camino hacia su promedio de las 72 h anteriores (día 1 a la mitad, tope ±30 m³/s) baja el "
+           "error. Prueba aproximada con 41 corridas (30 oct–3 nov): −7 % a 1 día, −19 % a 2 días, −9 % a 3 días; con 48 o "
+           "96 h da parecido (no depende de la ventana elegida).")
+_cand_aud4("caudal_72h_entero", c_caudal_72h_entero, "Caudal de Mazar igual a su promedio de 72 h",
+           "La misma idea con fuerza entera: días 0–1 con el promedio de 72 h. Prueba aproximada: −3 % a 1 día, −25 % a 2 "
+           "días, −14 % a 3 días; mide si la fuerza que ayuda a 2–3 días cuesta a 1 día.")
+_cand_aud4("patron_hist_y_caudal72", c_patron_hist_y_caudal72, "Patrón histórico + caudal hacia 72 h",
+           "Combina el mejor a 1 día (patron_historico, −15 % en 21 casos) con caudal_72h_mitad: actúan sobre piezas "
+           "distintas (día de la semana y caudal de entrada). Prueba aproximada (21 casos, 1–3 nov): −22 % a 1 día; a 2–3 "
+           "días con muy pocos casos (13 y 3).")
