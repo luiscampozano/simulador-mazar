@@ -733,8 +733,8 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
     for d in range(len(cv) - 1):
         v = ((V(cb(d + 1)) - V(cb(d))) - (V(cv[d + 1]) - V(cv[d]))) * 1e6 / 86400
         mem.append(max(-tope, min(tope, v)))
-    # Número grande: promedio PONDERADO de las fechas que dio cada corrida (2.116 entrada a la zona crítica y
-    # 2.115 parada de Mazar). Una corrida nueva solo lo mueve en proporción a su peso.
+    # Fechas de cruce de cada corrida (2.116 entrada a la zona crítica y 2.115 parada de Mazar): dan el RANGO del
+    # número grande; el número es el cruce de la trayectoria promedio ponderada (cruce_cb, desde el 3 nov).
     def cruce(e, U):
         c, d = e["cv"], (0.0 if e.get("al") else 0.25)
         if not e.get("al") and c[0] <= U < e["cota"]:
@@ -773,7 +773,11 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
         # número una semana (3 nov 21:00: promedio de fechas 21,2 días; trayectoria promedio ~14,5). El rango sigue
         # saliendo de las fechas de cada corrida, porque es la incertidumbre.
         c_prom = cruce_cb(U)
-        return {"dias": round(c_prom if c_prom is not None else 60.0, 1), "rango": [round(lo, 1), round(hi, 1)],
+        d_num = c_prom if c_prom is not None else 60.0
+        if lo is not None and hi is not None and not (lo <= d_num <= hi):
+            print(f"Número grande ({U}): la trayectoria promedio da {d_num:.1f} días, fuera del rango {lo:.1f}–{hi:.1f}; se ajusta al borde")
+            d_num = min(max(d_num, lo), hi)
+        return {"dias": round(d_num, 1), "rango": [round(lo, 1), round(hi, 1)],
                 "entran": round(sum(w for _, w, x in vals if x) / sw, 2), "promedio_fechas": round(dias, 1)}
     numero = {"critica": num(2116.0), "parada": num(2115.0), "corridas": len(usadas),
               "peso_ultima": round(pesos[-1] / sw, 3), "corregidas_por_cortes": n_cortes,
@@ -1851,7 +1855,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     r1 = lambda v: round(v, 1) if v is not None else None
     if numero_corridas:
         mod["prediccion"]["numero"] = numero_corridas
-        log(f"Número grande (promedio ponderado de {numero_corridas['corridas']} corridas): zona crítica "
+        log(f"Número grande (trayectoria promedio de {numero_corridas['corridas']} corridas): zona crítica "
             f"{numero_corridas['critica']['dias']} días {numero_corridas['critica']['rango']}, parada {numero_corridas['parada']['dias']} días")
     mod["prediccion"].update({"dias_critica": r1(zc["entrada"]),
                               "rango_critica": [r1(x) for x in rgc] if rgc else None,
