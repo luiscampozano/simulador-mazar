@@ -1363,12 +1363,14 @@ _cand_aud3("coca_real_cortes_7d", c_coca_real_cortes_7d, "Río Coca real + corte
            origen="Gemini 2026-11-03 (corregido por el auditor)")
 
 
-# ---------- Auditor 4 nov: el caudal de Mazar de 24 h va con rezago ----------
-# El caudal que usa el titular (promedio de Celec de las últimas 24 h) llega con rezago: el 31 oct marcaba ~47 m³/s y la
-# cota subió 1,4 m en un día (el titular dijo +0,4); el 1 nov subió a 82 m³/s cuando la cota ya subía menos (dijo +1,2,
-# fue +0,9). En 41 corridas el error a 1 día del titular sube con ese caudal (Spearman +0,84 en importancia_1d).
-# Hipótesis: llevar el caudal de los días 0–1 hacia su promedio de las últimas 72 h (de corridas ANTERIORES) quita parte
-# de ese rezago. Se suma como caudal en la memoria: día 0 entero, día 1 a la mitad, desde el día 2 igual al titular.
+# ---------- Auditor 4 nov: reversión del caudal de Mazar hacia su promedio de 72 h ----------
+# El error a 1 día del titular sube con el caudal de Mazar del día (Spearman +0,84 en importancia_1d): tras el pico del
+# 1–2 nov (82 m³/s) el titular dijo de más. Hipótesis (revisada por el Claude independiente): NO quita rezago (el
+# promedio de 72 h de corridas que ya usan el promedio de 24 h de Celec es MÁS lento que el titular); prueba una
+# reversión a la media / suavizado tras picos. Se suma como caudal en la memoria: día 0 entero, día 1 a la mitad.
+# PARA PROMOVER (requiere a Luis): memoria_corridas sobrescribe ctx["memoria"] después de aplicar_titular (robot.py),
+# así que la corrección se perdería: habría que aplicarla después de la memoria; y conviene calcular el promedio con la
+# serie cruda de Celec en vez de los rasgos de las corridas (repiten el valor viejo si Celec falla).
 
 def _q_mazar_previo(mod, horas=72, n_min=6):
     """Promedio del caudal de Mazar (rasgo q_mazar) de las corridas del laboratorio de las últimas `horas`, solo
@@ -1407,10 +1409,6 @@ def c_caudal_72h_mitad(P, ctx, mod):
     return _caudal_hacia_72h(P, ctx, mod, 0.5)
 
 
-def c_caudal_72h_entero(P, ctx, mod):
-    return _caudal_hacia_72h(P, ctx, mod, 1.0)
-
-
 def c_patron_hist_y_caudal72(P, ctx, mod):
     """patron_historico (deltaDia de todo el historial de Paute) + caudal_72h_mitad. Estricta: si falta uno, no corre."""
     r = c_patron_historico(P, ctx, mod)
@@ -1429,14 +1427,13 @@ def _cand_aud4(cid, f, nombre, hip, origen="auditor 2026-11-04"):
 
 
 _cand_aud4("caudal_72h_mitad", c_caudal_72h_mitad, "Caudal de Mazar a medio camino de su promedio de 72 h",
-           "El caudal de 24 h de Celec llega con rezago (el error a 1 día del titular sube con él). Llevar el caudal de los "
-           "días 0–1 la mitad del camino hacia su promedio de las 72 h anteriores (día 1 a la mitad, tope ±30 m³/s) baja el "
-           "error. Prueba aproximada con 41 corridas (30 oct–3 nov): −7 % a 1 día, −19 % a 2 días, −9 % a 3 días; con 48 o "
-           "96 h da parecido (no depende de la ventana elegida).")
-_cand_aud4("caudal_72h_entero", c_caudal_72h_entero, "Caudal de Mazar igual a su promedio de 72 h",
-           "La misma idea con fuerza entera: días 0–1 con el promedio de 72 h. Prueba aproximada: −3 % a 1 día, −25 % a 2 "
-           "días, −14 % a 3 días; mide si la fuerza que ayuda a 2–3 días cuesta a 1 día.")
+           "Reversión a la media tras picos: el error a 1 día del titular sube con el caudal de Mazar del día. Llevar el "
+           "caudal de los días 0–1 la mitad del camino hacia su promedio de las 72 h anteriores (día 1 a la mitad, tope ±30 "
+           "m³/s) baja el error. Prueba aproximada con 41 corridas (30 oct–3 nov, la misma crecida de la que salió la idea): "
+           "−7 % a 1 día, −19 % a 2 días, −9 % a 3 días; el revisor midió −5 % a 1 día en 58 corridas y vio que empeora en "
+           "la bajada lenta del 3 nov. En subidas desde la base empuja en contra.")
 _cand_aud4("patron_hist_y_caudal72", c_patron_hist_y_caudal72, "Patrón histórico + caudal hacia 72 h",
-           "Combina el mejor a 1 día (patron_historico, −15 % en 21 casos) con caudal_72h_mitad: actúan sobre piezas "
-           "distintas (día de la semana y caudal de entrada). Prueba aproximada (21 casos, 1–3 nov): −22 % a 1 día; a 2–3 "
-           "días con muy pocos casos (13 y 3).")
+           "Combina el mejor a 1 día (patron_historico, −15 % en 21 casos) con caudal_72h_mitad (reversión del caudal a su "
+           "media de 72 h): actúan sobre piezas distintas (día de la semana y caudal de entrada) y prueba si los efectos se "
+           "suman. Prueba aproximada (21 casos de la misma muestra, 1–3 nov): −22 % a 1 día, casi todo de patron_historico; "
+           "a 2–3 días muy pocos casos (13 y 3). Si caudal_72h_mitad no mejora solo en ~7 días, retirar también este.")
