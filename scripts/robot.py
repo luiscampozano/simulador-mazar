@@ -399,14 +399,15 @@ def serie_caudal_paute(par, q0, hoy_d, dias=61, semana_seca=False):
             if v is not None:
                 lluvia.setdefault(t, []).append(v * sesgo)
     lluvia = {t: sum(v) / len(v) for t, v in lluvia.items()}
-    if semana_seca:
-        # Escenario "semana seca": los próximos 7 días llueve lo mismo que en los 7 anteriores
-        pasada = [lluvia.get((hoy_d - timedelta(days=k)).isoformat()) for k in range(1, 8)]
-        pasada = [x for x in pasada if x is not None]
-        media = sum(pasada) / len(pasada) if pasada else 0.0
-        for j in range(0, 8):
-            lluvia[(hoy_d + timedelta(days=j)).isoformat()] = media
     clim = json.load(open(F_CLIM, encoding="utf-8"))
+    if semana_seca:
+        # Escenario "semana seca" (Luis, 4 nov): los próximos 7 días llueve la MITAD de lo normal para la fecha, y nunca más
+        # que lo pronosticado. Antes era "como los 7 días anteriores": después de una semana muy lluviosa (28 oct–3 nov)
+        # el escenario "seco" salía más lluvioso que el pronóstico y daba menos probabilidad de llegar a la zona crítica.
+        for j in range(0, 8):
+            d = hoy_d + timedelta(days=j)
+            seco = 0.5 * clim[d.timetuple().tm_yday - 1]
+            lluvia[d.isoformat()] = min(lluvia.get(d.isoformat(), seco), seco)
     def p(d):
         normal = clim[d.timetuple().tm_yday - 1]
         k = d.isoformat()
