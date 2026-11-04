@@ -57,6 +57,34 @@ def leer(p, n=40000):
         return f"(no se pudo leer {p}: {e})"
 
 
+UMBRAL_MENOR = 40
+
+
+def lineas_codigo(desde, hasta):
+    """Líneas agregadas + quitadas en código (sin datos .json, site/ ni worker.js) entre dos commits."""
+    out = subprocess.run(["git", "diff", "--numstat", desde, hasta, "--", ".", ":(exclude)*.json", ":(exclude)site/**",
+                          ":(exclude)worker.js", ":(exclude)*.png"], capture_output=True, text=True).stdout
+    n = 0
+    for l in out.splitlines():
+        a_, b_, *_ = l.split("\t")
+        n += (int(a_) if a_.isdigit() else 0) + (int(b_) if b_.isdigit() else 0)
+    return n
+
+
+def revision_previa(base):
+    """(sha, texto) del commit más nuevo de esta rama (sin contar HEAD) que ya tiene un comentario del Revisor Gemini
+    con revisión real (no un "sin llamar a Gemini")."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not repo or not os.environ.get("GH_TOKEN"):
+        return None
+    shas = subprocess.run(["git", "rev-list", f"{base}..HEAD~1"], capture_output=True, text=True).stdout.split()
+    for sha in shas[:15]:
+        r = subprocess.run(["gh", "api", f"repos/{repo}/commits/{sha}/comments", "-q", ".[].body"], capture_output=True, text=True)
+        if "**Revisor Gemini** (`" in r.stdout:
+            return sha, r.stdout
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--manual"); ap.add_argument("--base", default="origin/main")
@@ -67,11 +95,28 @@ def main():
         m, t, uso = preguntar("Responde solo: 'Revisor Gemini de DataLab Ec listo.'")
         print(f"Modelo: {m}\nRespuesta: {t.strip()}\nUso: {uso}")
         return
-    diff = subprocess.run(["git", "diff", a.base, "HEAD"], capture_output=True, text=True).stdout
+    # Luis (4 nov): ahorro. (1) Si ya hubo una revisión en esta rama y lo nuevo desde entonces es un cambio menor
+    # (< UMBRAL_MENOR líneas de código), no se vuelve a revisar: se deja el aviso con el veredicto anterior.
+    # (2) Se manda solo el cambio, con las funciones completas que toca (git diff -W), no los archivos enteros.
+    previa = revision_previa(a.base)
+    if previa:
+        sha, cuerpo = previa
+        n = lineas_codigo(sha, "HEAD")
+        if n < UMBRAL_MENOR:
+            ver = next((l for l in cuerpo.splitlines() if "VEREDICTO" in l.upper()), "").strip()
+            sal = (f"**Revisor Gemini** (sin llamar a Gemini)\n\nCambio menor ({n} líneas de código) sobre la versión ya revisada "
+                   f"({sha[:7]}): no se vuelve a revisar. Veredicto anterior: {ver or 'ver el comentario de ' + sha[:7]}.\n")
+            open(a.salida, "w", encoding="utf-8").write(sal); print(sal); return
+    excl = [":(exclude)*.json", ":(exclude)site/**", ":(exclude)worker.js", ":(exclude)*.png"]
+    diff = subprocess.run(["git", "diff", "-W", a.base, "HEAD", "--", "."] + excl, capture_output=True, text=True).stdout
+    stat = subprocess.run(["git", "diff", "--stat", a.base, "HEAD"], capture_output=True, text=True).stdout
     log = subprocess.run(["git", "log", "--format=%h %s%n%b", f"{a.base}..HEAD"], capture_output=True, text=True).stdout
-    partes = [leer(a.manual, 30000), "\n\n# Commits del candidato\n" + log, "\n\n# Cambio propuesto (git diff)\n```diff\n" + diff[:40000] + "\n```"]
-    for p in a.archivos:
-        partes.append(f"\n\n# Archivo: {p}\n```\n{leer(p, 100000 if p.endswith(('robot.py', 'horario.py')) else 30000)}\n```")
+    partes = [leer(a.manual, 30000), "\n\n# Commits del candidato\n" + log, "\n\n# Archivos tocados\n" + stat[-4000:],
+              "\n\n# Cambio propuesto (git diff con las funciones completas que toca; sin archivos de datos)\n```diff\n" + diff[:60000] + "\n```"]
+    for p in a.archivos:   # solo archivos chicos de configuración; el código va en el diff
+        t = leer(p, 6000)
+        if len(t) < 6000 and not p.endswith(".py"):
+            partes.append(f"\n\n# Archivo: {p}\n```\n{t}\n```")
     partes.append("\n\nRevisa el cambio propuesto según el manual. Empieza con la línea de VEREDICTO.")
     texto = "".join(partes)[:MAX_CHARS]
     m, t, uso = preguntar(texto)
