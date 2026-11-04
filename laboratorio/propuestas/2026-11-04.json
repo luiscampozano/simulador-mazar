@@ -1,0 +1,91 @@
+{
+ "fecha": "2026-11-04",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 3.291,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "memoria_mitad_coca_real",
+    "nombre": "Media memoria + río Coca real",
+    "hipotesis": "Combinar la reducción a la mitad de la memoria de 48 h (que baja el error por rezago a 1 día) con la serie del río Coca real (que reduce el error a 3 y 5 días) mejora tanto el corto como el mediano plazo frente al titular.",
+    "promocion": "luis",
+    "por_que": "En el marcador actual, memoria_mitad reduce la mediana de error a 1 día (0,229 m vs 0,258 m del titular) y el sesgo (-0,097 m vs -0,194 m) al quitar rezago. Por su parte, coca_rio_real mejora notablemente a 2, 3 y 5 días (error medio a 3 días de 0,678 m vs 0,817 m; a 5 días de 0,244 m vs 1,587 m). Como actúan sobre entradas independientes (memoria y serieCoca), combinarlos suma ambas mejoras sin interferencia.",
+    "codigo": "def c_memoria_mitad_coca_real(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    s = mod.get(\"serieCocaRio\")\n    if not mem or not s:\n        return None\n    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]\n    nueva_coca = list(s)\n    ctx[\"memoria\"] = nueva_mem\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"memoria\": nueva_mem, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2128.14,
+     2124.72,
+     2116.84
+    ],
+    "candidato_1_7_14": [
+     2128.11,
+     2124.19,
+     2115.2
+    ],
+    "cambios_mod": [
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_mitad_y_sesgo50_largo",
+    "nombre": "Media memoria + mitad de sesgo desde día 2",
+    "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días.",
+    "promocion": "luis",
+    "por_que": "El titular ya cerró su brecha a 1 día en las últimas corridas (errores recientes de +0,19 m a +0,05 m), por lo que aplicar correcciones de sesgo el primer día hoy sobrecorrige. En cambio, memoria_mitad mejora a 1 día (mediana 22,9 cm) y sesgo_plazo_50 baja el error a 3 días en ~38 % (0,508 m vs 0,817 m del titular). Activar la corrección de sesgo recién desde el día 2 separa limpiamente el ajuste de corto y largo plazo.",
+    "codigo": "def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    base = [float(x) * 0.5 for x in mem]\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 1:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2128.14,
+     2124.72,
+     2116.84
+    ],
+    "candidato_1_7_14": [
+     2128.17,
+     2127.22,
+     2123.17
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_corta_2d",
+    "nombre": "Memoria de 48 h con decaimiento rápido",
+    "hipotesis": "Apagar gradualmente la memoria de 48 h (50 % el día 0, 25 % el día 1 y 0 % desde el día 2) reduce el rezago en el primer día como memoria_mitad y evita arrastrar correcciones de regímenes pasados a 3–14 días.",
+    "promocion": "luis",
+    "por_que": "Cuando cambia el ritmo de subida (como del 1 al 3 de noviembre, donde el error a 1 día pasó de -0,70 m a +0,19 m), el caudal constante de la memoria de 48 h empuja toda la curva hacia el régimen viejo durante toda la simulación. Usar la mitad el primer día (donde memoria_mitad mejora al titular con mediana 0,229 m) y apagarla para el día 2 limpia el pronóstico de mediano y largo plazo.",
+    "codigo": "def c_memoria_corta_2d(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    pesos = [0.5, 0.25]\n    nueva = [round(float(x) * (pesos[i] if i < len(pesos) else 0.0), 2) for i, x in enumerate(mem)]\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2128.14,
+     2124.72,
+     2116.84
+    ],
+    "candidato_1_7_14": [
+     2128.17,
+     2126.49,
+     2118.64
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-04"
+}
