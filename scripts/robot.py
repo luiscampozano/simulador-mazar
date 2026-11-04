@@ -733,8 +733,8 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
     for d in range(len(cv) - 1):
         v = ((V(cb(d + 1)) - V(cb(d))) - (V(cv[d + 1]) - V(cv[d]))) * 1e6 / 86400
         mem.append(max(-tope, min(tope, v)))
-    # Número grande: promedio PONDERADO de las fechas que dio cada corrida (2.116 entrada a la zona crítica y
-    # 2.115 parada de Mazar). Una corrida nueva solo lo mueve en proporción a su peso.
+    # Fechas de cruce de cada corrida (2.116 entrada a la zona crítica y 2.115 parada de Mazar): dan el RANGO del
+    # número grande; el número es el cruce de la trayectoria promedio ponderada (cruce_cb, desde el 3 nov).
     def cruce(e, U):
         c, d = e["cv"], (0.0 if e.get("al") else 0.25)
         if not e.get("al") and c[0] <= U < e["cota"]:
@@ -742,6 +742,17 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
         for k in range(1, len(c)):
             if c[k] <= U:
                 return d + k - 1 + (c[k - 1] - U) / max(1e-6, c[k - 1] - c[k])
+        return None
+    def cruce_cb(U):
+        n = len(cv) - 1
+        prev = cb(0)
+        if prev <= U:
+            return 0.0
+        for k in range(1, n + 1):
+            c = cb(k)
+            if c <= U:
+                return k - 1 + (prev - U) / max(1e-6, prev - c)
+            prev = c
         return None
     def num(U):
         vals = []
@@ -757,11 +768,20 @@ def memoria_corridas(ts, cota0, diarios, par, horas=48, tope=40.0, cortes=None, 
                 lo = v
             if hi is None and acum >= 0.9:
                 hi = v
-        return {"dias": round(dias, 1), "rango": [round(lo, 1), round(hi, 1)],
-                "entran": round(sum(w for _, w, x in vals if x) / sw, 2)}
+        # Luis, 3 nov: el número es la fecha en que la TRAYECTORIA PROMEDIO (cb, la misma de la gráfica) cruza U, no el
+        # promedio de las fechas: si una corrida queda rozando la línea por centímetros, contarla como "60 días" movía el
+        # número una semana (3 nov 21:00: promedio de fechas 21,2 días; trayectoria promedio ~14,5). El rango sigue
+        # saliendo de las fechas de cada corrida, porque es la incertidumbre.
+        c_prom = cruce_cb(U)
+        d_num = c_prom if c_prom is not None else 60.0
+        if lo is not None and hi is not None and not (lo <= d_num <= hi):
+            print(f"Número grande ({U}): la trayectoria promedio da {d_num:.1f} días, fuera del rango {lo:.1f}–{hi:.1f}; se ajusta al borde")
+            d_num = min(max(d_num, lo), hi)
+        return {"dias": round(d_num, 1), "rango": [round(lo, 1), round(hi, 1)],
+                "entran": round(sum(w for _, w, x in vals if x) / sw, 2), "promedio_fechas": round(dias, 1)}
     numero = {"critica": num(2116.0), "parada": num(2115.0), "corridas": len(usadas),
               "peso_ultima": round(pesos[-1] / sw, 3), "corregidas_por_cortes": n_cortes,
-              "nota": "promedio ponderado de las fechas de las corridas de las últimas 48 h (antigüedad y acierto)"}
+              "nota": "fecha en que la trayectoria promedio ponderada de las corridas de las últimas 48 h (antigüedad y acierto) cruza la cota; el rango sale de las fechas de cada corrida"}
     return mem, len(usadas), numero
 
 
@@ -1835,7 +1855,7 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     r1 = lambda v: round(v, 1) if v is not None else None
     if numero_corridas:
         mod["prediccion"]["numero"] = numero_corridas
-        log(f"Número grande (promedio ponderado de {numero_corridas['corridas']} corridas): zona crítica "
+        log(f"Número grande (trayectoria promedio de {numero_corridas['corridas']} corridas): zona crítica "
             f"{numero_corridas['critica']['dias']} días {numero_corridas['critica']['rango']}, parada {numero_corridas['parada']['dias']} días")
     mod["prediccion"].update({"dias_critica": r1(zc["entrada"]),
                               "rango_critica": [r1(x) for x in rgc] if rgc else None,
