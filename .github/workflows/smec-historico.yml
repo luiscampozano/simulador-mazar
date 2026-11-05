@@ -1,0 +1,44 @@
+# Historial diario del balance energético del Cenace (SMEC), 2010–hoy, validado mes a mes contra la serie mensual oficial
+# (Luis, 5 nov 2026). A mano; un trabajo por año en paralelo. Luego, una vez por semana completa lo que falte.
+name: Demanda · historial SMEC
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 15 * * 2"   # martes 10:17 en Ecuador: completa el año en curso y valida
+permissions:
+  contents: write
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        anio: ${{ github.event_name == 'schedule' && fromJSON('[2026]') || fromJSON('[2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/smec_historico.py ${{ matrix.anio }}
+      - uses: actions/upload-artifact@v4
+        with: { name: "smec-${{ matrix.anio }}", path: "historial/smec/${{ matrix.anio }}.json" }
+  unir:
+    needs: bajar
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: partes }
+      - name: Unir, validar y guardar
+        run: |
+          mkdir -p historial/smec && cp partes/*/*.json historial/smec/ 2>/dev/null || true
+          python3 scripts/smec_historico.py --validar
+          cp -r historial/smec /tmp/smec
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B h origin/main
+            mkdir -p historial/smec && cp /tmp/smec/*.json historial/smec/ && git add historial/smec
+            git commit -q -m "Historial SMEC [skip ci]" || exit 0
+            git push -q origin h:main && exit 0; sleep 5
+          done
+          exit 1
