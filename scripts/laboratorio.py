@@ -1496,3 +1496,68 @@ _cand_aud4("patron_hist_y_caudal72", c_patron_hist_y_caudal72, "Patrón históri
            "media de 72 h): actúan sobre piezas distintas (día de la semana y caudal de entrada) y prueba si los efectos se "
            "suman. Prueba aproximada (21 casos de la misma muestra, 1–3 nov): −22 % a 1 día, casi todo de patron_historico; "
            "a 2–3 días muy pocos casos (13 y 3). Si caudal_72h_mitad no mejora solo en ~7 días, retirar también este.")
+
+
+# ---------------------------------------------------------------- 5 nov: noviembre lluvioso en la Costa (Luis)
+AC_MW_POR_C = 50.0         # el mismo coeficiente del aire acondicionado que usa el modelo (demanda = dBase + 50·(T − 32))
+CORTE_RAYOS_MW = 40.0      # SUPUESTO (a medir con la demanda por distribuidora): demanda que se pierde en un día de tormenta
+                           # por cortes de distribución (rayos, árboles, transformadores), promedio del día
+UMBRAL_LLUVIA_MM = 10.0
+
+
+def c_costa_lluviosa_nov(P, ctx, mod):
+    """Luis, 5 nov: "si las lluvias persisten en la Costa durante noviembre baja la demanda y por momentos habrá cortes
+    por rayos; lo demás se mantiene igual". El titular usa para TODOS los días futuros la temperatura máxima de hoy en
+    Guayaquil. Aquí, hasta el 30 de noviembre, la demanda de cada día cambia por dos cosas:
+      1) temperatura: los días con pronóstico (registro/gye_pronostico.json) usan su máxima prevista; los demás días de
+         noviembre, la máxima media de los días con ≥ 10 mm de la última semana medida (lluvia que persiste);
+         Δ = 50 MW por °C frente a la máxima de hoy;
+      2) cortes por tormentas: en días con ≥ 10 mm (pronosticados) o, sin pronóstico, la mitad de los días, se restan
+         40 MW de demanda promedio (supuesto inicial; se medirá con la demanda por distribuidora).
+    Desde el 1 de diciembre, igual que el titular. Cambia solo la demanda (vía el plan de cortes, que es una resta a la
+    demanda); caudales, Coca Codo, térmicas, Colombia y la memoria quedan iguales."""
+    if not mod.get("_ts"):
+        return None
+    ahora = datetime.fromisoformat(str(mod["_ts"])[:16]); hoy = ahora.date()
+    g = _leer(os.path.join("registro", "gye_pronostico.json"), {}) or {}
+    dias, tmax, llu = g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []
+    if not dias or len(dias) != len(tmax) or len(dias) != len(llu):
+        return None
+    pron = {d: (t, l) for d, t, l in zip(dias, tmax, llu) if t is not None and l is not None}
+    t_hoy = pron.get(hoy.isoformat(), (None, None))[0]
+    if t_hoy is None:
+        return None
+    lluviosos = [t for d, (t, l) in pron.items() if d < hoy.isoformat() and l >= UMBRAL_LLUVIA_MM]
+    t_lluvia = sum(lluviosos) / len(lluviosos) if lluviosos else t_hoy
+    fin = datetime(hoy.year, 11, 30).date() if hoy.month == 11 else hoy
+    plan = list(ctx.get("cutPlan") or [])
+    n = 61
+    plan += [None] * (n - len(plan))
+    cambio = False
+    for k in range(n):
+        d = hoy + timedelta(days=k)
+        if d > fin:
+            break
+        dia = (int(ctx.get("diaSemana0") or 0) + k) % 7
+        base = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else \
+            (P.get("cut", 0) if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+        if d.isoformat() in pron:
+            t, l = pron[d.isoformat()]
+            rayos = CORTE_RAYOS_MW if l >= UMBRAL_LLUVIA_MM else 0.0
+        else:
+            t, rayos = t_lluvia, CORTE_RAYOS_MW * 0.5
+        menos = AC_MW_POR_C * (t_hoy - t) + rayos          # MW de demanda que no aparecen ese día
+        plan[k] = round(float(base) + menos, 1)   # puede ser negativo: día más caluroso que hoy = más demanda
+        cambio = True
+    if not cambio:
+        return None
+    ctx["cutPlan"] = plan
+    return P, ctx, {"cutPlan": plan}
+
+
+CANDIDATOS["costa_lluviosa_nov"] = {"f": c_costa_lluviosa_nov, "promocion": "luis", "origen": "Luis 2026-11-05",
+    "nombre": "Noviembre lluvioso en la Costa (menos demanda y cortes por rayos)",
+    "hipotesis": "El titular supone todo el mes la temperatura de hoy. Si las lluvias siguen en la Costa hasta fin de "
+                 "noviembre, la demanda baja (máximas como las de los días lluviosos recientes, 50 MW por °C) y las "
+                 "tormentas cortan la distribución (40 MW en días de ≥ 10 mm; la mitad de los días sin pronóstico). "
+                 "Paute genera menos y Mazar baja más lento. Solo cambia la demanda."}
