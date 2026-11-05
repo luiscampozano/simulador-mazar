@@ -1601,3 +1601,75 @@ CANDIDATOS["nov_mas_lluvioso"] = {"f": c_nov_mas_lluvioso, "promocion": "luis", 
     "nombre": "Noviembre más lluvioso en la Costa (−1 °C, 40 MW)", "hipotesis": _HIP_NOV.format(c=1, mw=40)}
 CANDIDATOS["nov_mucho_mas_lluvioso"] = {"f": c_nov_mucho_mas_lluvioso, "promocion": "luis", "origen": "Luis 2026-11-05",
     "nombre": "Noviembre mucho más lluvioso en la Costa (−2 °C, 100 MW)", "hipotesis": _HIP_NOV.format(c=2, mw=100)}
+
+
+# ---------------------------------------------------------------- 5 nov (auditor): corrección del error reciente a media fuerza
+def _corr_tendencia_fuerza(P, ctx, mod, fuerza=0.5):
+    """corrige_tendencia_3 (pesos 1-2-3, tau 1 día) con el caudal de corrección multiplicado por `fuerza`.
+    Usa solo verificaciones a 1 día anteriores a la corrida (las mismas guardas de _corr_error_pesos)."""
+    base = list(ctx.get("memoria") or [])
+    r = _corr_error_pesos(P, ctx, mod, (1.0, 2.0, 3.0), 1.0)
+    if not r:
+        return None
+    P, ctx, _ = r
+    nueva = list(ctx.get("memoria") or [])
+    out = [round((base[i] if i < len(base) else 0.0) + fuerza * (nueva[i] - (base[i] if i < len(base) else 0.0)), 2)
+           for i in range(len(nueva))]
+    ctx["memoria"] = out
+    return P, ctx, {"memoria": out}
+
+
+def c_corrige_tendencia_mitad(P, ctx, mod):
+    return _corr_tendencia_fuerza(P, ctx, mod, 0.5)
+
+
+def c_patron_hist_y_tendencia_mitad(P, ctx, mod):
+    """patron_historico + corrige_tendencia_mitad. Estricta: si falta una pieza, no corre."""
+    r = c_patron_historico(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c1 = r
+    r2 = _corr_tendencia_fuerza(P, ctx, mod, 0.5)
+    if not r2:
+        return None
+    P, ctx, c2 = r2
+    return P, ctx, {**c1, **c2}
+
+
+def c_patron_tend_mitad_sesgo50_largo(P, ctx, mod):
+    """patron_hist_y_tendencia_mitad + la mitad del sesgo por plazo desde el día 3 (no toca los días 0–2).
+    Estricta: si falta una pieza, no corre."""
+    r = c_patron_hist_y_tendencia_mitad(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c1 = r
+    r2 = _sesgo_plazo(P, ctx, mod, 0.5, desde=3)
+    if not r2:
+        return None
+    P, ctx, _ = r2
+    return P, ctx, {**c1, "memoria": list(ctx.get("memoria") or [])}
+
+
+def _cand_aud5(cid, f, nombre, hip, origen="auditor 2026-11-05"):
+    CANDIDATOS[cid] = {"f": f, "promocion": "luis", "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_cand_aud5("corrige_tendencia_mitad", c_corrige_tendencia_mitad, "Corrige el error reciente a media fuerza",
+           "corrige_tendencia_3 es el mejor a 1 día (+18 % en 20 casos) pero a 2 días pierde (−22 % en 12 casos a ±1 h; "
+           "−47 % en 9 a hora exacta): corrige de más. A la mitad de fuerza baja el error a 1 día sin empeorar a 2. Prueba aproximada "
+           "(mitad de la diferencia guardada con el titular, 2–5 nov, cota real a ±1 h): 1 día 0,095 vs 0,148 m del titular "
+           "(+36 %, 24 casos), 2 días +6 % (12). Con hora exacta, como el marcador: 1 día +38 % (20 casos) pero 2 días −17 % (9). "
+           "Ojo: la fuerza se eligió con las mismas corridas y solo corre cuando hay verificación de < 12 h.")
+_cand_aud5("patron_hist_y_tendencia_mitad", c_patron_hist_y_tendencia_mitad, "Patrón histórico + error reciente a media fuerza",
+           "Combina las dos mejores piezas, que tocan cosas distintas: patron_historico (día de la semana de toda la historia "
+           "de Paute; +7 % a 1 día, +32 % a 2, +15 % a 3) y corrige_tendencia_mitad (caudal de los días 0–2 según el error "
+           "reciente). Prueba aproximada (suma de diferencias guardadas, 24 corridas pareadas): 1 día 0,090 vs 0,148 m (+39 %), "
+           "2 días 0,128 vs 0,245 m (+48 %, 12 casos), con cota real a ±1 h; con hora exacta +41 % (20) y +43 % (9). Pocos casos y "
+           "misma muestra: puede ir peor en vivo.")
+_cand_aud5("patron_tend_mitad_sesgo50_largo", c_patron_tend_mitad_sesgo50_largo, "Patrón histórico + error reciente + mitad del sesgo desde día 3",
+           "patron_hist_y_tendencia_mitad no corrige el pesimismo de largo plazo del titular (sesgo −0,35 m a 3 días y −1,48 "
+           "a 5); sesgo_plazo_50 lo baja mucho a 5 días (+74 % en 15 casos) pero estorba a 1–2 días (−6 % y −3 %). Aplicar la "
+           "mitad del sesgo por plazo solo desde el día 3 debería conservar lo de 1–3 días (idénticos a patron_hist_y_tendencia_mitad) y "
+           "mejorar 5–14 días. Es parcial: quita la mitad de s(h) − s(3) (hoy ~60 % del efecto de sesgo_plazo_50 a 5 días). Sin prueba "
+           "previa (ninguna corrida con la corrección del error tiene aún real a ≥ 3 días); el +74 % de sesgo_plazo_50 a 5 días es de 9–15 "
+           "casos del 30–31 oct (régimen seco).")
