@@ -1,0 +1,92 @@
+{
+ "fecha": "2026-11-05",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 3.488,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "dia_semana_25",
+    "nombre": "Demanda por día de la semana al 25 %",
+    "hipotesis": "Reducir el patrón semanal de demanda al 25 % (en vez de al 50 % como dia_semana_suave) amortigua aún más el sobreajuste del patrón de 3 meses del titular, acercando su efecto al de patron_historico (+16 % a 1 día) con una regla directa y auto-promovible.",
+    "promocion": "auto",
+    "por_que": "En el marcador de hoy los candidatos que suavizan el patrón semanal lideran a 1 día (patron_historico +16 %, patron_temporada +13 %), porque el titular exagera la caída de demanda en fines de semana (domingo ≈ −308 MW vs −141 MW histórico). dia_semana_suave (50 %) ya mejora la mediana a 1 día (23,3 cm vs 23,5 cm del titular y 46,9 cm a 2 días); bajarlo al 25 % deja el domingo en ~−77 MW y evita que el modelo proyecte subidas irreales los fines de semana o caídas bruscas los lunes.",
+    "codigo": "def c_dia_semana_25(P, ctx, mod):\n    dd = ctx.get(\"deltaDia\")\n    if not dd:\n        return None\n    v = [round(float(x) * 0.25, 1) for x in dd]\n    ctx[\"deltaDia\"] = v\n    return P, ctx, {\"deltaDia\": v}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.89,
+     2124.1,
+     2116.16
+    ],
+    "candidato_1_7_14": [
+     2128.03,
+     2124.1,
+     2116.17
+    ],
+    "cambios_mod": [
+     "deltaDia"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "dia_semana_suave_coca_real",
+    "nombre": "Día de semana a la mitad + río Coca real",
+    "hipotesis": "Combinar el patrón semanal a la mitad (que suaviza los saltos de corto plazo) con la serie del río Coca real (que reduce el error a 5 días de 1,53 m a 0,73 m) mejora tanto el corto como el mediano plazo con promoción automática.",
+    "promocion": "auto",
+    "por_que": "coca_rio_real es hoy el mejor candidato de promoción automática a mediano plazo (reduce el error medio a 2 días de 0,526 a 0,484 m, a 3 días de 0,755 a 0,715 m y a 5 días de 1,525 a 0,734 m), pero a 1 día empeora levemente (0,356 vs 0,345 m). Por su parte, suavizar el patrón semanal (dia_semana_suave) actúa sobre una pieza ortogonal (la demanda por día de la semana) y ayuda en las transiciones de 1 a 2 días.",
+    "codigo": "def c_dia_semana_suave_coca_real(P, ctx, mod):\n    dd = ctx.get(\"deltaDia\")\n    s = mod.get(\"serieCocaRio\")\n    if not dd or not s:\n        return None\n    v = [round(float(x) * 0.5, 1) for x in dd]\n    sc = list(s)\n    ctx[\"deltaDia\"] = v\n    ctx[\"serieCoca\"] = sc\n    return P, ctx, {\"deltaDia\": v, \"serieCoca\": sc}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.89,
+     2124.1,
+     2116.16
+    ],
+    "candidato_1_7_14": [
+     2128.0,
+     2123.98,
+     2116.09
+    ],
+    "cambios_mod": [
+     "deltaDia",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_75_coca_real",
+    "nombre": "Memoria al 75 % + río Coca real",
+    "hipotesis": "Conservar el 75 % de la memoria de 48 h junto con el pronóstico real del río Coca quita parte del rezago a 1 día (hoy +0,33 a +0,02 m en recientes_1d) sin la inestabilidad de apagar la memoria (sin_memoria pierde 28 % a 1 día) y mantiene la ganancia de coca_rio_real a 2–5 días.",
+    "promocion": "luis",
+    "por_que": "El marcador muestra que quitar toda la memoria de 48 h empeora el error medio a 1 día de 0,345 a 0,443 m y el p90 de 0,91 a 1,26 m, pero en recientes_1d el titular tuvo rezago optimista al frenar la crecida (+0,33 m a +0,02 m). Ya existe memoria_mitad_coca_real (50 %); probar el punto de 75 % de memoria permite conservar tres cuartas partes de la estabilidad del promedio de corridas mientras coca_rio_real corrige la mitad del pesimismo a 5 días (0,734 vs 1,525 m).",
+    "codigo": "def c_memoria_75_coca_real(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    s = mod.get(\"serieCocaRio\")\n    if not mem or not s:\n        return None\n    nueva_mem = [round(float(x) * 0.75, 2) for x in mem]\n    nueva_coca = list(s)\n    ctx[\"memoria\"] = nueva_mem\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"memoria\": nueva_mem, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.89,
+     2124.1,
+     2116.16
+    ],
+    "candidato_1_7_14": [
+     2127.87,
+     2123.84,
+     2115.86
+    ],
+    "cambios_mod": [
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-05"
+}

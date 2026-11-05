@@ -665,6 +665,48 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_dia_semana_25(P, ctx, mod):
+    dd = ctx.get("deltaDia")
+    if not dd:
+        return None
+    v = [round(float(x) * 0.25, 1) for x in dd]
+    ctx["deltaDia"] = v
+    return P, ctx, {"deltaDia": v}
+
+
+CANDIDATOS["dia_semana_25"] = {"f": c_dia_semana_25, "promocion": "auto", "origen": "Gemini 2026-11-05", "nombre": "Demanda por día de la semana al 25 %", "hipotesis": "Reducir el patrón semanal de demanda al 25 % (en vez de al 50 % como dia_semana_suave) amortigua aún más el sobreajuste del patrón de 3 meses del titular, acercando su efecto al de patron_historico (+16 % a 1 día) con una regla directa y auto-promovible."}
+
+
+def c_dia_semana_suave_coca_real(P, ctx, mod):
+    dd = ctx.get("deltaDia")
+    s = mod.get("serieCocaRio")
+    if not dd or not s:
+        return None
+    v = [round(float(x) * 0.5, 1) for x in dd]
+    sc = list(s)
+    ctx["deltaDia"] = v
+    ctx["serieCoca"] = sc
+    return P, ctx, {"deltaDia": v, "serieCoca": sc}
+
+
+CANDIDATOS["dia_semana_suave_coca_real"] = {"f": c_dia_semana_suave_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-05", "nombre": "Día de semana a la mitad + río Coca real", "hipotesis": "Combinar el patrón semanal a la mitad (que suaviza los saltos de corto plazo) con la serie del río Coca real (que reduce el error a 5 días de 1,53 m a 0,73 m) mejora tanto el corto como el mediano plazo con promoción automática."}
+
+
+def c_memoria_75_coca_real(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    if not mem or not s:
+        return None
+    nueva_mem = [round(float(x) * 0.75, 2) for x in mem]
+    nueva_coca = list(s)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["memoria_75_coca_real"] = {"f": c_memoria_75_coca_real, "promocion": "luis", "origen": "Gemini 2026-11-05", "nombre": "Memoria al 75 % + río Coca real", "hipotesis": "Conservar el 75 % de la memoria de 48 h junto con el pronóstico real del río Coca quita parte del rezago a 1 día (hoy +0,33 a +0,02 m en recientes_1d) sin la inestabilidad de apagar la memoria (sin_memoria pierde 28 % a 1 día) y mantiene la ganancia de coca_rio_real a 2–5 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
