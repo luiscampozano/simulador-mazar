@@ -1558,14 +1558,46 @@ def _costa_lluviosa(P, ctx, mod, mw_dia_lluvioso):
     return P, ctx, {"cutPlan": plan}
 
 
-def c_costa_lluviosa_nov(P, ctx, mod): return _costa_lluviosa(P, ctx, mod, 40.0)
-def c_costa_lluviosa_nov_100(P, ctx, mod): return _costa_lluviosa(P, ctx, mod, 100.0)
+def _nov_mas_lluvioso(P, ctx, mod, menos_c, mw_dia_lluvioso):
+    """Luis, 5 nov: "¿qué tal si llueve MÁS de lo usual este noviembre?" (con 5 días ya casi iguala noviembre de 1997).
+    Escenario, no pronóstico: hasta el 30 de noviembre TODOS los días en la Costa son lluviosos y `menos_c` °C más frescos
+    que la semana medida (la que ya usa el titular). Δ demanda = −50 MW/°C × menos_c − mw_dia_lluvioso × (1 − fracción
+    de días lluviosos de esa semana). Solo cambia la demanda de la Costa; el caudal del Paute, Coca Codo, térmicas y
+    Colombia quedan como en el titular. Mismas salvedades que _costa_lluviosa (no se promueve vía cutPlan)."""
+    if not mod.get("_ts"):
+        return None
+    hoy = datetime.fromisoformat(str(mod["_ts"])[:16]).date()
+    if hoy.month != 11:
+        return None
+    g = _leer(os.path.join("registro", "gye_pronostico.json"), {}) or {}
+    serie = {d: l for d, l in zip(g.get("dias") or [], g.get("lluvia_mm") or []) if l is not None}
+    ven = ((_leer("datos.json", {}) or {}).get("robot") or {}).get("cortes_semana_medida") or {}
+    v0 = ven.get("desde") or (hoy - timedelta(days=7)).isoformat(); v1 = ven.get("hasta") or (hoy - timedelta(days=1)).isoformat()
+    ref = [l for d, l in serie.items() if v0 <= d <= v1 and d < hoy.isoformat()]
+    f_ref = (sum(1 for l in ref if l >= UMBRAL_LLUVIA_MM) / len(ref)) if len(ref) >= 3 else 0.5
+    menos = AC_MW_POR_C * menos_c + mw_dia_lluvioso * (1.0 - f_ref)
+    fin = datetime(hoy.year, 11, 30).date()
+    plan = list(ctx.get("cutPlan") or []); n = 61
+    plan += [None] * (n - len(plan))
+    for k in range(n):
+        d = hoy + timedelta(days=k)
+        if d > fin: break
+        dia = (int(ctx.get("diaSemana0") or 0) + k) % 7
+        base = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else \
+            (P.get("cut", 0) if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+        plan[k] = round(float(base) + menos, 1)
+    ctx["cutPlan"] = plan
+    return P, ctx, {"cutPlan": plan}
 
 
-_HIP_COSTA = ("El titular supone la demanda de la última semana (lluviosa). Este candidato ajusta los días con pronóstico "
-              "en Guayaquil: 50 MW menos por cada °C bajo la máxima media de esa semana, y {mw} MW menos si el día es más "
-              "lluvioso (≥ 10 mm) que lo habitual de la semana (más si es más seco). Hasta el 30 de noviembre. Solo cambia la demanda.")
-CANDIDATOS["costa_lluviosa_nov"] = {"f": c_costa_lluviosa_nov, "promocion": "luis", "origen": "Luis 2026-11-05",
-    "nombre": "Clima de la Costa en la demanda (día lluvioso = 40 MW)", "hipotesis": _HIP_COSTA.format(mw=40)}
-CANDIDATOS["costa_lluviosa_nov_100"] = {"f": c_costa_lluviosa_nov_100, "promocion": "luis", "origen": "Luis 2026-11-05 (variante del revisor)",
-    "nombre": "Clima de la Costa en la demanda (día lluvioso = 100 MW)", "hipotesis": _HIP_COSTA.format(mw=100)}
+def c_nov_mas_lluvioso(P, ctx, mod): return _nov_mas_lluvioso(P, ctx, mod, 1.0, 40.0)
+def c_nov_mucho_mas_lluvioso(P, ctx, mod): return _nov_mas_lluvioso(P, ctx, mod, 2.0, 100.0)
+
+
+_HIP_NOV = ("Escenario de Luis (5 nov): noviembre más lluvioso que lo usual en la Costa (va camino al récord de 1997). Hasta el 30 nov "
+            "todos los días lluviosos y {c} °C más frescos que la semana medida (que ya usa el titular); día lluvioso = {mw} MW menos "
+            "de demanda. Solo cambia la demanda de la Costa: el caudal del Paute y lo demás, igual que el titular.")
+CANDIDATOS["nov_mas_lluvioso"] = {"f": c_nov_mas_lluvioso, "promocion": "luis", "origen": "Luis 2026-11-05",
+    "nombre": "Noviembre más lluvioso en la Costa (−1 °C, 40 MW)", "hipotesis": _HIP_NOV.format(c=1, mw=40)}
+CANDIDATOS["nov_mucho_mas_lluvioso"] = {"f": c_nov_mucho_mas_lluvioso, "promocion": "luis", "origen": "Luis 2026-11-05",
+    "nombre": "Noviembre mucho más lluvioso en la Costa (−2 °C, 100 MW)", "hipotesis": _HIP_NOV.format(c=2, mw=100)}
