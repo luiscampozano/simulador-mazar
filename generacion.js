@@ -55,6 +55,12 @@
       <div class="g-chart"><svg id="g-dem-dia" role="img" aria-label="Demanda nacional de hoy, ayer y anteayer"></svg></div><p class="g-txt" id="g-dem-txt"></p></div>
       <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Por empresa distribuidora</h3><div class="g-sub" id="g-dist-sub">Lectura del Cenace en este momento</div></div></div>
       <div id="g-dist" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(128px,1fr))"></div></div>
+      <div class="g-box g-col" id="g-hist"><div class="g-head"><div><h3 class="g-h3">Historial de la demanda</h3><div class="g-sub">Por año, por mes y por día. Cada vista es independiente.</div></div>
+      <div class="g-seg" role="group" aria-label="Vista del historial" id="g-hist-vistas"><button type="button" data-v="anio" aria-pressed="true">Por año</button><button type="button" data-v="mes" aria-pressed="false">Por mes</button><button type="button" data-v="dia" aria-pressed="false">Por día</button></div></div>
+      <div class="g-head"><label class="g-lbl">Serie <select id="g-hist-serie" style="margin-left:6px;font:inherit;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--g-line);background:var(--g-soft);color:var(--g-ink)"></select></label>
+      <label class="g-lbl" id="g-hist-sel-l"><span id="g-hist-sel-t">Año</span> <select id="g-hist-sel" style="margin-left:6px;font:inherit;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--g-line);background:var(--g-soft);color:var(--g-ink)"></select></label></div>
+      <div class="g-legend" id="g-hist-ley"></div><div class="g-chart"><svg id="g-hist-g" role="img" aria-label="Historial de la demanda"></svg></div>
+      <p class="g-txt" id="g-hist-txt"></p><p class="g-note" id="g-hist-nota"></p></div>
       <p class="g-note" id="g-dem-nota"></p>`,
     hidro: () => `<div class="g-head"><div style="display:grid;gap:6px;max-width:70ch"><h2 class="${CFG.h2}">Generación hidroeléctrica</h2>
       <p class="${CFG.lede}">Cuánto genera cada central durante el día. La línea gruesa es lo que generó de verdad (Cenace); la punteada, lo que el modelo suponía en cada corrida. Así se ve dónde acierta y dónde no.</p></div>
@@ -449,7 +455,105 @@
         (ant ? `<div class="g-fila"><span>frente a media hora antes</span><b class="${u.total - ant < 0 ? "g-ok" : "g-ko"}">${u.total - ant > 0 ? "+" : ""}${f(u.total - ant)} MW</b></div>` : "") +
         (enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)) != null ? `<div class="g-fila"><span>frente a ayer a esta hora</span><b>${f(u.total - enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)))} MW</b></div>` : "") + `</div>`;
     }
+    if (DIST) histIni();
     $("g-dem-nota").textContent = "Fuente: Cenace, información operativa (datos preliminares del SCADA, cada media hora). La demanda por empresa se guarda desde el 1 de noviembre de 2026 a las 23:00; con más días se podrá comparar cada empresa con su valor normal.";
+  }
+  /* ---------- historial de la demanda: por año, por mes y por día (Luis, 5 nov) ----------
+     Nacional: balance diario del Cenace (SMEC, 2010–hoy), SOLO los meses que pasaron la validación contra la serie
+     mensual oficial del Cenace (±3 %). Distribuidoras: lecturas del Cenace que guardamos desde el 1 nov 2026. */
+  const HBASE = CFG.url.replace(/registro\/generacion\.json.*$/, "historial/smec/");
+  const SMEC = {}; let hVista = "anio", hSerie = "nacional", hIni = false;
+  const MESL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  function smecAnio(a) {
+    if (SMEC[a] !== undefined) return Promise.resolve(SMEC[a]);
+    return fetch(HBASE + a + ".json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
+      // fuera SOLO los meses que no cuadran con la serie oficial; los recientes sin referencia aún se marcan "por validar"
+      const est = {}; if (j) for (const [m, v] of Object.entries(j.validacion || {})) est[m] = v.estado;
+      SMEC[a] = j ? Object.fromEntries(Object.entries(j.dias || {}).filter(([d]) => est[d.slice(0, 7)] && est[d.slice(0, 7)] !== "no_valido").map(([d, v]) => [d, v.demanda])) : {};
+      SMEC[a + "_est"] = est;
+      return SMEC[a]; });
+  }
+  const distDia = () => {   // {serie: {día: [[hora, MW]...]}} desde las lecturas guardadas
+    const out = {}; for (const x of ((DIST && DIST.lecturas) || [])) { const d = x.ts.slice(0, 10), h = +x.ts.slice(11, 13) + (+x.ts.slice(14, 16)) / 60;
+      (out.nacional = out.nacional || {}, out.nacional[d] = out.nacional[d] || []).push([h, x.total]);
+      for (const [k, v] of Object.entries(x.d || {})) (out[k] = out[k] || {}, out[k][d] = out[k][d] || []).push([h, v]); }
+    for (const p of PUNTOS()) if (p.dem != null) { const d = p.k.slice(0, 10);   // media hora del SCADA, la misma curva del panel de arriba
+      if (!out._pn) out._pn = {}; (out._pn[d] = out._pn[d] || []).push([+p.k.slice(11, 13) + (+p.k.slice(14, 16)) / 60, p.dem]); }
+    for (const [d, xs] of Object.entries(out._pn || {})) if (xs.length > ((out.nacional || {})[d] || []).length) (out.nacional = out.nacional || {})[d] = xs;
+    delete out._pn; return out; };
+  const prom = a => a && a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  function histIni() {
+    if (hIni) return; hIni = true;
+    const series = ["nacional"].concat(Object.keys((((DIST && DIST.lecturas) || []).slice(-1)[0] || {}).d || {}).sort());
+    $("g-hist-serie").innerHTML = series.map(k => `<option value="${esc(k)}">${k === "nacional" ? "Demanda nacional" : esc(k)}</option>`).join("");
+    $("g-hist-serie").addEventListener("change", e => { hSerie = e.target.value; histSel(); });
+    $("g-hist-vistas").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; hVista = b.dataset.v;
+      $("g-hist-vistas").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); histSel(); });
+    $("g-hist-sel").addEventListener("change", hist);
+    histSel();
+  }
+  function histSel() {   // opciones del segundo selector según la vista y la serie
+    const hoy = new Date(Date.now() - 5 * 3600e3), A = hoy.getUTCFullYear(), opts = [];
+    const D = distDia()[hSerie] || {}, diasDist = Object.keys(D).sort();
+    if (hVista === "anio") { $("g-hist-sel-t").textContent = "Año";
+      if (hSerie === "nacional") for (let a = A; a >= 2016; a--) opts.push([a, a]); else [...new Set(diasDist.map(d => d.slice(0, 4)))].reverse().forEach(a => opts.push([a, a])); }
+    else if (hVista === "mes") { $("g-hist-sel-t").textContent = "Mes";
+      if (hSerie === "nacional") { for (let a = A; a >= 2016; a--) for (let m = (a === A ? hoy.getUTCMonth() : 11); m >= 0; m--) opts.push([`${a}-${String(m + 1).padStart(2, "0")}`, `${MESL[m]} ${a}`]); }
+      else [...new Set(diasDist.map(d => d.slice(0, 7)))].reverse().forEach(m => opts.push([m, `${MESL[+m.slice(5) - 1]} ${m.slice(0, 4)}`])); }
+    else { $("g-hist-sel-t").textContent = "Día";
+      const ds = hSerie === "nacional" ? [...new Set(diasDist.concat(Object.keys(distDia().nacional || {})))].sort() : diasDist;
+      ds.reverse().forEach(d => opts.push([d, fechaCorta(d) + " " + d.slice(0, 4)])); }
+    $("g-hist-sel").innerHTML = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+    hist();
+  }
+  async function hist() {
+    const v = $("g-hist-sel").value, nac = hSerie === "nacional", nomS = nac ? "la demanda nacional" : hSerie;
+    const nota = nac ? "Fuente: Cenace, balance energético diario (SMEC): demanda = generación + importación − exportación, promedio del día en MW. Cada mes se compara con la serie mensual oficial del Cenace: los que se apartan más de 3 % no se muestran (por eso empieza en 2016 y faltan algunos meses); los más recientes, que la serie oficial aún no publica, salen en tono claro como «sin validar». Por hora, solo desde el 1 nov 2026."
+      : "Fuente: Cenace, información operativa por empresa distribuidora (lo que se guarda desde el 1 de noviembre de 2026). La historia anterior por empresa no está publicada por día; se agregará la estadística mensual de la ARCONEL.";
+    $("g-hist-nota").textContent = nota; $("g-hist-ley").innerHTML = ""; $("g-hist-txt").textContent = "";
+    if (!v) { $("g-hist-g").innerHTML = ""; $("g-hist-txt").textContent = "Todavía no hay datos guardados para esta vista."; return; }
+    const D = distDia()[hSerie] || {};
+    const diario = async a => nac ? await smecAnio(a) : Object.fromEntries(Object.entries(D).filter(([d]) => d.startsWith(a)).map(([d, xs]) => [d, prom(xs.map(x => x[1]))]));
+    if (hVista === "anio") {
+      const a = +v, cur = await diario(String(a)), ant = await diario(String(a - 1));
+      const mens = o => Array.from({ length: 12 }, (_, m) => prom(Object.entries(o).filter(([d]) => +d.slice(5, 7) === m + 1).map(([, x]) => x)));
+      const c = mens(cur), p = mens(ant), top = techo(c.concat(p), 100), est = (nac && SMEC[a + "_est"]) || {};
+      const pend = i => nac && est[`${a}-${String(i + 1).padStart(2, "0")}`] !== "valido";
+      grafico("g-hist-g", { x0: 0, x1: 12, y0: 0, y1: top, yt: marcasY(top), xt: MON.map((t, i) => [i + 0.5, t]),
+        series: [{ tipo: "barras", d: c.map((y, i) => [i + 0.1, i + 0.9, 0, y, "var(--g-real)", pend(i) ? 0.4 : null]) }, { d: p.map((y, i) => [i + 0.5, y]), c: "var(--g-muted)", w: 1.6, dash: "4 4", puntos: true, r: 2.5 }] });
+      const hayPend = c.some((y, i) => y != null && pend(i));
+      $("g-hist-ley").innerHTML = `<span><i class="s" style="background:var(--g-real)"></i>${a}, promedio de cada mes (MW)</span>` + (hayPend ? `<span><i class="s" style="background:var(--g-real);opacity:.4"></i>${a}, aún sin validar</span>` : "") + `<span><i class="d"></i>${a - 1}</span>`;
+      const ca = c.filter(x => x != null), both = c.map((y, i) => y != null && p[i] != null ? i : -1).filter(i => i >= 0);
+      const cm = prom(ca), cb = prom(both.map(i => c[i])), pb = prom(both.map(i => p[i]));
+      $("g-hist-txt").textContent = !ca.length ? "Sin meses con datos confiables para ese año." : `Promedio de ${nomS} en ${a}: ${f(cm)} MW (${ca.length} meses con datos).` +
+        (both.length ? ` Comparando solo los ${both.length} meses que tienen dato en los dos años: ${f(cb)} MW frente a ${f(pb)} MW en ${a - 1} (${cb - pb >= 0 ? "+" : ""}${f((cb / pb - 1) * 100, 1)} %).` : "");
+    } else if (hVista === "mes") {
+      const [a, m] = v.split("-"), cur = await diario(a), ant = await diario(String(+a - 1));
+      const dias = new Date(+a, +m, 0).getDate(), serieM = (o, aa) => Array.from({ length: dias }, (_, i) => o[`${aa}-${m}-${String(i + 1).padStart(2, "0")}`] ?? null);
+      const c = serieM(cur, a), p = serieM(ant, +a - 1), vals = c.concat(p).filter(x => x != null);
+      if (!vals.length) { $("g-hist-g").innerHTML = ""; $("g-hist-txt").textContent = "Sin datos válidos para ese mes."; return; }
+      const y0 = Math.floor(Math.min(...vals) / 250) * 250, y1 = Math.ceil(Math.max(...vals) / 250) * 250, yt = []; for (let x = y0; x <= y1; x += (y1 - y0 > 1000 ? 500 : 250)) yt.push(x);
+      grafico("g-hist-g", { x0: 1, x1: dias, y0, y1, yt, xt: [1, 5, 10, 15, 20, 25, dias].map(d => [d, String(d)]),
+        series: [{ d: p.map((y, i) => [i + 1, y]), c: "var(--g-muted)", w: 1.4, dash: "4 4" }, { d: c.map((y, i) => [i + 1, y]), c: "var(--g-real)", w: 2.6, puntos: true, r: 2.5 }] });
+      $("g-hist-ley").innerHTML = `<span><i style="background:var(--g-real);height:4px"></i>${MESL[+m - 1]} ${a} (promedio de cada día, MW)</span><span><i class="d"></i>${MESL[+m - 1]} ${+a - 1}</span>`;
+      const cm = prom(c.filter(x => x != null)), both = c.map((y, i) => y != null && p[i] != null ? i : -1).filter(i => i >= 0);
+      const cb = prom(both.map(i => c[i])), pb = prom(both.map(i => p[i])), e = nac && (SMEC[a + "_est"] || {})[v];
+      $("g-hist-txt").textContent = `Promedio de ${nomS} en ${MESL[+m - 1]} ${a}: ${f(cm)} MW` + (e && e !== "valido" ? " (mes aún sin validar con la serie oficial)" : "") + "." +
+        (both.length ? ` Mismos días de ${MESL[+m - 1]} ${+a - 1}: ${f(cb)} MW frente a ${f(pb)} MW este año (${cb - pb >= 0 ? "+" : ""}${f((cb / pb - 1) * 100, 1)} %).` : "");
+    } else {
+      const xs = (distDia()[hSerie] || {})[v];
+      if (xs && xs.length > 1) {
+        const pts = xs.slice().sort((a, b) => a[0] - b[0]), vals = pts.map(q => q[1]), top = techo(vals, 50);
+        grafico("g-hist-g", { x0: 0, x1: 24, y0: 0, y1: top, yt: marcasY(top), xt: [0, 3, 6, 9, 12, 15, 18, 21, 24].map(h => [h, h + ":00"]), series: [{ d: pts, c: "var(--g-real)", w: 2.6, puntos: true, r: 2 }] });
+        $("g-hist-ley").innerHTML = `<span><i style="background:var(--g-real);height:4px"></i>${esc(nac ? "Demanda nacional" : hSerie)}, ${fechaCorta(v)} (MW)</span>`;
+        const sm = nac ? (await smecAnio(v.slice(0, 4)))[v] : null;
+        $("g-hist-txt").textContent = `Promedio del día: ${f(prom(vals))} MW · máximo ${f(Math.max(...vals))} MW · mínimo ${f(Math.min(...vals))} MW (${pts.length} lecturas).` +
+          (sm != null ? ` En el balance diario del Cenace ese día figura ${f(sm)} MW (generación + importación − exportación; incluye pérdidas y consumos propios, por eso es mayor).` : "");
+      } else if (nac) {
+        const o = await smecAnio(v.slice(0, 4)); $("g-hist-g").innerHTML = "";
+        $("g-hist-txt").textContent = o[v] != null ? `Demanda nacional promedio del ${fechaCorta(v)} ${v.slice(0, 4)}: ${f(o[v])} MW (no hay datos por hora de ese día).` : "Sin datos válidos para ese día.";
+      } else { $("g-hist-g").innerHTML = ""; $("g-hist-txt").textContent = "Sin lecturas guardadas para ese día."; }
+    }
   }
   function distribuidoras() {
     if (!DIST) {
