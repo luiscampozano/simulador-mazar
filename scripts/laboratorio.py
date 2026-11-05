@@ -1500,54 +1500,57 @@ _cand_aud4("patron_hist_y_caudal72", c_patron_hist_y_caudal72, "Patrón históri
 
 # ---------------------------------------------------------------- 5 nov: noviembre lluvioso en la Costa (Luis)
 AC_MW_POR_C = 50.0         # el mismo coeficiente del aire acondicionado que usa el modelo (demanda = dBase + 50·(T − 32))
-CORTE_RAYOS_MW = 40.0      # SUPUESTO (a medir con la demanda por distribuidora): demanda que se pierde en un día de tormenta
-                           # por cortes de distribución (rayos, árboles, transformadores), promedio del día
 UMBRAL_LLUVIA_MM = 10.0
 
 
-def c_costa_lluviosa_nov(P, ctx, mod):
+def _costa_lluviosa(P, ctx, mod, mw_dia_lluvioso):
     """Luis, 5 nov: "si las lluvias persisten en la Costa durante noviembre baja la demanda y por momentos habrá cortes
-    por rayos; lo demás se mantiene igual". El titular usa para TODOS los días futuros la temperatura máxima de hoy en
-    Guayaquil. Aquí, hasta el 30 de noviembre, la demanda de cada día cambia por dos cosas:
-      1) temperatura: los días con pronóstico (registro/gye_pronostico.json) usan su máxima prevista; los demás días de
-         noviembre, la máxima media de los días con ≥ 10 mm de la última semana medida (lluvia que persiste);
-         Δ = 50 MW por °C frente a la máxima de hoy;
-      2) cortes por tormentas: en días con ≥ 10 mm (pronosticados) o, sin pronóstico, la mitad de los días, se restan
-         40 MW de demanda promedio (supuesto inicial; se medirá con la demanda por distribuidora).
-    Desde el 1 de diciembre, igual que el titular. Cambia solo la demanda (vía el plan de cortes, que es una resta a la
-    demanda); caudales, Coca Codo, térmicas, Colombia y la memoria quedan iguales."""
+    por tormentas; lo demás se mantiene igual".
+    OJO (revisor, 5 nov): el titular NO usa la temperatura de hoy para todo el mes; usa la demanda MEDIDA de la ventana
+    reciente de Paute (robot.py: dBase = demanda medida + cortes − 50·(tCosta − 32), que se cancela), y esa ventana fue
+    lluviosa. Por eso "si las lluvias persisten igual" ya es el titular. Este candidato agrega lo que el titular no sabe:
+    los días con PRONÓSTICO en Guayaquil (registro/gye_pronostico.json, Open-Meteo; los días pasados de ese archivo son la
+    serie del modelo, no mediciones) que sean más secos o más calurosos, o más lluviosos o frescos, que la ventana:
+        Δ demanda = −50 MW por °C bajo la máxima media de la ventana − mw_dia_lluvioso × (lluvioso − fracción lluviosa)
+    El efecto de un "día lluvioso" (nubes = menos aire acondicionado más allá de la máxima, y cortes de distribución por
+    tormentas) es un SUPUESTO que el marcador calibra (dos variantes). Días sin pronóstico hasta el 30 nov: persistencia
+    (Δ ≈ 0). Desde el 1 dic, nada. Solo cambia la demanda; en el modelo, todo MW menos de demanda sale de Paute.
+    NO SE PUEDE PROMOVER ASÍ: va por cutPlan, que en la página es el plan de cortes anunciados (rompe el control de cortes
+    y los escenarios) y la memoria de 48 h lo trataría como "corte conocido". Para promoverlo hace falta un campo de demanda
+    propio (p. ej. ctx.demAjuste) con paridad en modelo.js."""
     if not mod.get("_ts"):
         return None
     ahora = datetime.fromisoformat(str(mod["_ts"])[:16]); hoy = ahora.date()
+    if hoy.month != 11:
+        return None
     g = _leer(os.path.join("registro", "gye_pronostico.json"), {}) or {}
+    if str(g.get("generado") or "")[:10] != hoy.isoformat():
+        return None                                   # pronóstico viejo: no se inventa nada
     dias, tmax, llu = g.get("dias") or [], g.get("tmax") or [], g.get("lluvia_mm") or []
     if not dias or len(dias) != len(tmax) or len(dias) != len(llu):
         return None
-    pron = {d: (t, l) for d, t, l in zip(dias, tmax, llu) if t is not None and l is not None}
-    t_hoy = pron.get(hoy.isoformat(), (None, None))[0]
-    if t_hoy is None:
+    serie = {d: (t, l) for d, t, l in zip(dias, tmax, llu) if t is not None and l is not None}
+    ven = ((_leer("datos.json", {}) or {}).get("robot") or {}).get("cortes_semana_medida") or {}
+    v0 = ven.get("desde") or (hoy - timedelta(days=7)).isoformat(); v1 = ven.get("hasta") or (hoy - timedelta(days=1)).isoformat()
+    ref = [(t, l) for d, (t, l) in serie.items() if v0 <= d <= v1 and d < hoy.isoformat()]
+    if len(ref) < 3:
         return None
-    lluviosos = [t for d, (t, l) in pron.items() if d < hoy.isoformat() and l >= UMBRAL_LLUVIA_MM]
-    t_lluvia = sum(lluviosos) / len(lluviosos) if lluviosos else t_hoy
-    fin = datetime(hoy.year, 11, 30).date() if hoy.month == 11 else hoy
-    plan = list(ctx.get("cutPlan") or [])
-    n = 61
+    t_ref = sum(t for t, _ in ref) / len(ref)
+    f_ref = sum(1 for _, l in ref if l >= UMBRAL_LLUVIA_MM) / len(ref)
+    fin = datetime(hoy.year, 11, 30).date()
+    plan = list(ctx.get("cutPlan") or []); n = 61
     plan += [None] * (n - len(plan))
     cambio = False
     for k in range(n):
         d = hoy + timedelta(days=k)
-        if d > fin:
-            break
+        if d > fin: break
+        if d.isoformat() not in serie: continue      # sin pronóstico: persistencia = titular
+        t, l = serie[d.isoformat()]
+        menos = AC_MW_POR_C * (t_ref - t) + mw_dia_lluvioso * ((1.0 if l >= UMBRAL_LLUVIA_MM else 0.0) - f_ref)
         dia = (int(ctx.get("diaSemana0") or 0) + k) % 7
         base = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else \
             (P.get("cut", 0) if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
-        if d.isoformat() in pron:
-            t, l = pron[d.isoformat()]
-            rayos = CORTE_RAYOS_MW if l >= UMBRAL_LLUVIA_MM else 0.0
-        else:
-            t, rayos = t_lluvia, CORTE_RAYOS_MW * 0.5
-        menos = AC_MW_POR_C * (t_hoy - t) + rayos          # MW de demanda que no aparecen ese día
-        plan[k] = round(float(base) + menos, 1)   # puede ser negativo: día más caluroso que hoy = más demanda
+        plan[k] = round(float(base) + menos, 1)       # negativo = más demanda (día seco o caluroso)
         cambio = True
     if not cambio:
         return None
@@ -1555,9 +1558,14 @@ def c_costa_lluviosa_nov(P, ctx, mod):
     return P, ctx, {"cutPlan": plan}
 
 
+def c_costa_lluviosa_nov(P, ctx, mod): return _costa_lluviosa(P, ctx, mod, 40.0)
+def c_costa_lluviosa_nov_100(P, ctx, mod): return _costa_lluviosa(P, ctx, mod, 100.0)
+
+
+_HIP_COSTA = ("El titular supone la demanda de la última semana (lluviosa). Este candidato ajusta los días con pronóstico "
+              "en Guayaquil: 50 MW menos por cada °C bajo la máxima media de esa semana, y {mw} MW menos si el día es más "
+              "lluvioso (≥ 10 mm) que lo habitual de la semana (más si es más seco). Hasta el 30 de noviembre. Solo cambia la demanda.")
 CANDIDATOS["costa_lluviosa_nov"] = {"f": c_costa_lluviosa_nov, "promocion": "luis", "origen": "Luis 2026-11-05",
-    "nombre": "Noviembre lluvioso en la Costa (menos demanda y cortes por rayos)",
-    "hipotesis": "El titular supone todo el mes la temperatura de hoy. Si las lluvias siguen en la Costa hasta fin de "
-                 "noviembre, la demanda baja (máximas como las de los días lluviosos recientes, 50 MW por °C) y las "
-                 "tormentas cortan la distribución (40 MW en días de ≥ 10 mm; la mitad de los días sin pronóstico). "
-                 "Paute genera menos y Mazar baja más lento. Solo cambia la demanda."}
+    "nombre": "Clima de la Costa en la demanda (día lluvioso = 40 MW)", "hipotesis": _HIP_COSTA.format(mw=40)}
+CANDIDATOS["costa_lluviosa_nov_100"] = {"f": c_costa_lluviosa_nov_100, "promocion": "luis", "origen": "Luis 2026-11-05 (variante del revisor)",
+    "nombre": "Clima de la Costa en la demanda (día lluvioso = 100 MW)", "hipotesis": _HIP_COSTA.format(mw=100)}
