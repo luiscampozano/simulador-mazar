@@ -1,6 +1,6 @@
 """Historial diario del balance energético del Cenace (SMEC), para las pestañas de demanda por año, mes y día.
 
-Luis (5 nov 2026) autorizó leer el SMEC sin verificar su certificado (es autofirmado, igual que en generacion.py),
+Luis (5 nov 2026) autorizó leer el SMEC con la misma función del robot (generacion.smec_dia, certificado autofirmado),
 con una condición: validar los datos. Por eso cada mes se compara con la serie mensual oficial de energía neta del
 Cenace (registro/referencias, bajada por HTTPS normal): si la suma de los días del SMEC se aparta más de TOLERANCIA,
 el mes completo queda marcado "no_valido" y la página no lo usa. La verificación desactivada aplica SOLO a
@@ -9,7 +9,7 @@ smec.cenace.gob.ec; no se envía ninguna clave ni dato.
 Uso: python scripts/smec_historico.py AAAA [AAAA2]   → historial/smec/<año>.json (un archivo por año)
      python scripts/smec_historico.py --validar        → marca cada mes como válido o no
 """
-import json, os, re, ssl, sys, time, urllib.request
+import json, os, re, sys, time, urllib.request
 from datetime import date, timedelta
 
 DIR = os.path.join("historial", "smec")
@@ -17,39 +17,27 @@ SMEC = "https://smec.cenace.gob.ec/SMEC/ResultadoInforme1.do?fecha="
 REF = "https://raw.githubusercontent.com/jp1309/cenace-operacion/main/data/mensual_tecnologia.csv"   # serie mensual oficial del Cenace
 TOLERANCIA = 0.03
 UA = {"User-Agent": "Mozilla/5.0 (simulador-mazar-robot)"}
-CLAVES = {"Generación Hidráulica": "hidro", "Generación Vapor Bunker": "vapor", "Generación Turbinas a Gas": "gas",
+_CLAVES_DOC = {"Generación Hidráulica": "hidro", "Generación Vapor Bunker": "vapor", "Generación Turbinas a Gas": "gas",
           "Generación Turbinas a Diesel": "diesel", "Generación Motores Bunker": "motores", "Generación de Otros Tipos": "otros",
           "Total Generación": "total", "Importación de Colombia": "imp_col", "Exportación a Colombia": "exp_col",
           "Importación de Perú": "imp_peru", "Exportación a Perú": "exp_peru"}
 
 
-def _ctx_smec():
-    c = ssl.create_default_context()
-    c.check_hostname = False
-    c.verify_mode = ssl.CERT_NONE   # solo para smec.cenace.gob.ec (certificado autofirmado), autorizado por Luis el 5 nov
-    return c
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from generacion import smec_dia   # misma lectura del SMEC que usa el robot cada día (cifrado y certificado incluidos)
 
 
-def dia(d, ctx):
-    req = urllib.request.Request(SMEC + d.strftime("%Y/%m/%d"), headers=UA)
-    with urllib.request.urlopen(req, context=ctx, timeout=60) as r:
-        h = r.read().decode("utf-8", "replace")
-    celdas = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", x)).strip() for x in re.findall(r"<td[^>]*>(.*?)</td>", h, re.S)]
-    out = {}
-    for i, c in enumerate(celdas[:-1]):
-        if c in CLAVES and CLAVES[c] not in out:
-            try:
-                out[CLAVES[c]] = round(float(celdas[i + 1].replace(",", "")) / 1000.0, 1)   # kWh → MWh del día
-            except ValueError:
-                pass
-    if "total" not in out:
+def dia(d):
+    """Balance del día en MW medios (como registro/balance_diario.json) más la demanda = generación + importación − exportación."""
+    out = smec_dia(d)
+    if not out:
         return None
-    out["demanda_mwh"] = round(out["total"] + out.get("imp_col", 0) + out.get("imp_peru", 0) - out.get("exp_col", 0) - out.get("exp_peru", 0), 1)
+    out["demanda"] = round(out["total"] + out.get("imp_col", 0) + out.get("imp_peru", 0) - out.get("exp_col", 0) - out.get("exp_peru", 0), 1)
     return out
 
 
 def bajar(anio1, anio2):
-    ctx = _ctx_smec(); os.makedirs(DIR, exist_ok=True)
+    os.makedirs(DIR, exist_ok=True)
     for a in range(anio1, anio2 + 1):
         p = os.path.join(DIR, f"{a}.json")
         res = json.load(open(p)) if os.path.exists(p) else {"anio": a, "dias": {}, "fallas": []}
@@ -59,7 +47,7 @@ def bajar(anio1, anio2):
             if k not in res["dias"]:
                 for intento in range(3):
                     try:
-                        x = dia(d, ctx)
+                        x = dia(d)
                         if x: res["dias"][k] = x
                         else: res["fallas"].append(k)
                         break
@@ -88,11 +76,11 @@ def validar():
         res = json.load(open(os.path.join(DIR, f)))
         meses = {}
         for k, v in res["dias"].items():
-            meses.setdefault(k[:7], []).append(v["total"])
+            meses.setdefault(k[:7], []).append(v["total"] * 24 / 1000.0)   # MW medios → GWh del día
         val = {}
         for m, xs in sorted(meses.items()):
             dias_mes = (date(int(m[:4]) + int(m[5:]) // 12, int(m[5:]) % 12 + 1, 1) - timedelta(days=1)).day
-            gwh = sum(xs) / 1000.0
+            gwh = sum(xs)
             r_ = ref.get(m)
             if len(xs) < dias_mes:
                 estado = "incompleto"
