@@ -1673,3 +1673,19 @@ _cand_aud5("patron_tend_mitad_sesgo50_largo", c_patron_tend_mitad_sesgo50_largo,
            "mejorar 5–14 días. Es parcial: quita la mitad de s(h) − s(3) (hoy ~60 % del efecto de sesgo_plazo_50 a 5 días). Sin prueba "
            "previa (ninguna corrida con la corrección del error tiene aún real a ≥ 3 días); el +74 % de sesgo_plazo_50 a 5 días es de 9–15 "
            "casos del 30–31 oct (régimen seco).")
+
+
+# ---------------------------------------------------------------- 5 nov: propuesto por Gemini (segundo auditor), aprobado por Claude independiente
+def c_dia_semana_suave_coca_real(P, ctx, mod):
+    dd = ctx.get("deltaDia")
+    s = mod.get("serieCocaRio")
+    if not dd or not s:
+        return None
+    v = [round(float(x) * 0.5, 1) for x in dd]
+    sc = list(s)
+    ctx["deltaDia"] = v
+    ctx["serieCoca"] = sc
+    return P, ctx, {"deltaDia": v, "serieCoca": sc}
+
+
+CANDIDATOS["dia_semana_suave_coca_real"] = {"f": c_dia_semana_suave_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-05", "nombre": "Día de semana a la mitad + río Coca real", "hipotesis": "Combinar el patrón semanal a la mitad (que suaviza los saltos de corto plazo) con la serie del río Coca real (que hoy baja el error a 5 días de 1,48 a 0,80 m en el marcador) mejora tanto el corto como el mediano plazo con promoción automática. Estimación del revisor con trayectorias guardadas: +2 % a 1 día, +8 % a 2, −8 % a 3 y +18 % a 5 días (9 casos)."}
