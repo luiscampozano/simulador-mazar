@@ -60,8 +60,12 @@ jobs:
           fi
 
       - uses: actions/configure-pages@v5
+      # 6 nov: se publica una copia sin historial/smec (13 MB que la página no usa; desde que entró, Pages se quedaba
+      # "syncing_files" hasta el tiempo límite) ni .git/.github
+      - name: Preparar lo que se publica
+        run: rsync -a --exclude .git --exclude .github --exclude historial/smec --exclude _publicar ./ _publicar/ && du -sh _publicar
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _publicar
       - id: deploy
         uses: actions/deploy-pages@v4
