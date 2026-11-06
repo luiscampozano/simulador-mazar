@@ -226,6 +226,63 @@ def rios_glofas():
     return out
 
 
+# Luis 6 nov: ríos de las demás hidroeléctricas (sin caudal medido público; Cenace las suma en "otras hidro").
+# Celdas de GloFAS elegidas el 6 nov buscando el cauce principal junto a cada central. El valor absoluto de GloFAS
+# puede estar muy desviado en estos ríos, por eso la página los compara con su propio "normal para la fecha".
+RIOS_EXTRA = [("daule", "Daule", "Marcel Laniado (Daule-Peripa)", 213, -0.85, -79.70),
+              ("toachi", "Toachi-Pilatón", "Toachi-Pilatón (Alluriquín y Sarapullo)", 254, -0.35, -78.90),
+              ("baba", "Baba", "Baba", 42, -0.80, -79.40),
+              ("guayllabamba", "Guayllabamba", "Manduriacu", 65, 0.20, -78.85),
+              ("canar", "Cañar", "Ocaña", 26, -2.45, -79.20),
+              ("pisayambo", "Pisayambo", "Pucará", 73, -1.10, -78.40)]
+
+
+F_NORMAL_EXTRA = os.path.join("registro", "rios_extra_normal.json")
+
+
+def normal_rios_extra():
+    """Caudal normal de cada río para cada fecha del año: promedio GloFAS 1995–2024 (ventana de ±7 días).
+    Se calcula una vez y se guarda; se rehace si cambia la lista de ríos."""
+    prev = _leer(F_NORMAL_EXTRA, {})
+    if prev.get("claves") == [r[0] for r in RIOS_EXTRA]:
+        return prev
+    f = _json("https://flood-api.open-meteo.com/v1/flood?latitude=" + ",".join(str(r[4]) for r in RIOS_EXTRA) +
+              "&longitude=" + ",".join(str(r[5]) for r in RIOS_EXTRA) +
+              "&daily=river_discharge&start_date=1995-01-01&end_date=2024-12-31", timeout=120)
+    f = f if isinstance(f, list) else [f]
+    out = {"claves": [r[0] for r in RIOS_EXTRA], "periodo": "1995-2024", "normal": {}}
+    for (clave, *_), x in zip(RIOS_EXTRA, f):
+        d = x.get("daily") or {}
+        por_dia = {}
+        for t, v in zip(d.get("time") or [], d.get("river_discharge") or []):
+            if v is not None:
+                por_dia.setdefault(t[5:], []).append(v)
+        claves = sorted(k for k in por_dia if k != "02-29")
+        prom = {k: sum(v) / len(v) for k, v in por_dia.items()}
+        n = len(claves)
+        out["normal"][clave] = {k: round(sum(prom[claves[(i + j) % n]] for j in range(-7, 8)) / 15, 1) for i, k in enumerate(claves)}
+        out["normal"][clave]["02-29"] = out["normal"][clave].get("02-28")
+    _guardar(F_NORMAL_EXTRA, out)
+    return out
+
+
+def rios_extra():
+    f = _json("https://flood-api.open-meteo.com/v1/flood?latitude=" + ",".join(str(r[4]) for r in RIOS_EXTRA) +
+              "&longitude=" + ",".join(str(r[5]) for r in RIOS_EXTRA) +
+              "&daily=river_discharge,river_discharge_p25,river_discharge_p75&past_days=30&forecast_days=30")
+    f = f if isinstance(f, list) else [f]
+    N = normal_rios_extra().get("normal") or {}
+    out = []
+    for (clave, rio, central, cap, _, _), x in zip(RIOS_EXTRA, f):
+        d = x.get("daily") or {}
+        dias = d.get("time") or []
+        out.append({"clave": clave, "rio": rio, "central": central, "cap": cap, "dias": dias,
+                    "normal": [(N.get(clave) or {}).get(t[5:]) for t in dias],
+                    **{k: [_r(v, 1) for v in d.get("river_discharge" + s, [])]
+                       for k, s in (("q", ""), ("p25", "_p25"), ("p75", "_p75"))}})
+    return out
+
+
 def rios_reales(datos, hoy_d):
     """Caudal medido (Celec): entrada a Mazar, río Coca, Jubones (Minas San Francisco) y Zamora (Delsitanisagua), por día."""
     out = {"paute": [], "coca": [], "jubones": [], "zamora": []}
@@ -316,6 +373,7 @@ def actualizar(ahora, get, url_cenace, log=print):
         "estaciones": intenta("inamhi_estaciones", inamhi_estaciones, prev.get("estaciones") or {}),
         "lluvia": intenta("lluvia_ecmwf", lluvia_cuencas, prev.get("lluvia") or {}),
         "rios": intenta("glofas", rios_glofas, prev.get("rios") or []),
+        "rios_extra": intenta("glofas_extra", rios_extra, prev.get("rios_extra") or []),
         "rios_reales": rios_reales(datos, hoy_d),
         "coca_horas": coca_horas(),
         "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),

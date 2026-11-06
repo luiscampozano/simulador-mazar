@@ -95,6 +95,8 @@
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
       <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
       <div class="g-col" id="g-rios"></div>
+      <div><h3 class="g-h3">Los ríos de las demás hidroeléctricas</h3><div class="g-sub">Daule-Peripa, Toachi-Pilatón, Baba, Manduriacu, Ocaña y Pucará. El Cenace no publica su generación por separado (las suma en "otras hidroeléctricas") y Celec no publica su caudal, así que aquí va el pronóstico GloFAS comparado con lo <b>normal para la fecha</b> en ese mismo río: el número absoluto de GloFAS puede estar desviado, la comparación es lo útil.</div></div>
+      <div class="g-grid" id="g-rios-extra" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"></div>
       <p class="g-note" id="g-rios-nota"></p>`
   };
 
@@ -404,8 +406,29 @@
         grafico(`g-rg-${i}`, { h: 230, x0, x1, y0: 0, y1: topg, yt: marcasY(topg), xt: xtg, series: [{ tipo: "barras", d: barras }, { d: [[x0, c.cap], [x1, c.cap]], c: "var(--g-warn)", w: 1.2, dash: "5 4" }] });
       }
     });
+    // ríos de las demás hidroeléctricas (GloFAS frente a su normal para la fecha)
+    const RX = G.rios_extra || [];
+    $("g-rios-extra").innerHTML = RX.map((r, i) => `<div class="g-box" style="display:grid;gap:4px"><div style="display:flex;justify-content:space-between;gap:6px;align-items:center;padding-right:36px"><b>Río ${esc(r.rio)}</b><span class="g-est" id="g-rx-e${i}"></span></div>
+      <div class="g-sub">${esc(r.central)} · ${f(r.cap)} MW</div><div class="g-fila"><span>Hoy frente a lo normal para la fecha</span><b id="g-rx-h${i}">–</b></div><div class="g-fila"><span>En 7 días</span><b id="g-rx-s${i}">–</b></div>
+      <div class="g-chart"><svg id="g-rx-${i}" role="img" aria-label="Caudal del río ${esc(r.rio)} frente a lo normal"></svg></div></div>`).join("");
+    RX.forEach((r, i) => {
+      const n = (r.dias || []).length; if (!n) return;
+      const ih = r.dias.indexOf(hoy), pct = j => r.q[j] != null && r.normal[j] ? Math.round(r.q[j] / r.normal[j] * 100) : null;
+      const ph = ih >= 0 ? pct(ih) : null, p7 = ih >= 0 ? pct(Math.min(n - 1, ih + 7)) : null;
+      const fp = v => v == null ? "–" : v >= 300 ? `${f(v / 100, v >= 1000 ? 0 : 1)} veces lo normal` : v + " %";
+      $(`g-rx-h${i}`).textContent = fp(ph); $(`g-rx-s${i}`).textContent = fp(p7);
+      const e = ph == null ? null : ph < 60 ? ["med", "Bajo"] : ph > 180 ? ["mal", "Crecido"] : ph > 130 ? ["med", "Alto"] : ["ok", "Normal"];
+      if (e) { const el = $(`g-rx-e${i}`); el.className = "g-est " + e[0]; el.innerHTML = `<i></i>${e[1]}`; }
+      const top = techo(r.q.concat(r.normal, r.p75 || []).filter(x => x != null), 10);
+      const xt = r.dias.map((d, j) => [j, j === ih ? "hoy" : (j % 14 === 0 ? fechaCorta(d).slice(4) : null)]).filter(x => x[1]);
+      grafico(`g-rx-${i}`, { h: 150, x0: 0, x1: n - 1, y0: 0, y1: top, yt: marcasY(top), xt, marcas: ih >= 0 ? [[ih, ""]] : [],
+        series: [{ tipo: "franja", d: r.dias.map((d, j) => [j, j >= ih ? (r.p25 || [])[j] : null, j >= ih ? (r.p75 || [])[j] : null]), c: "var(--g-real)", op: 0.2 },
+                 { d: r.dias.map((d, j) => [j, r.normal[j]]), c: "var(--g-muted)", w: 1.3, dash: "4 4" },
+                 { d: r.dias.map((d, j) => [j, r.q[j]]), c: "var(--g-real)", w: 2.4 }] });
+    });
     const O = G.otras_rios;
     $("g-rios-nota").textContent = (O ? `El simulador ya usa estos ríos: Agoyán, San Francisco, Delsitanisagua y Minas San Francisco (${f(O.mw_total)} MW de las ${f(O.other)} MW de "otras hidroeléctricas") siguen el pronóstico de su propio río, y cada día aprende cuánto de lo que promete GloFAS se cumple. ` : "") +
+      (RX.length ? "En los ríos de las demás hidroeléctricas: línea = GloFAS (30 días atrás y 30 adelante), punteada = su caudal normal para esa fecha (promedio GloFAS 1995–2024), franja = rango probable. " : "") +
       `Fuentes: Celec (caudales medidos y Coca Codo hora a hora), Cenace (generación de cada central), GloFAS de Copernicus vía Open-Meteo (pronóstico). Actualizado: ${esc((G.actualizado || "").replace("T", " "))}.`;
   }
 
