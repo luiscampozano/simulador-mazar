@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,5 +67,24 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _publicar
+      # 6 nov (Luis): si GitHub Pages se queda colgado, se espera unos minutos y se reintenta (hasta 2 veces más)
       - id: deploy
+        continue-on-error: true
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 420000
+      - if: steps.deploy.outcome == 'failure'
+        run: echo "Pages no respondió; se reintenta en 3 minutos" && sleep 180
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 420000
+      - if: steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: echo "Pages sigue sin responder; último intento en 5 minutos" && sleep 300
+      - id: deploy3
+        if: steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 420000
