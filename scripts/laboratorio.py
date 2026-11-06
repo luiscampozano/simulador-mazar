@@ -1744,3 +1744,71 @@ _cand_3nov("ccs_por_regimen", c_ccs_por_regimen, "Coca Codo: rendimiento separad
            "crecido (72–91 %, sedimentos). Con el río normal subestima ~20–25 MW. Este modelo usa el factor del régimen de "
            "hoy (crecido: ≥250 m³/s o subida >30 % frente al día anterior) para todo el horizonte; mismo promedio ponderado "
            "y freno n/(n+10) que el titular.", origen="Revisión programada de Luis, aprobada como sombra el 5 nov")
+
+
+# ---------------------------------------------------------------- 6 nov (auditor): río Coca real solo desde el día 2
+# Prueba con las trayectorias guardadas (pares exactos titular/candidato, cota real a ±1 h, 30 oct–6 nov):
+# coca_rio_real a 1 día −5 % (88 casos), 2 días +2 % (74), 3 días +10 % (61), 5 días +30 % (37), 7 días +82 % (10).
+# Gana a largo plazo pero estorba mañana; las piezas que mejor van a 1–3 días (patron_historico, corrección del error
+# reciente a media fuerza) no tocan el largo plazo. Idea de Gemini del 6 nov (coca_real_y_tendencia_mitad, frenada por
+# la validación automática solo por usar `str`) armada con los ayudantes existentes y con el río real desde el día 2.
+def _coca_real_desde_dia2(P, ctx, mod):
+    """serieCoca: días 0–1 = la del titular (o la que dejó la pieza anterior), día 2 = promedio, días 3+ = río real."""
+    a, b = ctx.get("serieCoca"), mod.get("serieCocaRio")
+    if not a or not b:
+        return None
+    s = []
+    for i in range(min(len(a), len(b))):
+        x, y = float(a[i]), float(b[i])
+        s.append(round(x if i < 2 else ((x + y) / 2 if i == 2 else y), 4))
+    ctx["serieCoca"] = s
+    return P, ctx, {"serieCoca": s}
+
+
+def c_coca_real_dia2(P, ctx, mod):
+    return _coca_real_desde_dia2(P, ctx, mod)
+
+
+def _combinar(P, ctx, mod, *piezas):
+    """Aplica las piezas en orden sobre las mismas copias. Estricta: si una pieza no corre, el candidato no corre."""
+    cambios = {}
+    for f in piezas:
+        r = f(P, ctx, mod)
+        if not r:
+            return None
+        P, ctx, c = r
+        cambios.update(c)
+    return P, ctx, cambios
+
+
+def c_tend_mitad_coca_dia2(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_corrige_tendencia_mitad, _coca_real_desde_dia2)
+
+
+def c_patron_hist_coca_dia2(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_patron_historico, _coca_real_desde_dia2)
+
+
+def c_pht_mitad_coca_dia2(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_patron_hist_y_tendencia_mitad, _coca_real_desde_dia2)
+
+
+def _cand_aud6(cid, f, nombre, hip, origen="auditor 2026-11-06", prom="luis"):
+    CANDIDATOS[cid] = {"f": f, "promocion": prom, "origen": origen, "nombre": nombre, "hipotesis": hip}
+
+
+_HIP_D2 = ("Ojo: hoy el río real (GloFAS sin la bajada por historia) promete MENOS que la serie del titular (día 3: 0,87 vs 0,95), "
+           "así que hoy sería más pesimista; la ganancia a 5–7 días medida viene del 30 oct–1 nov (10–37 casos).")
+_cand_aud6("tend_mitad_coca_dia2", c_tend_mitad_coca_dia2, "Error reciente a media fuerza + río Coca real desde el día 2",
+           "corrige_tendencia_mitad ataca el error a 1 día (caudal de los días 0–2 según el error reciente); coca_rio_real "
+           "gana a 3–7 días (+10 %, +30 %, +82 %) pero pierde 5 % a 1 día. Usar el río real solo desde el día 2 (día 2 a medio "
+           "camino) debería dejar el 1 día igual a corrige_tendencia_mitad y bajar el pesimismo a 7 y 14 días. " + _HIP_D2,
+           origen="Gemini 2026-11-06 (coca_real_y_tendencia_mitad), armado por el auditor 2026-11-06")
+_cand_aud6("patron_hist_coca_dia2", c_patron_hist_coca_dia2, "Patrón histórico + río Coca real desde el día 2",
+           "patron_historico mejora a 2 y 3 días (+19 % y +14 % en 42 y 29 casos, −2 % a 1 día) y corre en todas las corridas; "
+           "sumarle el río real desde el día 2 debería conservar eso y corregir el largo plazo (sumar el río real entero dio "
+           "solo +10 % a 2 días: el río real estorba en los días 0–1). " + _HIP_D2)
+_cand_aud6("pht_mitad_coca_dia2", c_pht_mitad_coca_dia2, "Patrón histórico + error reciente + río Coca real desde el día 2",
+           "patron_hist_y_tendencia_mitad (las dos mejores piezas de 1–2 días) + río real desde el día 2 para 5–14 días, en vez "
+           "de restar la mitad del sesgo por plazo (patron_tend_mitad_sesgo50_largo): compara una corrección física (el río) "
+           "con una estadística (el sesgo) sobre la misma base. " + _HIP_D2)
