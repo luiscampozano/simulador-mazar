@@ -1765,10 +1765,6 @@ def _coca_real_desde_dia2(P, ctx, mod):
     return P, ctx, {"serieCoca": s}
 
 
-def c_coca_real_dia2(P, ctx, mod):
-    return _coca_real_desde_dia2(P, ctx, mod)
-
-
 def _combinar(P, ctx, mod, *piezas):
     """Aplica las piezas en orden sobre las mismas copias. Estricta: si una pieza no corre, el candidato no corre."""
     cambios = {}
@@ -1798,7 +1794,9 @@ def _cand_aud6(cid, f, nombre, hip, origen="auditor 2026-11-06", prom="luis"):
 
 
 _HIP_D2 = ("Ojo: hoy el río real (GloFAS sin la bajada por historia) promete MENOS que la serie del titular (día 3: 0,87 vs 0,95), "
-           "así que hoy sería más pesimista; la ganancia a 5–7 días medida viene del 30 oct–1 nov (10–37 casos).")
+           "así que hoy sería más pesimista. La ganancia de coca_rio_real a 2–7 días viene entera del 30 oct–1 nov (33 corridas: "
+           "+12 %, +27 % y +31 % a 2, 3 y 5 días); desde el 1 nov 07:00 pierde (−23 % a 2 días en 41 casos, −39 % a 3 en 28, "
+           "−70 % a 5 en 4). Con hora exacta, a 3 días el total es −1 % (49), no +10 %.")
 _cand_aud6("tend_mitad_coca_dia2", c_tend_mitad_coca_dia2, "Error reciente a media fuerza + río Coca real desde el día 2",
            "corrige_tendencia_mitad ataca el error a 1 día (caudal de los días 0–2 según el error reciente); coca_rio_real "
            "gana a 3–7 días (+10 %, +30 %, +82 %) pero pierde 5 % a 1 día. Usar el río real solo desde el día 2 (día 2 a medio "
@@ -1807,7 +1805,8 @@ _cand_aud6("tend_mitad_coca_dia2", c_tend_mitad_coca_dia2, "Error reciente a med
 _cand_aud6("patron_hist_coca_dia2", c_patron_hist_coca_dia2, "Patrón histórico + río Coca real desde el día 2",
            "patron_historico mejora a 2 y 3 días (+19 % y +14 % en 42 y 29 casos, −2 % a 1 día) y corre en todas las corridas; "
            "sumarle el río real desde el día 2 debería conservar eso y corregir el largo plazo (sumar el río real entero dio "
-           "solo +10 % a 2 días: el río real estorba en los días 0–1). " + _HIP_D2)
+           "solo +10 % a 2 días en una prueba aproximada por suma de diferencias, 41 casos; con el empalme desde el día 2 la misma "
+           "aproximación da +19 % a 2 días pero solo +7 % a 3). " + _HIP_D2)
 _cand_aud6("pht_mitad_coca_dia2", c_pht_mitad_coca_dia2, "Patrón histórico + error reciente + río Coca real desde el día 2",
            "patron_hist_y_tendencia_mitad (las dos mejores piezas de 1–2 días) + río real desde el día 2 para 5–14 días, en vez "
            "de restar la mitad del sesgo por plazo (patron_tend_mitad_sesgo50_largo): compara una corrección física (el río) "
