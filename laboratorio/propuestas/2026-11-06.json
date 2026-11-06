@@ -1,0 +1,63 @@
+{
+ "fecha": "2026-11-06",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 3.665,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "coca_real_y_tendencia_mitad",
+    "nombre": "Río Coca real + corrección de tendencia a la mitad",
+    "hipotesis": "Combinar la corrección ponderada del error reciente a la mitad (que hoy es la mejor familia a 1 día) con el pronóstico real del río Coca (que baja el error a 5 días de 1,11 a 0,74 m y a 7 días de 2,25 a 0,33 m) mejora tanto el corto como el mediano plazo.",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy, corrige_tendencia_mitad es el mejor mecanismo para reducir el error a 1 y 2 días (+36 % a 1 día), pero no corrige el pesimismo de mediano plazo del titular. Por su parte, coca_rio_real reduce drásticamente el error a 5 días (de 1,107 a 0,735 m) y a 7 días (de 2,252 a 0,331 m) sin sobrecorregir cuando cambia el régimen.",
+    "codigo": "def c_coca_real_y_tendencia_mitad(P, ctx, mod):\n    s = mod.get('serieCocaRio')\n    if not s:\n        return None\n    ac = mod.get('aciertos') or {}\n    rec = [x for x in (ac.get('recientes_1d') or []) if isinstance(x.get('err'), (int, float)) and x.get('obj_ts')]\n    if len(rec) < 3:\n        return None\n    rec.sort(key=lambda x: x['obj_ts'])\n    ult = rec[-3:]\n    ts_mod = str(mod.get('_ts') or '')[:16]\n    ts_ult = str(ult[-1]['obj_ts'])[:16]\n    if ts_mod and ts_ult > ts_mod:\n        return None\n    e = (1.0 * ult[0]['err'] + 2.0 * ult[1]['err'] + 3.0 * ult[2]['err']) / 6.0\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)\n    q0 = -e * dvdz / 0.0864 * 0.5\n    q0 = max(-60.0, min(60.0, q0))\n    corr = [q0 * math.exp(-d / 1.0) for d in range(60)]\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    m = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    nueva_coca = list(s)\n    ctx['serieCoca'] = nueva_coca\n    ctx['memoria'] = m\n    return P, ctx, {'serieCoca': nueva_coca, 'memoria': m}"
+   },
+   "estado": "rechazada por validación: función no permitida: str"
+  },
+  {
+   "propuesta": {
+    "id": "cortes_7d_dia_semana_suave",
+    "nombre": "Cortes siguen 7 días + día de semana a la mitad",
+    "hipotesis": "Mantener los cortes de hoy por 7 días (que baja el error medio a 1 día de 0,30 a 0,21 m y a 3 días de 0,61 a 0,40 m) junto con el patrón semanal a la mitad (que reduce la mediana a 1 día a 18 cm) acerca el error a la meta de 5 cm sin empeorar a 3–7 días.",
+    "promocion": "luis",
+    "por_que": "En el marcador actual, cortes_siguen_7d tiene el menor error medio entre los modelos evaluados (0,208 m a 1 día, 0,351 m a 2 días, 0,400 m a 3 días y 0,392 m a 5 días). Al combinarlo con dia_semana_suave (que mejora la mediana a 1 día de 19,5 a 18,0 cm y el error a 2 días a 0,430 m), se suavizan los saltos de fin de semana mientras se corrige la subestimación de los cortes.",
+    "codigo": "def c_cortes_7d_dia_semana_suave(P, ctx, mod):\n    plan = list(ctx.get('cutPlan') or [])\n    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) and not isinstance(plan[0], bool) else None\n    dd = ctx.get('deltaDia')\n    if not hoy or not dd:\n        return None\n    plan = plan + [None] * max(0, 8 - len(plan))\n    for d in range(1, 8):\n        if plan[d] is None:\n            plan[d] = hoy\n    v = [round(x * 0.5, 1) for x in dd]\n    ctx['cutPlan'] = plan\n    ctx['deltaDia'] = v\n    return P, ctx, {'cutPlan': plan, 'deltaDia': v}"
+   },
+   "prueba": {
+    "ok": true,
+    "nota": "devuelve None con los datos de hoy (no aplica hoy)"
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "paute_observado_dia_semana_suave",
+    "nombre": "Paute con ajuste observado + día de semana a la mitad",
+    "hipotesis": "Combinar el caudal del Paute con el ajuste observado entero (que mejora a 3 y 5 días) con el patrón semanal de demanda a la mitad (que mejora la mediana a 1 y 2 días) reduce el error en todos los plazos con promoción automática.",
+    "promocion": "auto",
+    "por_que": "Ambos candidatos usan entradas que la página ya procesa (promoción 'auto'). paute_ajuste_completo reduce el error a 3 días (0,582 vs 0,608 m) y a 5 días (0,897 vs 1,107 m), mientras que dia_semana_suave baja la mediana a 1 día (18,0 vs 19,5 cm) y a 2 días (30,7 vs 39,7 cm); atacan entradas distintas (caudal vs demanda) por lo que sus mejoras son complementarias.",
+    "codigo": "def c_paute_observado_dia_semana_suave(P, ctx, mod):\n    bruta = mod.get('serieMazarBruta')\n    info = mod.get('ajuste_paute') or {}\n    f = info.get('observado')\n    dd = ctx.get('deltaDia')\n    if not bruta or not isinstance(f, (int, float)) or not dd:\n        return None\n    actual = ctx.get('serieMazar') or bruta\n    f = max(0.0, min(1.5, float(f)))\n    serie = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]\n    v = [round(x * 0.5, 1) for x in dd]\n    ctx['serieMazar'] = serie\n    ctx['deltaDia'] = v\n    return P, ctx, {'serieMazar': serie, 'deltaDia': v}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.58,
+     2123.02,
+     2115.49
+    ],
+    "candidato_1_7_14": [
+     2127.64,
+     2122.97,
+     2115.35
+    ],
+    "cambios_mod": [
+     "deltaDia",
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-06"
+}

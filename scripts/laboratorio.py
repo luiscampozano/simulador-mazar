@@ -665,6 +665,44 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_cortes_7d_dia_semana_suave(P, ctx, mod):
+    plan = list(ctx.get('cutPlan') or [])
+    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) and not isinstance(plan[0], bool) else None
+    dd = ctx.get('deltaDia')
+    if not hoy or not dd:
+        return None
+    plan = plan + [None] * max(0, 8 - len(plan))
+    for d in range(1, 8):
+        if plan[d] is None:
+            plan[d] = hoy
+    v = [round(x * 0.5, 1) for x in dd]
+    ctx['cutPlan'] = plan
+    ctx['deltaDia'] = v
+    return P, ctx, {'cutPlan': plan, 'deltaDia': v}
+
+
+CANDIDATOS["cortes_7d_dia_semana_suave"] = {"f": c_cortes_7d_dia_semana_suave, "promocion": "luis", "origen": "Gemini 2026-11-06", "nombre": "Cortes siguen 7 días + día de semana a la mitad", "hipotesis": "Mantener los cortes de hoy por 7 días (que baja el error medio a 1 día de 0,30 a 0,21 m y a 3 días de 0,61 a 0,40 m) junto con el patrón semanal a la mitad (que reduce la mediana a 1 día a 18 cm) acerca el error a la meta de 5 cm sin empeorar a 3–7 días."}
+
+
+def c_paute_observado_dia_semana_suave(P, ctx, mod):
+    bruta = mod.get('serieMazarBruta')
+    info = mod.get('ajuste_paute') or {}
+    f = info.get('observado')
+    dd = ctx.get('deltaDia')
+    if not bruta or not isinstance(f, (int, float)) or not dd:
+        return None
+    actual = ctx.get('serieMazar') or bruta
+    f = max(0.0, min(1.5, float(f)))
+    serie = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]
+    v = [round(x * 0.5, 1) for x in dd]
+    ctx['serieMazar'] = serie
+    ctx['deltaDia'] = v
+    return P, ctx, {'serieMazar': serie, 'deltaDia': v}
+
+
+CANDIDATOS["paute_observado_dia_semana_suave"] = {"f": c_paute_observado_dia_semana_suave, "promocion": "auto", "origen": "Gemini 2026-11-06", "nombre": "Paute con ajuste observado + día de semana a la mitad", "hipotesis": "Combinar el caudal del Paute con el ajuste observado entero (que mejora a 3 y 5 días) con el patrón semanal de demanda a la mitad (que mejora la mediana a 1 y 2 días) reduce el error en todos los plazos con promoción automática."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
