@@ -1811,3 +1811,76 @@ _cand_aud6("pht_mitad_coca_dia2", c_pht_mitad_coca_dia2, "Patrón histórico + e
            "patron_hist_y_tendencia_mitad (las dos mejores piezas de 1–2 días) + río real desde el día 2 para 5–14 días, en vez "
            "de restar la mitad del sesgo por plazo (patron_tend_mitad_sesgo50_largo): compara una corrección física (el río) "
            "con una estadística (el sesgo) sobre la misma base. " + _HIP_D2)
+
+
+# ---------------------------------------------------------------- Luis 6 nov: las demás hidroeléctricas siguen a su río
+# El titular deja fijas (salvo el factor de lluvia amazónica) a Daule-Peripa, Toachi-Pilatón, Baba, Manduriacu, Ocaña y
+# Pucará, que el Cenace suma en "otras hidro" sin detalle. Aquí cada una sigue el cambio que pronostica GloFAS en su río
+# (relativo a hoy, como Agoyán o Minas San Francisco en el titular), con su producción típica como punto de partida.
+# Factor de planta típico (producción anual pública ÷ 8.760 h × potencia) y cuánto del cambio del río llega a la
+# generación: las de embalse grande (Daule-Peripa, Pucará/Pisayambo) dependen más de lo que decide Celec que del río.
+OH_CENTRALES = {   # clave GloFAS: (MW instalados, factor de planta típico, respuesta al río)
+    "daule": (213, 0.32, 0.15), "toachi": (254, 0.45, 0.5), "baba": (42, 0.43, 0.5),
+    "guayllabamba": (65, 0.62, 0.5), "canar": (26, 0.80, 0.5), "pisayambo": (73, 0.34, 0.15)}
+_OH_CACHE = {}
+
+
+def _oh_serie(dias=61):
+    if "s" in _OH_CACHE:
+        return _OH_CACHE["s"]
+    import urllib.request
+    try:
+        from generacion import RIOS_EXTRA
+    except Exception:
+        _OH_CACHE["s"] = None; return None
+    rios = [r for r in RIOS_EXTRA if r[0] in OH_CENTRALES]
+    url = ("https://flood-api.open-meteo.com/v1/flood?latitude=" + ",".join(str(r[4]) for r in rios) + "&longitude=" +
+           ",".join(str(r[5]) for r in rios) + f"&daily=river_discharge&past_days=1&forecast_days={dias}")
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "simulador-mazar (laboratorio)"}), timeout=40) as r:
+            f = json.load(r)
+    except Exception:
+        _OH_CACHE["s"] = None; return None
+    f = f if isinstance(f, list) else [f]
+    mw0_t, mw_t, info = 0.0, [0.0] * dias, {}
+    for r, x in zip(rios, f):
+        cap, fp, resp = OH_CENTRALES[r[0]]
+        v = ((x.get("daily") or {}).get("river_discharge") or [])[1:1 + dias]
+        if not v or not v[0]:
+            continue
+        mw0 = cap * fp
+        mw0_t += mw0
+        for j in range(dias):
+            rel = min(3.0, max(0.3, (v[j] if j < len(v) and v[j] else v[0]) / v[0]))
+            w = 1.0 if j <= 10 else max(0.3, 1 - (j - 10) / 20)        # después de 10 días se atenúa
+            mw_t[j] += min(cap, mw0 * (1 + (rel - 1) * resp * w))
+        info[r[0]] = {"mw_tipico": round(mw0), "rel_7d": round(min(3.0, max(0.3, (v[min(7, len(v) - 1)] or v[0]) / v[0])), 3)}
+    _OH_CACHE["s"] = (mw0_t, [m / mw0_t for m in mw_t], info) if mw0_t > 0 else None
+    return _OH_CACHE["s"]
+
+
+def c_otras_hidro_rios(P, ctx, mod):
+    s = _oh_serie()
+    other = float(P.get("other") or 0)
+    if not s or other <= 0:
+        return None
+    mw0, serie, info = s
+    fe = max(0.0, min(0.5, mw0 / other))                    # parte de "otras" que pasan a seguir a sus ríos
+    otr = ctx.get("otrasRios") or {}
+    f1, s1 = float(otr.get("frac") or 0), otr.get("serie") or []
+    if f1 + fe > 0.95:
+        return None
+    n = max(len(s1), len(serie))
+    s1x = lambda j: (s1[j] if j < len(s1) else (s1[-1] if s1 else 1.0))
+    s2x = lambda j: (serie[j] if j < len(serie) else serie[-1])
+    ftot = f1 + fe
+    ctx["otrasRios"] = {"frac": round(ftot, 4), "serie": [round((f1 * s1x(j) + fe * s2x(j)) / ftot, 4) for j in range(n)]}
+    return P, ctx, {"frac_extra": round(fe, 3), "mw_tipicos": round(mw0), "cambio_7d": round(s2x(7), 3), "rios": info}
+
+
+_cand_3nov("otras_hidro_rios", c_otras_hidro_rios, "Las demás hidroeléctricas siguen a su río (Daule-Peripa, Toachi, Baba…)",
+           "El titular deja casi fijas a Daule-Peripa, Toachi-Pilatón, Baba, Manduriacu, Ocaña y Pucará "
+           "(dentro de 'otras hidroeléctricas', unos 290 MW típicos). Con El Niño sus ríos vienen de 1,7 a 38 veces lo normal para la fecha. Este "
+           "modelo hace que cada una siga el cambio que pronostica GloFAS en su río desde hoy, con su factor de planta típico, "
+           "respuesta 0,5 (0,15 en las de embalse grande) y tope en su potencia; atenúa después de 10 días como el titular.",
+           origen="Luis, 6 nov (aprobado por Luis)")

@@ -380,6 +380,21 @@ def actualizar(ahora, get, url_cenace, log=print):
         "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }
     out["rios"] = corregir_rios(out["rios"], out["rios_reales"])
+    # Luis 6 nov: "resto" de hidroeléctricas = total hidro del balance diario − las 8 que Cenace publica por central.
+    # Se guarda por día para comparar con el modelo sombra otras_hidro_rios (Daule-Peripa, Toachi, Baba…).
+    try:
+        F_RESTO = os.path.join("registro", "otras_hidro_resto.json")
+        resto = _leer(F_RESTO, {})
+        for dia, lst in (hist.get("plantas") or {}).items():
+            b = (out["balance"] or {}).get(dia) or {}
+            if not lst or not b.get("hidro") or lst[-1][0] < 22:
+                continue
+            h, v = lst[-1]
+            ocho = sum(v.values()) / h
+            resto[dia] = {"hidro": b["hidro"], "ocho_centrales": round(ocho, 1), "resto": round(b["hidro"] - ocho, 1), "horas": h}
+        _guardar(F_RESTO, dict(sorted(resto.items())[-400:]))
+    except Exception as e:
+        log(f"Resto de hidroeléctricas: {e}")
     _guardar(F_OUT, out)
     ok = sum(1 for v in fuentes.values() if v.get("ok"))
     log(f"Pestañas de generación y clima: {ok}/{len(fuentes)} fuentes al día")
