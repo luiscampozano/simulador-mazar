@@ -735,6 +735,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
         except Exception as e:
             log(f"Laboratorio: anterior falló: {e}")
     mod = _con_previo(mod, ts)
+    mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
@@ -1689,3 +1690,57 @@ def c_dia_semana_suave_coca_real(P, ctx, mod):
 
 
 CANDIDATOS["dia_semana_suave_coca_real"] = {"f": c_dia_semana_suave_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-05", "nombre": "Día de semana a la mitad + río Coca real", "hipotesis": "Combinar el patrón semanal a la mitad (que suaviza los saltos de corto plazo) con la serie del río Coca real (que hoy baja el error a 5 días de 1,48 a 0,80 m en el marcador) mejora tanto el corto como el mediano plazo con promoción automática. Estimación del revisor con trayectorias guardadas: +2 % a 1 día, +8 % a 2, −8 % a 3 y +18 % a 5 días (9 casos)."}
+
+
+# ---------------------------------------------------------------- Luis 5 nov: rendimiento de Coca Codo separado (río normal / crecido)
+# Prueba con 17–31 oct: río normal rinde ~99 % (factor con freno 0,988); crecido (≥250 m³/s o subida >30 % de un día
+# a otro) 72–91 % (0,939 con solo 3 días). El titular mezcla ambos en un factor único (0,958 al 5 nov).
+CCS_CRECIDO_M3S, CCS_SUBIDA = 250.0, 1.30
+
+
+def _ccs_crecido(q, q_ant):
+    return q >= CCS_CRECIDO_M3S or (q_ant is not None and q_ant > 0 and q > q_ant * CCS_SUBIDA)
+
+
+def _ccs_factor_regimen(reg, hoy_d, crecido):
+    """Mismo cálculo que rendimiento_ccs() de robot.py, pero solo con los días del mismo régimen del río."""
+    ks, usa, ant = sorted(reg), [], None
+    for k in ks:
+        v = reg[k]
+        q = float(v.get("rio_m3s") or 0)
+        if _ccs_crecido(q, ant) == crecido and k >= (hoy_d - timedelta(days=21)).isoformat() and float(v.get("rendimiento") or 0) >= 0.5:
+            usa.append((k, float(v["rendimiento"])))
+        ant = q
+    if len(usa) < 3:
+        return None, len(usa)
+    w = [0.5 ** ((hoy_d - datetime.strptime(k, "%Y-%m-%d").date()).days / 3.0) for k, _ in usa]
+    m = sum(wi * math.log(max(0.3, min(1.3, r))) for wi, (_, r) in zip(w, usa)) / sum(w)
+    n = len(usa)
+    return max(0.6, min(1.0, math.exp(m * n / (n + 10)))), n
+
+
+def c_ccs_por_regimen(P, ctx, mod):
+    datos_r = (mod.get("_datos_robot") or {}).get("ccs_rendimiento") or {}
+    f_tit = datos_r.get("factor")
+    if not isinstance(f_tit, (int, float)) or f_tit <= 0 or not P.get("qCoca"):
+        return None
+    rio = _leer(os.path.join("registro", "coca_rio.json"), {}) or {}
+    hs = sorted(rio)
+    if len(hs) < 36:
+        return None
+    q24 = sum(rio[h] for h in hs[-24:]) / 24.0
+    q_ant = sum(rio[h] for h in hs[-48:-24]) / max(1, len(hs[-48:-24]))
+    crecido = _ccs_crecido(q24, q_ant)
+    hoy_d = datetime.strptime(hs[-1][:10], "%Y-%m-%d").date()
+    f_new, n = _ccs_factor_regimen(_leer(os.path.join("registro", "ccs_rendimiento.json"), {}) or {}, hoy_d, crecido)
+    if f_new is None or abs(f_new - f_tit) < 0.002:
+        return None
+    P["qCoca"] = int(max(80, min(450, round(float(P["qCoca"]) / f_tit * f_new))))
+    return P, ctx, {"qCoca": P["qCoca"], "regimen": "crecido" if crecido else "normal", "factor": round(f_new, 3), "dias": n}
+
+
+_cand_3nov("ccs_por_regimen", c_ccs_por_regimen, "Coca Codo: rendimiento separado para río normal y crecido",
+           "El titular descuenta a Coca Codo con un factor único (0,958 al 5 nov) que mezcla días de río normal (~99 %) y "
+           "crecido (72–91 %, sedimentos). Con el río normal subestima ~20–25 MW. Este modelo usa el factor del régimen de "
+           "hoy (crecido: ≥250 m³/s o subida >30 % frente al día anterior) para todo el horizonte; mismo promedio ponderado "
+           "y freno n/(n+10) que el titular.", origen="Revisión programada de Luis, aprobada como sombra el 5 nov")

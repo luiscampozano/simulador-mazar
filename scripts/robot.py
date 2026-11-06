@@ -1118,14 +1118,15 @@ def rendimiento_ccs(cache, hoy_d):
     reg = _leer_json(F_CCS_REND, {})
     serie = _leer_json(SERIE, {})
     for dia, v in (serie.get("plantas") or {}).items():
-        if dia in reg or float(v.get("horas") or 0) < 24 or not v.get("Coca Codo"):
+        h_dia = float(v.get("horas") or 0)
+        if dia in reg or h_dia < 22 or not v.get("Coca Codo"):   # Luis 5 nov: el Cenace trae días de 22–23,5 h; antes se exigían 24
             continue
         d0 = datetime.strptime(dia, "%Y-%m-%d").replace(tzinfo=EC)
         q = [cache[k] for k in (f"{d0 + timedelta(hours=i):%Y-%m-%dT%H}" for i in range(24)) if cache.get(k) is not None]
         if len(q) < 18:
             continue
         cap = sum(ccs_mw_rio(x) for x in q) / len(q)
-        real = float(v["Coca Codo"]) / 24.0
+        real = float(v["Coca Codo"]) / min(24.0, h_dia)      # MWh de las horas que hay ÷ esas horas = MW medios
         if cap > 50:
             reg[dia] = {"real_mw": round(real), "rio_mw": round(cap), "rio_m3s": round(sum(q) / len(q), 1),
                         "rendimiento": round(real / cap, 3)}
