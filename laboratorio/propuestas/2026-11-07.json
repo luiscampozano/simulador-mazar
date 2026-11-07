@@ -1,0 +1,92 @@
+{
+ "fecha": "2026-11-07",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 3.853,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_real",
+    "nombre": "Sin autoajuste + río Coca real",
+    "hipotesis": "Combinar la desactivación del autoajuste (que hoy baja el error medio a 1 y 2 días a 0,290 y 0,406 m) con la serie del río Coca real (que reduce el error a 5 y 7 días a 0,726 y 1,00 m) mejora tanto el corto como el mediano plazo con promoción automática.",
+    "promocion": "auto",
+    "por_que": "En el marcador actual (72 casos a 1 día), sin_autoajuste es el único candidato automático que mejora al titular en 1, 2 y 5 días simultáneamente (0,290 vs 0,294 m a 1 día y 0,406 vs 0,415 m a 2 días), pero empeora a 7 días (1,925 vs 1,756 m). Por su parte, coca_rio_real reduce drásticamente el pesimismo y el error a 5 y 7 días (0,726 vs 0,910 m y 1,000 vs 1,756 m). Al actuar sobre piezas distintas (factor de bajada vs pronóstico del río Coca), su combinación busca sostener la ganancia de corto plazo sin el castigo a 7 días.",
+    "codigo": "def c_sin_autoajuste_coca_real(P, ctx, mod):\n    s = mod.get(\"serieCocaRio\")\n    if not s:\n        return None\n    nueva_coca = list(s)\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.79,
+     2121.58,
+     2115.98
+    ],
+    "candidato_1_7_14": [
+     2126.81,
+     2121.4,
+     2115.34
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_reciente_rapido",
+    "nombre": "Corrección rápida del último error (12 h)",
+    "hipotesis": "Corregir la mitad del error de las últimas 2 verificaciones apagándolo rápido (constante de 12 h en vez de 24 h) reduce el error a 1 día en cambios bruscos de régimen sin sobrecorregir a 2 y 3 días.",
+    "promocion": "luis",
+    "por_que": "En las verificaciones recientes del 6 y 7 de noviembre (recientes_1d), el error a 1 día saltó de +0,09 m a +0,59 m en pocas horas porque Mazar turbinó fuerte de noche. Los modelos como corrige_error_3 o corrige_tendencia_3 promedian 3 verificaciones y apagan la corrección en 24 h (tau=1,0 día), lo que arrastra errores viejos y sobrecorrige a 2 días (0,648 m vs 0,415 m del titular). Usar solo las 2 verificaciones más recientes al 50 % de fuerza y apagar el caudal en medio día (tau=0,5) concentra el ajuste en las primeras 24 h sin contaminar los días 2 y 3.",
+    "codigo": "def c_corrige_reciente_rapido(P, ctx, mod):\n    ac = mod.get(\"aciertos\") or {}\n    rec = [x for x in (ac.get(\"recientes_1d\") or []) if isinstance(x.get(\"err\"), (int, float))]\n    if len(rec) < 2:\n        return None\n    e = (float(rec[-2][\"err\"]) + 2.0 * float(rec[-1][\"err\"])) / 3.0\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = float(c[\"a\"]) + float(c[\"b\"]) * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    q0 = -0.5 * e * dvdz / 0.0864\n    q0 = max(-50.0, min(50.0, q0))\n    corr = [q0 * math.exp(-d / 0.5) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.79,
+     2121.58,
+     2115.98
+    ],
+    "candidato_1_7_14": [
+     2126.5,
+     2121.19,
+     2115.52
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_largo",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 2",
+    "hipotesis": "Desactivar el autoajuste (mejor error medio a 1 y 2 días en el marcador) y quitar la mitad del sesgo por plazo únicamente desde el día 2 conserva la mejora de corto plazo y corrige el pesimismo de 5 a 14 días.",
+    "promocion": "luis",
+    "por_que": "El marcador muestra que sin_autoajuste mejora el error medio a 1 día (0,290 vs 0,294 m), 2 días (0,406 vs 0,415 m) y 5 días (0,902 vs 0,910 m), pero a 7 días se vuelve más pesimista que el titular (sesgo -1,925 m vs -1,756 m). En cambio, sesgo_plazo_50 reduce el error a 7 días de 1,756 m a 0,505 m, aunque empeora el día 1 (0,326 m). Al aplicar ajuste=1,0 para asegurar el corto plazo y activar la corrección de la mitad del sesgo por plazo recién desde el día 2 (d >= 1), se combinan las fortalezas de ambos en sus respectivos horizontes.",
+    "codigo": "def c_sin_autoajuste_sesgo50_largo(P, ctx, mod):\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = float(c[\"a\"]) + float(c[\"b\"]) * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 1:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.79,
+     2121.58,
+     2115.98
+    ],
+    "candidato_1_7_14": [
+     2126.76,
+     2122.24,
+     2118.03
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-07"
+}
