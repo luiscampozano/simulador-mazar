@@ -1935,3 +1935,119 @@ _cand_3nov("reparto_reciente_y_tendencia_mitad", c_reparto_reciente_y_tendencia_
            "Combinación propuesta por el cerebro de Mazar el 7 nov: corrige_tendencia_mitad lidera a 1 día (+2,5 %) pero corrige "
            "de más a 2 días; el reparto reciente cubre lo que la tendencia no ve cuando Mazar turbina de noche.",
            origen="cerebro 2026-11-07 (aprobado por Luis)")
+
+
+# ---------------------------------------------------------------- Gemini 7 nov (revisados por el Claude independiente)
+# sin_autoajuste_coca_real y sin_autoajuste_sesgo50_largo, armados con las piezas que ya existen (mismo resultado que el
+# código de la rama candidato/gemini-2026-11-07; el revisor lo comprobó) y con las cifras corregidas al marcador del 7 nov.
+# corrige_reciente_rapido fue RECHAZADO (la memoria se aplica por día entero: a 1 día es casi igual a corrige_tendencia_mitad).
+def c_sin_autoajuste_coca_real(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, c_coca_rio_real)
+
+
+def c_sin_autoajuste_sesgo50_largo(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=1))
+
+
+CANDIDATOS["sin_autoajuste_coca_real"] = {
+    "f": c_sin_autoajuste_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-07", "nombre": "Sin autoajuste + río Coca real",
+    "hipotesis": "Sin el autoajuste (marcador 7 nov, 72 casos: 0,299 vs 0,306 m del titular a 1 día y 0,407 vs 0,422 a 2) y con el "
+                 "río Coca real (0,721 vs 0,884 m a 5 días y 1,011 vs 1,684 a 7, solo 2 días a 7) el error baja a 5–7 días sin "
+                 "empeorar a 1–3. Estimado con las trayectorias guardadas: +2,8 % a 1 día (lejos del 10 % que pide el reemplazo), "
+                 "+5 % a 2, +4 % a 3, +23 % a 5, +30 % a 7. Ojo: la ganancia del río real vino sobre todo del 30 oct–1 nov."}
+CANDIDATOS["sin_autoajuste_sesgo50_largo"] = {
+    "f": c_sin_autoajuste_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-07",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 2",
+    "hipotesis": "Sin el autoajuste y quitando la mitad del sesgo por plazo solo desde el día 2: a 1 día es igual a sin_autoajuste "
+                 "(+2,2 %, 72 casos) y debe corregir el pesimismo de 5 a 14 días (sesgo del titular a 7 días −1,68 m) sin "
+                 "empeorar más de 5 % a 3 días (estimado −4,5 %, al borde; +18 % a 5 y +77 % a 7 con 12 casos). Si se promueve, "
+                 "la memoria del robot se calcula después de aplicar_titular y pisaría la corrección."}
+
+
+# ---------------------------------------------------------------- Cerebro 7 nov (aprobado por Luis): recesión y calor
+# Recesión del Paute: Celec 1–6 nov 82 → 54 → 48 → 39 → 38 → 29 m³/s con 1–5 mm de lluvia. El cerebro: el caudal cae
+# ~25 % por día seco y tiende a 20–32 m³/s (los datos de Celec dan ~19 %/día: se usa 0,81). El titular sigue la serie relativa de GloFAS/lluvia (hoy baja a ~0,79 de lo
+# de hoy al día 5 y sube con la lluvia del 15–16 nov). Aquí, mientras la serie del titular no sube (día "seco"), el
+# caudal baja 19 % por día pero no por debajo de un piso de 26 m³/s (mitad del rango 20–32); si ya está debajo, queda
+# plano. Cuando la serie sube (lluvia), se aplica la misma subida relativa del titular.
+_REC_PISO, _REC_CAIDA = 26.0, 0.81     # 0,81 = (29/82)^(1/5): Celec 1–6 nov (revisor)
+
+
+def c_recesion_paute_piso(P, ctx, mod):
+    s = ctx.get("serieMazar")
+    q0 = float(P.get("qMazar") or 0)
+    if not s or len(s) < 3 or q0 <= 0 or not s[0]:
+        return None
+    q = [q0 * float(s[0])]
+    for d in range(1, len(s)):
+        a, b = float(s[d - 1] or 0), float(s[d] or 0)
+        if a <= 0 or b >= a * 0.98:                   # la serie no baja de verdad (lluvia o plana): mismo cambio que el titular
+            q.append(q[-1] * (b / a if a > 0 else 1.0))
+        elif q[-1] > _REC_PISO:                       # día seco (la serie baja > 2 %): recesión hacia el piso
+            q.append(max(_REC_PISO, q[-1] * _REC_CAIDA))
+        else:
+            q.append(q[-1])
+    nueva = [round(x / q0, 4) for x in q]
+    if max(abs(x - float(y or 0)) for x, y in zip(nueva, s)) < 0.01:
+        return None
+    ctx["serieMazar"] = nueva
+    return P, ctx, {"serieMazar": nueva}
+
+
+# Calor de la Costa: el titular usa la máxima de Guayaquil de HOY (tCosta) para toda la proyección, a 50 MW/°C (la misma
+# elasticidad del robot). Aquí cada día usa la máxima pronosticada de ese día (registro/gye_pronostico.json, Open-Meteo,
+# lo escribe el robot antes del laboratorio): demanda extra = 50 × (máx. del día − máx. de hoy), como corte equivalente.
+# Solo la pieza de temperatura (la de lluvia de la Costa ya está dentro de demanda_real_lluvia; su elasticidad no se conoce).
+def c_demanda_tmax_dia(P, ctx, mod):
+    try:
+        from datetime import date as _d
+        ts = str(mod.get("_ts") or "")
+        if len(ts) < 10:
+            return None
+        f0 = _d.fromisoformat(ts[:10])
+        man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+        hasta = man.get("tCosta_hasta")
+        if man.get("tCosta") not in (None, "", False) and not (hasta and f0.isoformat() > str(hasta)):
+            return None                               # Luis fijó la temperatura a mano (vigente): no se toca
+        g = _leer_json_lab("registro/gye_pronostico.json") or {}
+        por = {t: float(mx) for t, mx in zip(g.get("dias") or [], g.get("tmax") or []) if isinstance(mx, (int, float))}
+        gen = str(g.get("generado") or "")
+        if len(gen) < 13:
+            return None
+        # misma regla que el robot (pronostico()): desde las 18 h tCosta es la máxima de MAÑANA (revisor)
+        f_t = _d.fromisoformat(gen[:10]) + timedelta(days=1 if int(gen[11:13]) >= 18 else 0)
+        t_hoy = por.get(f_t.isoformat())
+        if t_hoy is None:
+            return None
+        t_ref = max(28.0, min(36.0, round(t_hoy * 2) / 2))   # como el robot (tCosta)
+        plan = list(ctx.get("cutPlan") or []); plan += [None] * max(0, 61 - len(plan))
+        cambio = False
+        for k in range(61):
+            f = f0 + timedelta(days=k); dia = (ctx["diaSemana0"] + k) % 7
+            v = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else (P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+            x = por.get(f.isoformat())
+            extra = 50.0 * (max(28.0, min(36.0, x)) - t_ref) if (x is not None and f > f_t) else 0.0
+            cambio = cambio or abs(extra) > 0.5
+            plan[k] = round(v - extra, 1)
+        if not cambio:
+            return None
+        ctx["cutPlan"] = plan
+        return P, ctx, {"cutPlan": plan[:15], "t_ref": t_ref}
+    except Exception:
+        return None
+
+
+_cand_3nov("recesion_paute_piso", c_recesion_paute_piso, "Recesión del Paute con piso de 26 m³/s",
+           "Los días en que la serie del titular baja más de 2 % (secos), el caudal que entra a Mazar baja 19 % por día hasta un piso de 26 m³/s "
+           "(Celec 1–6 nov: 82 → 29 m³/s con 1–5 mm) en vez de seguir la serie relativa del titular, que hoy lo lleva a ~21 m³/s "
+           "al día 5. Los demás días, el mismo cambio relativo que el titular. Mide si la recesión real tiene piso (a 3–7 días). "
+           "Idea del cerebro de Mazar del 7 nov (pieza 'recesión' sola; el retador objetó la combinación con el Coca real, que "
+           "hoy promete menos y no más).",
+           origen="cerebro 2026-11-07 (aprobado por Luis)")
+_cand_3nov("demanda_tmax_dia", c_demanda_tmax_dia, "Demanda con la máxima de Guayaquil de cada día",
+           "El titular usa la máxima de Guayaquil de hoy (desde las 18 h, la de mañana) para toda la proyección; aquí cada día 1–6 (lo que trae Open-Meteo; después, sin ajuste) usa su máxima pronosticada (hoy 30,9 "
+           "→ 31,2–32,9 °C los próximos días) a 50 MW/°C, la elasticidad del robot. Más calor = más demanda = más Paute: debe "
+           "bajar el sesgo a 3–7 días si el calor pronosticado se cumple. Pieza de temperatura de la idea 'demanda_costa' del "
+           "cerebro de Mazar del 7 nov (la de lluvia y la demanda medida ya están en demanda_real_lluvia; feriado del 20 nov y "
+           "patrón semanal ya están en el titular).",
+           origen="cerebro 2026-11-07 (aprobado por Luis)")
