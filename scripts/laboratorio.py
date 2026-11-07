@@ -665,6 +665,82 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_sin_autoajuste_coca_real(P, ctx, mod):
+    s = mod.get("serieCocaRio")
+    if not s:
+        return None
+    nueva_coca = list(s)
+    ctx["ajuste"] = 1.0
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"ajuste": 1.0, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["sin_autoajuste_coca_real"] = {"f": c_sin_autoajuste_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-07", "nombre": "Sin autoajuste + río Coca real", "hipotesis": "Combinar la desactivación del autoajuste (que hoy baja el error medio a 1 y 2 días a 0,290 y 0,406 m) con la serie del río Coca real (que reduce el error a 5 y 7 días a 0,726 y 1,00 m) mejora tanto el corto como el mediano plazo con promoción automática."}
+
+
+def c_corrige_reciente_rapido(P, ctx, mod):
+    ac = mod.get("aciertos") or {}
+    rec = [x for x in (ac.get("recientes_1d") or []) if isinstance(x.get("err"), (int, float))]
+    if len(rec) < 2:
+        return None
+    e = (float(rec[-2]["err"]) + 2.0 * float(rec[-1]["err"])) / 3.0
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    dvdz = float(c["a"]) + float(c["b"]) * max(0.0, float(ctx["cota"]) - 2115.0)
+    q0 = -0.5 * e * dvdz / 0.0864
+    q0 = max(-50.0, min(50.0, q0))
+    corr = [q0 * math.exp(-d / 0.5) for d in range(60)]
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), len(corr))
+    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx["memoria"] = out
+    return P, ctx, {"memoria": out}
+
+
+CANDIDATOS["corrige_reciente_rapido"] = {"f": c_corrige_reciente_rapido, "promocion": "luis", "origen": "Gemini 2026-11-07", "nombre": "Corrección rápida del último error (12 h)", "hipotesis": "Corregir la mitad del error de las últimas 2 verificaciones apagándolo rápido (constante de 12 h en vez de 24 h) reduce el error a 1 día en cambios bruscos de régimen sin sobrecorregir a 2 y 3 días."}
+
+
+def c_sin_autoajuste_sesgo50_largo(P, ctx, mod):
+    ph = (mod.get("aciertos") or {}).get("por_horizonte") or {}
+    pts = [(0, 0.0)]
+    for h, v in ph.items():
+        if (v.get("n") or 0) >= 30 and v.get("sesgo_m") is not None:
+            pts.append((int(h), float(v["sesgo_m"])))
+    pts.sort()
+    if len(pts) < 3:
+        return None
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    dvdz = float(c["a"]) + float(c["b"]) * max(0.0, float(ctx["cota"]) - 2115.0)
+    k = dvdz / 0.0864
+    corr = []
+    for d in range(60):
+        if d < 1:
+            corr.append(0.0)
+        else:
+            t0 = d
+            s0 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t0 <= h1:
+                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)
+                    break
+            t1 = d + 1
+            s1 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t1 <= h1:
+                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)
+                    break
+            val = -(s1 - s0) * k * 0.5
+            corr.append(max(-80.0, min(80.0, val)))
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), len(corr))
+    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx["ajuste"] = 1.0
+    ctx["memoria"] = out
+    return P, ctx, {"ajuste": 1.0, "memoria": out}
+
+
+CANDIDATOS["sin_autoajuste_sesgo50_largo"] = {"f": c_sin_autoajuste_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-07", "nombre": "Sin autoajuste + mitad de sesgo desde día 2", "hipotesis": "Desactivar el autoajuste (mejor error medio a 1 y 2 días en el marcador) y quitar la mitad del sesgo por plazo únicamente desde el día 2 conserva la mejora de corto plazo y corrige el pesimismo de 5 a 14 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
