@@ -736,7 +736,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             log(f"Laboratorio: anterior falló: {e}")
     mod = _con_previo(mod, ts)
     mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
-    mod["_tit_1d"] = round(d_tit[1]["cota"], 3)   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
+    mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
+    mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
             continue
@@ -744,7 +745,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             r = c["f"](_copia(P), _copia(ctx), _copia(mod))
             if not r:
                 continue
-            di, _ = simular(r[0], r[1], par, horizonte=HORIZ_REGION)
+            par_c = r[1].pop("_par", None) or par          # un candidato puede cambiar un parámetro calibrado (solo en su copia)
+            di, _ = simular(r[0], r[1], par_c, horizonte=HORIZ_REGION)
             tray[cid] = [round(di[h]["cota"], 3) for h in HORIZ]
             completa[cid] = [round(x["cota"], 2) for x in di]
         except Exception as e:
@@ -1884,3 +1886,52 @@ _cand_3nov("otras_hidro_rios", c_otras_hidro_rios, "Las demás hidroeléctricas 
            "modelo hace que cada una siga el cambio que pronostica GloFAS en su río desde hoy, con su factor de planta típico, "
            "respuesta 0,5 (0,15 en las de embalse grande) y tope en su potencia; atenúa después de 10 días como el titular.",
            origen="Luis, 6 nov (aprobado por Luis)")
+
+
+
+# ---------------------------------------------------------------- Cerebro 7 nov (aprobado por Luis): reparto reciente
+# Mazar volvió a turbinar fuerte (1.814 MWh el 6 nov, y de noche) y el titular dijo de más a 1 día (+30 a +47 cm).
+# El modelo calcula cuánta agua sale de Mazar con el aporte entre presas calibrado en el historial (beta = 0,47 del
+# caudal de entrada llega a Molino/Sopladora sin pasar por Mazar). Con el balance real de Celec de los 2 últimos días
+# completos (Paute MW, caudal, variación de la cota → agua que salió) se despeja el beta que esos días cuadra y se usa
+# en vez del calibrado. Si Mazar carga más del complejo, ese beta baja y sale más agua de Mazar por cada MW.
+def c_reparto_reciente(P, ctx, mod):
+    par, fis = mod.get("_par"), mod.get("_fisica") or {}
+    det = [x for x in (fis.get("detalle") or []) if isinstance(x.get("salida"), (int, float)) and x.get("caudal")]
+    if not par or len(det) < 2:
+        return None
+    kms, eta = par["k_molino_sopladora"], par["eficiencia_mazar"]
+    amC = ctx.get("amaluzaCota") or 1975.0
+    betas = []
+    for x in det[-2:]:
+        if x["salida"] <= 2:       # día que Mazar casi no soltó agua: el balance no informa del reparto
+            continue
+        kmz = 0.00981 * eta * max(20.0, x["cota"] - amC)
+        betas.append((x["paute_mw"] - x["salida"] * (kmz + kms)) / (kms * x["caudal"]))
+    if not betas:
+        return None
+    b0 = par["beta_cuenca_intermedia"]
+    b = max(0.0, min(1.0, sum(betas) / len(betas)))
+    if abs(b - b0) < 0.02:
+        return None
+    par2 = dict(par); par2["beta_cuenca_intermedia"] = round(b, 4)
+    ctx["_par"] = par2
+    return P, ctx, {"beta_calibrado": round(b0, 3), "beta_reciente": round(b, 3), "betas_dias": [round(v, 3) for v in betas]}
+
+
+def c_reparto_reciente_y_tendencia_mitad(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_reparto_reciente, c_corrige_tendencia_mitad)
+
+
+_cand_3nov("reparto_reciente", c_reparto_reciente, "Reparto de Paute con el balance real de los 2 últimos días",
+           "El titular supone que 0,47 del caudal de entrada llega a Molino/Sopladora sin pasar por Mazar (calibrado en el "
+           "historial). Con Mazar turbinando fuerte y de noche (6–7 nov) eso subestima el agua que sale de Mazar: a 1 día dijo "
+           "de más +30 a +47 cm. Aquí ese aporte se despeja del balance real de Celec (Paute MW, caudal y cambio de cota) de los "
+           "2 últimos días completos; el 6 nov da ~0 y el 5 nov ~0,44. Idea del cerebro de Mazar del 7 nov (el retador pidió que "
+           "no se usara solo la parte diaria de Mazar porque de noche fue el doble: el balance del día ya la incluye).",
+           origen="cerebro 2026-11-07 (aprobado por Luis)")
+_cand_3nov("reparto_reciente_y_tendencia_mitad", c_reparto_reciente_y_tendencia_mitad,
+           "Reparto reciente + error reciente a media fuerza",
+           "Combinación propuesta por el cerebro de Mazar el 7 nov: corrige_tendencia_mitad lidera a 1 día (+2,5 %) pero corrige "
+           "de más a 2 días; el reparto reciente cubre lo que la tendencia no ve cuando Mazar turbina de noche.",
+           origen="cerebro 2026-11-07 (aprobado por Luis)")
