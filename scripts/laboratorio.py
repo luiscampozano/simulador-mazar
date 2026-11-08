@@ -2097,3 +2097,101 @@ _cand_3nov("demanda_tmax_dia", c_demanda_tmax_dia, "Demanda con la máxima de Gu
            "cerebro de Mazar del 7 nov (la de lluvia y la demanda medida ya están en demanda_real_lluvia; feriado del 20 nov y "
            "patrón semanal ya están en el titular).",
            origen="cerebro 2026-11-07 (aprobado por Luis)")
+
+
+# ---------------------------------------------------------------- Cerebro 8 nov (aprobado por Luis): reparto, recesión y lluvia de la Costa
+# El líder de Mazar propuso "paute_completo_real" = reparto_reciente + recesion_paute_piso + río Coca real desde el día 2.
+# El retador objetó la pieza del Coca (ayer ya se descartó: hoy el río real promete MENOS y la haría más pesimista), así que
+# entra sin ella: reparto del balance real de los 2 últimos días (1 día) + recesión con piso de 26 m³/s (1–7 días).
+def c_reparto_y_recesion(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_reparto_reciente, c_recesion_paute_piso)
+
+
+# "memoria_mitad_coca_real_reparto" (combinación del líder): memoria_mitad_coca_real es el mejor a 1 día del marcador
+# (+8,9 %, 34 casos, 4 días) y no ve el reparto dentro de Paute, que fue el error nuevo del 6–8 nov (Mazar 1.814 → 1.240 MWh).
+# La otra pieza que propuso (patron_semanal_mitad, domingo −153 en vez de −306 MW) ya está en sombra: dia_semana_suave.
+def c_memoria_mitad_coca_real_reparto(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_memoria_mitad_coca_real, c_reparto_reciente)
+
+
+# Lluvia fuerte en Guayaquil (idea "demanda_clima_calendario" del líder): los días con ≥ 30 mm pronosticados en Guayaquil
+# (registro/gye_pronostico.json, Open-Meteo) la demanda baja 100 MW (menos aire acondicionado); hipótesis a medir, la
+# elasticidad no se conoce. Se compara con la fracción de días ≥ 30 mm de los 7 días anteriores (la demanda base
+# sale de días medidos que ya traen sus aguaceros: revisor), o con el día de referencia del titular si faltan datos. Distinta de demanda_real_lluvia (umbral 2 mm sobre la demanda medida).
+# El 20 nov (Decreto 507) ya va como domingo en el titular (manual.feriados): esa pieza no se repite.
+def _lluvia_gye30(P, ctx, mod, mw=100.0, umbral=30.0):
+    try:
+        from datetime import date as _d
+        ts = str(mod.get("_ts") or "")
+        if len(ts) < 10:
+            return None
+        f0 = _d.fromisoformat(ts[:10])
+        g = _leer_json_lab("registro/gye_pronostico.json") or {}
+        por = {t: float(ll) for t, ll in zip(g.get("dias") or [], g.get("lluvia_mm") or []) if isinstance(ll, (int, float))}
+        gen = str(g.get("generado") or "")
+        if len(gen) < 13:
+            return None
+        if abs((_d.fromisoformat(gen[:10]) - f0).days) > 1:
+            return None                               # pronóstico viejo (revisor)
+        f_t = _d.fromisoformat(gen[:10]) + timedelta(days=1 if int(gen[11:13]) >= 18 else 0)
+        # referencia (revisor): la demanda base sale de los días medidos recientes, que ya traen sus aguaceros → fracción
+        # de días ≥ umbral en los 7 días anteriores a la corrida (si hay ≥ 5 con dato); si no, el día de referencia
+        prev = [por[(f0 - timedelta(days=i)).isoformat()] for i in range(1, 8) if (f0 - timedelta(days=i)).isoformat() in por]
+        if len(prev) >= 5:
+            ref = sum(1 for x in prev if x >= umbral) / len(prev)
+        elif f_t.isoformat() in por:
+            ref = float(por[f_t.isoformat()] >= umbral)
+        else:
+            return None
+        plan = list(ctx.get("cutPlan") or []); plan += [None] * max(0, 61 - len(plan))
+        cambio = False
+        for k in range(61):
+            f = f0 + timedelta(days=k); dia = (ctx["diaSemana0"] + k) % 7
+            v = plan[k] if isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool) else (P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+            x = por.get(f.isoformat())
+            baja = mw * (int(x >= umbral) - ref) if (x is not None and f > f_t) else 0.0
+            cambio = cambio or abs(baja) > 0.5
+            plan[k] = round(v + baja, 1)              # corte equivalente: más corte = menos demanda
+        if not cambio:
+            return None
+        ctx["cutPlan"] = plan
+        return P, ctx, {"cutPlan": plan[:15], "lluvia_umbral_mm": umbral, "lluvia_ref": round(ref, 3)}
+    except Exception:
+        return None
+
+
+def c_lluvia_gye30(P, ctx, mod):
+    return _lluvia_gye30(P, ctx, mod)
+
+
+def c_demanda_tmax_lluvia30(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_demanda_tmax_dia, c_lluvia_gye30)
+
+
+_cand_3nov("reparto_y_recesion", c_reparto_y_recesion, "Reparto reciente + recesión del Paute con piso",
+           "Idea 'paute_completo_real' del cerebro de Mazar del 8 nov SIN la pieza del río Coca (el retador: hoy el río real "
+           "promete menos y la haría más pesimista). El reparto entre presas despejado del balance real de Celec de los 2 últimos "
+           "días ataca el error a 1 día (6 nov: +0,64 m con Mazar a 1.814 MWh); la recesión hacia 26 m³/s ataca 1–7 días si la "
+           "cuenca sigue seca hasta el 14 nov. Deben sumar sin pisarse: una cambia el agua que sale de Mazar, la otra la que entra "
+           "(hoy a 7 días: reparto −0,38 m, recesión +0,06, juntas −0,32). Ojo: la pieza de reparto sola va −34,5 % a 1 día (3 casos).",
+           origen="cerebro 2026-11-08 (aprobado por Luis)")
+_cand_3nov("memoria_mitad_coca_real_reparto", c_memoria_mitad_coca_real_reparto, "Media memoria + río Coca real + reparto reciente",
+           "Combinación del líder de Mazar del 8 nov: memoria_mitad_coca_real (mejor a 1 día del marcador: +8,9 %, 34 casos, 4 días) "
+           "más el reparto entre presas del balance real de Celec (reparto_reciente). La memoria y el Coca no ven cuánto turbina "
+           "Mazar dentro de Paute, que fue el error nuevo del 6–8 nov. Si el reparto suma, debe bajar el error a 1 día sin perder a 7. "
+           "Ojo: la pieza de reparto sola va mal hasta ahora (−34,5 % a 1 día, 3 casos, 1 día).",
+           origen="cerebro 2026-11-08 (aprobado por Luis)")
+_cand_3nov("lluvia_gye30", c_lluvia_gye30, "Demanda −100 MW los días de aguacero en Guayaquil",
+           "Pieza de lluvia de la idea 'demanda_clima_calendario' del cerebro de Mazar del 8 nov: los días con ≥ 30 mm pronosticados "
+           "en Guayaquil (Open-Meteo, 7 días hacia adelante; hoy solo el 12 nov: 39 mm) la demanda baja 100 MW (menos aire "
+           "acondicionado), contra la fracción de días ≥ 30 mm de la semana anterior (1–7 nov: 2 de 7, ≈ −29 MW los días secos), "
+           "que ya está en la demanda base. Si no hay días ≥ 30 mm en el pronóstico, no corre. Hipótesis a medir: la elasticidad no se conoce (el retador). Distinta de demanda_real_lluvia "
+           "(umbral 2 mm sobre la demanda medida). Debe bajar el pesimismo a 3–7 días si las lluvias se cumplen.",
+           origen="cerebro 2026-11-08 (aprobado por Luis)")
+_cand_3nov("demanda_tmax_lluvia30", c_demanda_tmax_lluvia30, "Máxima de Guayaquil por día + aguaceros −100 MW",
+           "Idea 'demanda_clima_calendario' del cerebro de Mazar del 8 nov: demanda_tmax_dia (máxima de Guayaquil de cada día a "
+           "50 MW/°C) + lluvia_gye30 (−100 MW los días con ≥ 30 mm). El 20 nov (Decreto 507) ya va como domingo en el titular: no "
+           "se repite. Hoy: Tmáx 30,7–32,2 °C los próximos días frente a 33,0 de referencia y solo el 12 nov ≥ 30 mm (39 mm): menos "
+           "demanda = menos Paute a 7–14 días. Ojo: puede contar dos veces el mismo efecto (el día lluvioso ya es más fresco): "
+           "medirlo junto a lluvia_gye30 y demanda_tmax_dia solos.",
+           origen="cerebro 2026-11-08 (aprobado por Luis)")
