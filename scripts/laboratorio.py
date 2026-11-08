@@ -672,6 +672,57 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_sin_autoajuste_paute_completo(P, ctx, mod):
+    bruta = mod.get("serieMazarBruta")
+    info = mod.get("ajuste_paute") or {}
+    f = info.get("observado")
+    if not bruta or not isinstance(f, (int, float)):
+        return None
+    actual = ctx.get("serieMazar") or bruta
+    f = max(0.0, min(1.5, float(f)))
+    serie = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]
+    ctx["ajuste"] = 1.0
+    ctx["serieMazar"] = serie
+    return P, ctx, {"ajuste": 1.0, "serieMazar": serie}
+
+
+CANDIDATOS["sin_autoajuste_paute_completo"] = {"f": c_sin_autoajuste_paute_completo, "promocion": "auto", "origen": "Gemini 2026-11-08", "nombre": "Sin autoajuste + Paute con ajuste observado", "hipotesis": "Quitar el autoajuste de la bajada (que mejora el error medio a 1–3 días) y usar el ajuste observado entero en el caudal del Paute (que reduce el error a 3–7 días) mejora simultáneamente el corto y el mediano plazo con promoción automática."}
+
+
+def c_sin_autoajuste_coca_mitad(P, ctx, mod):
+    a = ctx.get("serieCoca")
+    b = mod.get("serieCocaRio")
+    if not a or not b:
+        return None
+    s = [round((x + y) / 2.0, 4) for x, y in zip(a, b)]
+    ctx["ajuste"] = 1.0
+    ctx["serieCoca"] = s
+    return P, ctx, {"ajuste": 1.0, "serieCoca": s}
+
+
+CANDIDATOS["sin_autoajuste_coca_mitad"] = {"f": c_sin_autoajuste_coca_mitad, "promocion": "auto", "origen": "Gemini 2026-11-08", "nombre": "Sin autoajuste + río Coca a la mitad", "hipotesis": "Combinar la desactivación del autoajuste con el punto medio entre la serie del titular y el pronóstico real del río Coca conserva la mejora a 1–2 días de sin_autoajuste y mitiga su deterioro a 5–7 días con menor riesgo de cambio de régimen que coca_rio_real."}
+
+
+def c_humedo_sin_autoajuste(P, ctx, mod):
+    s_coca = mod.get("serieCocaRio")
+    bruta = mod.get("serieMazarBruta")
+    info = mod.get("ajuste_paute") or {}
+    f = info.get("observado")
+    if not s_coca or not bruta or not isinstance(f, (int, float)):
+        return None
+    actual = ctx.get("serieMazar") or bruta
+    f = max(0.0, min(1.5, float(f)))
+    s_mazar = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]
+    coca = list(s_coca)
+    ctx["ajuste"] = 1.0
+    ctx["serieCoca"] = coca
+    ctx["serieMazar"] = s_mazar
+    return P, ctx, {"ajuste": 1.0, "serieCoca": coca, "serieMazar": s_mazar}
+
+
+CANDIDATOS["humedo_sin_autoajuste"] = {"f": c_humedo_sin_autoajuste, "promocion": "auto", "origen": "Gemini 2026-11-08", "nombre": "Sin autoajuste + río Coca real + Paute observado", "hipotesis": "Unir las tres piezas de promoción automática que mejor rinden por plazo (sin_autoajuste a 1–2 días, paute_ajuste_completo a 3–5 días y coca_rio_real a 3–7 días) baja el error a 1 día hacia la meta sin empeorar en el horizonte de 3 a 7 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})

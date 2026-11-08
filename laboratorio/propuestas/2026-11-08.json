@@ -1,0 +1,94 @@
+{
+ "fecha": "2026-11-08",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 4.021,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_paute_completo",
+    "nombre": "Sin autoajuste + Paute con ajuste observado",
+    "hipotesis": "Quitar el autoajuste de la bajada (que mejora el error medio a 1–3 días) y usar el ajuste observado entero en el caudal del Paute (que reduce el error a 3–7 días) mejora simultáneamente el corto y el mediano plazo con promoción automática.",
+    "promocion": "auto",
+    "por_que": "En el marcador de hoy (72 casos), sin_autoajuste es el mejor modelo de promoción automática a 1 y 2 días (0,266 m y 0,394 m vs 0,276 m y 0,425 m del titular), pero empeora a 5 y 7 días (0,847 m y 1,612 m). Por su parte, paute_ajuste_completo destaca a 3, 5 y 7 días (0,502 m, 0,627 m y 1,134 m vs 0,527 m, 0,774 m y 1,385 m del titular) sin perder a 1 día (0,275 m). Combinar ambos permite ganar en el corto plazo sin que el pesimismo de sin_autoajuste castigue a 5 y 7 días.",
+    "codigo": "def c_sin_autoajuste_paute_completo(P, ctx, mod):\n    bruta = mod.get(\"serieMazarBruta\")\n    info = mod.get(\"ajuste_paute\") or {}\n    f = info.get(\"observado\")\n    if not bruta or not isinstance(f, (int, float)):\n        return None\n    actual = ctx.get(\"serieMazar\") or bruta\n    f = max(0.0, min(1.5, float(f)))\n    serie = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieMazar\"] = serie\n    return P, ctx, {\"ajuste\": 1.0, \"serieMazar\": serie}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.09,
+     2121.28,
+     2115.55
+    ],
+    "candidato_1_7_14": [
+     2127.09,
+     2121.42,
+     2115.78
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_mitad",
+    "nombre": "Sin autoajuste + río Coca a la mitad",
+    "hipotesis": "Combinar la desactivación del autoajuste con el punto medio entre la serie del titular y el pronóstico real del río Coca conserva la mejora a 1–2 días de sin_autoajuste y mitiga su deterioro a 5–7 días con menor riesgo de cambio de régimen que coca_rio_real.",
+    "promocion": "auto",
+    "por_que": "sin_autoajuste reduce la mediana a 1 día a 17,5 cm y el error medio a 0,266 m (vs 19,1 cm y 0,276 m del titular), pero a 7 días sube el error a 1,612 m (vs 1,385 m). coca_mitad también tiene mediana de 17,5 cm a 1 día (error medio 0,272 m) y mejora 3, 5 y 7 días (0,504 m, 0,686 m y 1,208 m) siendo más prudente que coca_rio_real cuando GloFAS promete menos que la serie base.",
+    "codigo": "def c_sin_autoajuste_coca_mitad(P, ctx, mod):\n    a = ctx.get(\"serieCoca\")\n    b = mod.get(\"serieCocaRio\")\n    if not a or not b:\n        return None\n    s = [round((x + y) / 2.0, 4) for x, y in zip(a, b)]\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieCoca\"] = s\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": s}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.09,
+     2121.28,
+     2115.55
+    ],
+    "candidato_1_7_14": [
+     2127.09,
+     2121.78,
+     2116.91
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "humedo_sin_autoajuste",
+    "nombre": "Sin autoajuste + río Coca real + Paute observado",
+    "hipotesis": "Unir las tres piezas de promoción automática que mejor rinden por plazo (sin_autoajuste a 1–2 días, paute_ajuste_completo a 3–5 días y coca_rio_real a 3–7 días) baja el error a 1 día hacia la meta sin empeorar en el horizonte de 3 a 7 días.",
+    "promocion": "auto",
+    "por_que": "El marcador muestra que las tres palancas físicas atacan plazos complementarios: sin_autoajuste lidera a 1–2 días (0,266 m y 0,394 m), paute_ajuste_completo lidera a 5 días (0,627 m vs 0,774 m del titular) y coca_rio_real lidera a 3 y 7 días (0,483 m y 1,028 m vs 0,527 m y 1,385 m). Juntarlas completa el candidato humedo_completo quitándole el freno del autoajuste en el corto plazo.",
+    "codigo": "def c_humedo_sin_autoajuste(P, ctx, mod):\n    s_coca = mod.get(\"serieCocaRio\")\n    bruta = mod.get(\"serieMazarBruta\")\n    info = mod.get(\"ajuste_paute\") or {}\n    f = info.get(\"observado\")\n    if not s_coca or not bruta or not isinstance(f, (int, float)):\n        return None\n    actual = ctx.get(\"serieMazar\") or bruta\n    f = max(0.0, min(1.5, float(f)))\n    s_mazar = [round(1.0 + (b - 1.0) * f, 4) if b > 1.0 else a for a, b in zip(actual, bruta)]\n    coca = list(s_coca)\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieCoca\"] = coca\n    ctx[\"serieMazar\"] = s_mazar\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": coca, \"serieMazar\": s_mazar}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2127.09,
+     2121.28,
+     2115.55
+    ],
+    "candidato_1_7_14": [
+     2127.09,
+     2122.14,
+     2117.87
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca",
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-08"
+}
