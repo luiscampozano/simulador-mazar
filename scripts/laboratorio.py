@@ -10,7 +10,11 @@ Regla de reemplazo (laboratorio/config.json):
   - si `promocion_automatica` es true y el candidato es de promoción "auto", pasa a titular solo (se anota en
     laboratorio/historial.json y el auditor avisa a Luis). Los de promoción "luis" (cambian la metodología del
     número grande) siempre esperan su visto bueno.
-  - el titular anterior queda en sombra: si durante 3 días vuelve a ganar, se revierte solo.
+  - el titular reemplazado queda como "ex titular" (clave "anterior") en sombra 14 días más; vuelve a titular solo si
+    cumple la misma regla que cualquier candidato ("listo").
+  - Regla de permanencia (Luis, 8 nov, todos los simuladores): un candidato (o el ex titular) con ≥ 14 días en sombra y
+    ≥ 7 días medidos a 1 día sigue en sombra solo si es al menos 1 % mejor que el titular en algún plazo; si no, se
+    retira (laboratorio/retirados.json) y deja de correrse.
 
 Cada candidato es una función que recibe copias de P y ctx (las mismas entradas de simular_py) y el bloque `mod`, y
 devuelve (P, ctx, cambios_mod): cambios_mod son los campos de datos.json que hay que publicar si se vuelve titular,
@@ -27,12 +31,15 @@ F_PRED = os.path.join(DIR, "predicciones.json")
 F_MARC = os.path.join(DIR, "marcador.json")
 F_TIT = os.path.join(DIR, "titular.json")
 F_HIST = os.path.join(DIR, "historial.json")
+F_RET = os.path.join(DIR, "retirados.json")
 HORIZ = (1, 2, 3, 5, 7, 10, 14)
 HORIZ_REGION = 30   # días de la trayectoria completa que se guarda de la última corrida
 
 CONF_DEF = {"promocion_automatica": True, "activar_desde": "2026-10-31", "dias_min": 7, "casos_min": 40, "mejora_min": 0.10,
             "tolerancia_3d": 0.05, "tolerancia_7d": 0.05, "tolerancia_14d": 0.05, "ventana_dias": 7, "ventana_largo_dias": 14,
-            "dias_min_7d": 5, "dias_min_14d": 5, "objetivo_cm": 5, "posible_cm": 7, "revertir_dias": 3}
+            "dias_min_7d": 5, "dias_min_14d": 5, "objetivo_cm": 5, "posible_cm": 7, "revertir_dias": 3,
+            "retiro_edad_dias": 14, "retiro_mejora_min": 0.01, "retiro_dias_min": 7, "retiro_casos_plazo": 5}
+# Regla de permanencia (Luis, 8 nov): ≥ 14 días en sombra y ningún plazo ≥ 1 % mejor que el titular → se retira.
 # Regla de Luis (30 oct): la meta es un modelo con error típico (mediana) de 5 cm o menos a 1 día ("objetivo"); 7 cm o
 # menos es "posible". Antes de reemplazar al titular, el candidato también debe probarse a 7 y a 14 días (no puede
 # empeorar), porque el modelo titular queda para siempre: un candidato nuevo tarda al menos ~19 días en poder calificar.
@@ -728,7 +735,9 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     d_tit, _ = simular(_copia(P), _copia(ctx), par, horizonte=HORIZ_REGION)
     tray["titular"] = [round(d_tit[h]["cota"], 3) for h in HORIZ]
     completa["titular"] = [round(x["cota"], 2) for x in d_tit]
-    if base and (_leer(F_TIT, {"promovidos": []}).get("promovidos")):
+    tit_ = _leer(F_TIT, {"promovidos": []})
+    retirados = _leer(F_RET, {})
+    if base and tit_.get("promovidos") and not tit_.get("ex_titular_retirado"):
         try:
             d_ant, _ = simular(_copia(base[0]), _copia(base[1]), par, horizonte=max(HORIZ))
             tray["anterior"] = [round(d_ant[h]["cota"], 3) for h in HORIZ]
@@ -739,7 +748,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
     mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
-        if cid in (_leer(F_TIT, {"promovidos": []}).get("promovidos") or []):
+        if cid in (tit_.get("promovidos") or []) or cid in retirados:
             continue
         try:
             r = c["f"](_copia(P), _copia(ctx), _copia(mod))
@@ -758,6 +767,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     reg["corridas"] = sorted([x for x in reg["corridas"] if x["ts"] >= lim], key=lambda x: x["ts"])
     _escribir(F_PRED, reg, compacto=True)
     marc = marcador(reg, conf, ts)
+    _retirar(marc, ts, log)
     marc["ultima_corrida"] = {"ts": ts, "cota": datos["cota"], "trayectorias": completa}   # para la región de proyección de los mejores
     _escribir(F_MARC, marc)
     return marc
@@ -839,6 +849,10 @@ def marcador(reg, conf, ts_ahora):
         if m in CANDIDATOS:
             res["modelos"][m]["_info"] = {k: CANDIDATOS[m][k] for k in ("hipotesis", "origen", "promocion")}
     # veredicto de cada candidato frente al titular, comparando SOLO las corridas en que corrieron los dos
+    primera = {}
+    for x in reg["corridas"]:
+        for m in x["tray"]:
+            primera.setdefault(m, x["ts"])
     ver = {}
     def rel(m, h):
         pp = (pares.get(m) or {}).get(h) or []
@@ -877,6 +891,13 @@ def marcador(reg, conf, ts_ahora):
                   "falta_dias": max(0, conf["dias_min"] - a1["dias"]), "mediana_1d_m": med, "nivel": nivel,
                   "mejora_7d": None if rel(m, 7) is None else round(rel(m, 7), 3), "mejora_14d": None if rel(m, 14) is None else round(rel(m, 14), 3),
                   "dias_7d": dias_h(7), "dias_14d": dias_h(14)}
+        # permanencia (Luis, 8 nov): ≥ 1 % mejor que el titular en algún plazo
+        mejor_en = [h for h in HORIZ if len((pares.get(m) or {}).get(h) or []) >= conf.get("retiro_casos_plazo", 5)
+                    and (rel(m, h) or 0) >= conf.get("retiro_mejora_min", 0.01)]
+        edad = (t_ahora - datetime.fromisoformat(primera[m])).total_seconds() / 86400 if m in primera else 0
+        ver[m]["mejor_en"] = mejor_en
+        ver[m]["edad_dias"] = round(edad, 1)
+        ver[m]["retiro"] = bool(edad >= conf.get("retiro_edad_dias", 14) and a1["dias"] >= conf.get("retiro_dias_min", 7) and not mejor_en)
     res["veredicto"] = ver
     t1 = (res["modelos"].get("titular") or {}).get("1") or {}
     if t1.get("mediana_m") is not None:
@@ -901,6 +922,30 @@ def marcador(reg, conf, ts_ahora):
     return res
 
 
+def _retirar(marc, ts, log=print):
+    """Regla de permanencia (Luis, 8 nov): retira los candidatos marcados `retiro` en el veredicto (y el ex titular)."""
+    ret = _leer(F_RET, {})
+    nuevos = []
+    for m, v in (marc.get("veredicto") or {}).items():
+        if not v.get("retiro"):
+            continue
+        info = {"fecha": ts, "edad_dias": v.get("edad_dias"), "mejora_1d": v.get("mejora_1d"), "mejora_7d": v.get("mejora_7d"),
+                "mejora_14d": v.get("mejora_14d"), "motivo": "14 días en sombra sin ningún plazo ≥ 1 % mejor que el titular"}
+        if m == "anterior":
+            tit = _leer(F_TIT, {"promovidos": []})
+            if not tit.get("ex_titular_retirado"):
+                tit["ex_titular_retirado"] = ts; _escribir(F_TIT, tit); nuevos.append("ex titular")
+        elif m in CANDIDATOS and m not in ret:
+            ret[m] = dict(info, nombre=CANDIDATOS[m].get("nombre"), origen=CANDIDATOS[m].get("origen")); nuevos.append(m)
+    if nuevos:
+        _escribir(F_RET, ret)
+        hist = _leer(F_HIST, [])
+        hist.append({"ts": ts, "accion": "retirados", "modelos": nuevos})
+        _escribir(F_HIST, hist)
+        log("Laboratorio: retirados por la regla de permanencia: " + ", ".join(nuevos))
+    marc["retirados"] = sorted(ret)
+
+
 def promover(marc, conf, log=print):
     """Reemplazo automático (solo si config.promocion_automatica = true). Devuelve el aviso para Luis o None.
     También revierte: si el titular anterior vuelve a ganar con la misma regla durante `revertir_dias`, se deshace el
@@ -909,7 +954,7 @@ def promover(marc, conf, log=print):
         return None
     tit = _leer(F_TIT, {"promovidos": []})
     va = (marc.get("veredicto") or {}).get("anterior")
-    if tit.get("promovidos") and va and va.get("mejora_1d", 0) >= conf["mejora_min"] and va.get("dias", 0) >= conf["revertir_dias"]:
+    if tit.get("promovidos") and va and va.get("estado") == "listo":   # Luis 8 nov: el ex titular vuelve con la misma regla que cualquier candidato
         m = tit["promovidos"].pop()
         _escribir(F_TIT, tit)
         hist = _leer(F_HIST, [])
@@ -927,6 +972,7 @@ def promover(marc, conf, log=print):
         return None
     tit["promovidos"].append(m)
     tit["desde"] = marc["actualizado"]
+    tit.pop("ex_titular_retirado", None)   # el titular reemplazado queda como ex titular en sombra (14 días + permanencia)
     _escribir(F_TIT, tit)
     hist = _leer(F_HIST, [])
     hist.append({"ts": marc["actualizado"], "accion": "promovido", "modelo": m, "mejora_1d": v["mejora_1d"],
