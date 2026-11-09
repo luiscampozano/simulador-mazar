@@ -475,6 +475,11 @@ def simular_py(P, ctx, par, horizonte=60):
     mem = ctx.get("memoria") or None
     mem_at = (lambda t: float(mem[min(len(mem) - 1, int(math.floor(t)))] or 0.0)) if mem else (lambda t: 0.0)
     fac = ctx.get("ccsFactor") or None
+    # Solo laboratorio (Luis, 9 nov; el titular no usa estas claves): aporte fijo de los ríos entre Mazar y Amaluza
+    # (m³/s) y "domingo parado" (Mazar cerrado domingos/feriados mientras Amaluza tenga agua; al día siguiente Mazar la repone).
+    inter_fijo = ctx.get("interFijo")
+    dom = ctx.get("domingoParado") or None
+    deuda = float((dom or {}).get("deuda0") or 0.0); pago_ritmo = deuda
 
     def fac_at(t):   # paro de Coca Codo: fracción de lo que permite el río (igual que modelo.js)
         if not fac:
@@ -513,7 +518,7 @@ def simular_py(P, ctx, par, horizonte=60):
         cota_ahora = 2115 + xo(V)
         kmz = 0.00981 * eta * max(20.0, cota_ahora - amC)
         saque = min(am_ritmo * dt, am_rest); am_rest -= saque
-        inter = beta * qin + saque / dt / 0.0864
+        inter = (inter_fijo if inter_fijo is not None else beta * qin) + saque / dt / 0.0864
         pv = min(max(req, 0), 1757)
         kmzv = 0.00981 * eta * max(20.0, 2115 + (xo(Vv) if Vv > 0 else Vv / a) - amC)
         dqv = qin - max(0.0, (pv - kms * inter) / (kmzv + kms))
@@ -524,6 +529,15 @@ def simular_py(P, ctx, par, horizonte=60):
         if V > 0:
             paute = min(max(req, 0), 1757)
             qt = max(0.0, (paute - kms * inter) / (kmz + kms))
+            if dom is not None and dd == 0:           # domingo/feriado: Molino usa primero Amaluza, Mazar solo lo que falte
+                pide = max(0.0, paute / kms - inter)
+                da = max(0.0, min(pide, am_rest / dt / 0.0864))
+                am_rest -= da * dt * 0.0864; deuda += da * dt * 0.0864; pago_ritmo = deuda
+                qt = max(0.0, (paute - kms * (inter + da)) / (kmz + kms))
+            elif dom is not None and deuda > 1e-9:    # día siguiente: Mazar repone a Amaluza lo prestado (en ~1 día)
+                pago = min(deuda, max(pago_ritmo, 0.3) * dt)
+                deuda -= pago; am_rest += pago
+                qt += pago / dt / 0.0864
             dq = qin - qt
             if dq < 0:
                 dq *= kA                      # autoajuste: corrige la bajada según los aciertos recientes

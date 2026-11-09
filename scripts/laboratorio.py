@@ -2195,3 +2195,112 @@ _cand_3nov("demanda_tmax_lluvia30", c_demanda_tmax_lluvia30, "Máxima de Guayaqu
            "demanda = menos Paute a 7–14 días. Ojo: puede contar dos veces el mismo efecto (el día lluvioso ya es más fresco): "
            "medirlo junto a lluvia_gye30 y demanda_tmax_dia solos.",
            origen="cerebro 2026-11-08 (aprobado por Luis)")
+
+
+# ── Amaluza y el reparto dentro de Paute (Luis, 9 nov: "aplícalo, sin ninguna aprobación") ─────────────────────────
+# Domingo 8 nov: Mazar soltó 0,07 hm³ (25 MWh) y Molino+Sopladora usaron 5,28 hm³: 1,66 hm³ salieron de Amaluza
+# (1.976,05 → 1.972,64 m, a 1,3 m del piso) y ~3,5 de los ríos entre las presas. Mazar subió +54 cm; los 62 modelos
+# dijeron que bajaba (−37 a −175 cm). Mismo patrón el 22 oct, 25 oct, 31 oct–3 nov.
+F_CELEC_DIA = os.path.join("historial", "celec_diario.json")
+
+
+def _vol_am(h, par):
+    am = par["amaluza"]; piso = am["piso"]; a, b = am["area"]
+    return 0.0 if h <= piso else a * (h - piso) + b * ((h - 1971) ** 2 - (piso - 1971) ** 2) / 2
+
+
+def _celec_dias(n=14):
+    H = _leer(F_CELEC_DIA, {}) or {}
+    return [(k, H[k]) for k in sorted(H)[-n:]]
+
+
+def _amaluza_ref(par):
+    """Cota 'normal' de Amaluza: mediana de los últimos 7 días completos de Celec."""
+    xs = sorted(v["am"] for _, v in _celec_dias(7) if isinstance(v.get("am"), (int, float)))
+    return xs[len(xs) // 2] if xs else None
+
+
+def _deficit_amaluza(ctx, par):
+    """hm³ que le faltan a Amaluza frente a su nivel normal (negativo = tiene de más)."""
+    ref = _amaluza_ref(par); am = ctx.get("amaluzaCota")
+    if ref is None or not isinstance(am, (int, float)):
+        return None, ref
+    return _vol_am(ref, par) - _vol_am(am, par), ref
+
+
+def c_embalse_combinado(P, ctx, mod):
+    par = mod.get("_par")
+    if not par:
+        return None
+    d, ref = _deficit_amaluza(ctx, par)
+    if d is None or abs(d) < 0.05:
+        return None
+    a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
+    vol = lambda x: a * x + b * x * x / 2
+    xo = lambda v: 0.0 if v <= 0 else (-a + math.sqrt(a * a + 2 * b * v)) / b
+    c0 = ctx["cota"]; ctx["cota"] = round(2115 + xo(max(0.0, vol(c0 - 2115) - d)), 3)
+    ctx["amaluzaCota"] = ref
+    return P, ctx, {"amaluza_normal": ref, "deficit_hm3": round(d, 3),
+                    "cota_mazar": c0, "cota_combinada": ctx["cota"]}
+
+
+def _inter_reciente(par, n=14):
+    """Aporte de los ríos entre Mazar y Amaluza (m³/s), mediana del balance diario de Celec de los últimos n días."""
+    kms, eta = par["k_molino_sopladora"], par["eficiencia_mazar"]
+    dias = _celec_dias(n + 1); out = []
+    for (k0, p), (k, x) in zip(dias, dias[1:]):
+        try:
+            kmz = 0.00981 * eta * max(20.0, x["c"] - x["am"])
+            suelta = x["maz"] / kmz * 3600 / 1e6
+            molino = (x["mol"] + x["sop"]) / kms * 3600 / 1e6
+            out.append((molino - suelta + _vol_am(x["am"], par) - _vol_am(p["am"], par)) / 0.0864)
+        except Exception:
+            continue
+    out = sorted(v for v in out if v > 0)
+    return out[len(out) // 2] if len(out) >= 5 else None
+
+
+def c_intermedia_fija(P, ctx, mod):
+    par = mod.get("_par")
+    if not par:
+        return None
+    q = _inter_reciente(par)
+    if q is None:
+        return None
+    ctx["interFijo"] = round(q, 2)
+    return P, ctx, {"intermedia_m3s": round(q, 2), "titular_supone": f"{par['beta_cuenca_intermedia']:.2f} × caudal de Mazar"}
+
+
+def c_mazar_domingo_parado(P, ctx, mod):
+    par = mod.get("_par")
+    if not par:
+        return None
+    ayer_dom = (ctx.get("diaSemana0", 1) % 7) == 1        # hoy lunes: lo que Amaluza prestó el domingo se repone hoy
+    d, ref = _deficit_amaluza(ctx, par)
+    deuda0 = max(0.0, d) if (ayer_dom and d is not None) else 0.0
+    ctx["domingoParado"] = {"deuda0": round(deuda0, 3)}
+    if deuda0 > 0:
+        ctx["amaluzaRitmo"] = 0.0
+    return P, ctx, {"deuda_amaluza_hm3": round(deuda0, 3), "amaluza_normal": ref}
+
+
+def c_combinado_domingo_intermedia(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_embalse_combinado, c_intermedia_fija, c_mazar_domingo_parado)
+
+
+_OR9 = "Claude 2026-11-09 (análisis del domingo 8 nov; Luis: aplicar sin aprobación)"
+_cand_3nov("embalse_combinado", c_embalse_combinado, "Mazar + Amaluza como un solo embalse",
+           "Celec pasa agua entre Mazar y Amaluza de un día a otro (8 nov: Amaluza puso 1,66 hm³ y Mazar subió 54 cm). Aquí el agua "
+           "que le falta a Amaluza frente a su nivel normal (mediana de 7 días de Celec) se descuenta de Mazar desde ya (y la que "
+           "le sobra se suma): Mazar tendrá que reponerla. Debe bajar el error a 1–3 días después de los traspasos.", origen=_OR9)
+_cand_3nov("intermedia_fija", c_intermedia_fija, "Ríos entre las presas: aporte fijo del balance real",
+           "El titular supone que los ríos entre Mazar y Amaluza aportan 0,47 × el caudal de Mazar. El balance diario de Celec "
+           "(20 oct–8 nov) muestra ~1,8 hm³/día (~21 m³/s) casi sin relación con lo que entra a Mazar (0,16–1,24 × el caudal). "
+           "Aquí se usa la mediana de los últimos 14 días en m³/s, fija.", origen=_OR9)
+_cand_3nov("mazar_domingo_parado", c_mazar_domingo_parado, "Mazar cerrado domingos y feriados; el lunes repone Amaluza",
+           "Mazar soltó ~0 los domingos 4 y 25 oct y 8 nov y en el feriado 31 oct–3 nov: Molino trabaja con Amaluza y los ríos de "
+           "abajo. Aquí los domingos/feriados Molino usa primero Amaluza (hasta su piso) y Mazar solo lo que falte; el día siguiente "
+           "Mazar repone lo prestado. Un lunes, empieza debiendo lo que a Amaluza le falta frente a su nivel normal. Es la versión "
+           "extrema de la idea 'mazar_calendario' de los cerebros (8 nov).", origen=_OR9)
+_cand_3nov("combinado_domingo_intermedia", c_combinado_domingo_intermedia, "Embalse combinado + domingo parado + ríos fijos",
+           "Las tres piezas del análisis del 8 nov juntas.", origen=_OR9)
