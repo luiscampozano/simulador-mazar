@@ -62,13 +62,28 @@ def escena(clave):
     a = v[i0:i1, j0:j1].astype(np.float32)
     fv = float(np.ravel(v.attrs["_FillValue"])[0])
     a = np.where(a == fv, np.nan, a * float(np.ravel(v.attrs["scale_factor"])[0]) + float(np.ravel(v.attrs["add_offset"])[0]))
+    def ij(lat, lon):   # píxel (fila, columna) dentro de `a` para una lista de puntos
+        LA_, LO_ = np.radians(np.asarray(lat, float)), np.radians(np.asarray(lon, float))
+        pc = np.arctan((rpol ** 2 / req ** 2) * np.tan(LA_)); r_ = rpol / np.sqrt(1 - e2 * np.cos(pc) ** 2)
+        ax = H - r_ * np.cos(pc) * np.cos(LO_ - l0); ay = -r_ * np.cos(pc) * np.sin(LO_ - l0); az = r_ * np.sin(pc)
+        xx = np.arcsin(-ay / np.sqrt(ax * ax + ay * ay + az * az)); yy = np.arctan(az / ax)
+        return np.rint((yy - y[0]) / (y[1] - y[0])).astype(int) - i0, np.rint((xx - x[0]) / (x[1] - x[0])).astype(int) - j0
     I -= i0; J -= j0
     acc = np.zeros(I.shape, np.float32); n = np.zeros(I.shape, np.float32)
     for di in (-1, 0, 1):
         for dj in (-1, 0, 1):
             w = a[I + di, J + dj]; ok = np.isfinite(w)
             acc[ok] += w[ok]; n[ok] += 1
-    return np.where(n > 0, acc / np.maximum(n, 1), np.nan), inicio(clave)
+    def puntos(lats, lons, r=1):
+        """Por punto: temperatura mínima, % de píxeles ≤ 235 K y ≤ 215 K, y media (5×5 píxeles de ~2 km ≈ 3 km de radio)."""
+        pi, pj = ij(lats, lons); out = []
+        for i, j in zip(pi, pj):
+            w = a[max(0, i - 2):i + 3, max(0, j - 2):j + 3]
+            w = w[np.isfinite(w)]
+            out.append(None if not w.size else (float(w.min()), float((w <= 235).mean()), float((w <= 215).mean()), float(w.mean())))
+        return out
+    T = np.where(n > 0, acc / np.maximum(n, 1), np.nan)
+    return T, inicio(clave), puntos
 
 
 def glm(desde, hasta):
@@ -89,14 +104,47 @@ def glm(desde, hasta):
             except Exception:
                 continue
         return None
-    C = np.zeros((FILAS, COLS), np.int32)
+    C = np.zeros((FILAS, COLS), np.int32); todos = []
     with ThreadPoolExecutor(16) as ex:
         for r in ex.map(uno, ks):
             if r is None: continue
+            todos.append(r)
             i = np.floor((N - r[:, 0]) / PASO).astype(int); j = np.floor((r[:, 1] - O) / PASO).astype(int)
             m = (i >= 0) & (i < FILAS) & (j >= 0) & (j < COLS)
             np.add.at(C, (i[m], j[m]), 1)
-    return C, len(ks)
+    return C, len(ks), (np.concatenate(todos) if todos else np.zeros((0, 2)))
+
+
+def historia(t1, pun1, pun0, flashes):
+    """Puntos satélite por ciudad (Guayaquil 10, las demás 5) con las últimas 13 h, para la tabla de estaciones."""
+    P = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "puntos_satelite.json"), encoding="utf-8"))
+    ids, lats, lons = [], [], []
+    for c, ps in P.items():
+        for nom, la, lo in ps: ids.append(f"{c}|{nom}"); lats.append(la); lons.append(lo)
+    v1, v0 = pun1(lats, lons), pun0(lats, lons)
+    reg = {}
+    for k, idp in enumerate(ids):
+        if v1[k] is None: continue
+        tmin, fl, ft, tm = v1[k]
+        ry = 0
+        if len(flashes):
+            dk = np.hypot((flashes[:, 0] - lats[k]) * 111.2, (flashes[:, 1] - lons[k]) * 111.2 * math.cos(math.radians(lats[k])))
+            ry = int((dk <= 8).sum())
+        d10 = round(tm - v0[k][3], 1) if v0[k] is not None else None
+        reg[idp] = [round(tmin), round(fl * 100), round(ft * 100), ry, d10]
+    try:
+        H = SES.get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/historia.json", timeout=30).json()
+        assert isinstance(H.get("serie"), list)
+    except Exception:
+        H = {"serie": []}
+    lim = (t1 - timedelta(hours=13)).isoformat()
+    serie = [e for e in H["serie"] if e.get("t", "") >= lim and e.get("t") != t1.isoformat()] + [{"t": t1.isoformat(), "p": reg}]
+    H = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "puntos": P,
+         "campos": ["temp_min_K", "pct_nubes_lluvia_le235K", "pct_nubes_tormenta_le215K", "rayos_8km_15min", "cambio_10min_K"],
+         "nota": "radio ~3 km por punto (5×5 píxeles de ~2 km); rayos a ≤ 8 km en 15 min; señales, no milímetros",
+         "serie": sorted(serie, key=lambda e: e["t"])}
+    json.dump(H, open("salida/historia.json", "w"), ensure_ascii=False, separators=(",", ":"))
+    print(f"Historia: {len(H['serie'])} imágenes · {len(reg)} puntos")
 
 
 def b64(a):
@@ -111,8 +159,8 @@ def main():
         except Exception as e: print("ABI listado:", str(e)[:80])
     ks = sorted(ks, key=inicio)
     if len(ks) < 2: sys.exit("sin imágenes GOES recientes")
-    T1, t1 = escena(ks[-1]); T0, t0 = escena(ks[-2])
-    rayos, nglm = glm(t1 - timedelta(minutes=10), t1 + timedelta(minutes=5))
+    T1, t1, pun1 = escena(ks[-1]); T0, t0, pun0 = escena(ks[-2])
+    rayos, nglm, flashes = glm(t1 - timedelta(minutes=10), t1 + timedelta(minutes=5))
     tb = np.where(np.isfinite(T1), np.clip(np.rint(T1) - 150, 0, 254), 255).astype(np.uint8)          # 255 = sin dato
     d = np.where(np.isfinite(T1) & np.isfinite(T0), np.clip(np.rint(T1 - T0), -127, 127), -128).astype(np.int8)
     out = {"generado": ahora.isoformat(timespec="seconds"), "imagen": t1.isoformat(), "imagen_previa": t0.isoformat(),
@@ -122,6 +170,7 @@ def main():
            "tb_menos_150_u8": b64(tb), "cambio_10min_i8": b64(d), "rayos_u8": b64(np.clip(rayos, 0, 255).astype(np.uint8))}
     os.makedirs("salida", exist_ok=True)
     json.dump(out, open("salida/ahora.json", "w"), separators=(",", ":"))
+    historia(t1, pun1, pun0, flashes)
     frio = int((T1 < 215).sum()); print(f"Satélite {t1:%H:%M} UTC: celdas < 215 K: {frio} · rayos: {int(rayos.sum())} ({nglm} archivos GLM)")
 
 
