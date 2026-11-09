@@ -132,8 +132,9 @@ def historia(t1, pun1, pun0, flashes):
             ry = int((dk <= 8).sum())
         d10 = round(tm - v0[k][3], 1) if v0[k] is not None else None
         reg[idp] = [round(tmin), round(fl * 100), round(ft * 100), ry, d10]
-    try:
-        H = SES.get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/historia.json", timeout=30).json()
+    try:   # en el bucle del workflow la historia de la vuelta anterior está en disco (raw.githubusercontent tarda en refrescar)
+        H = json.load(open("salida/historia.json")) if os.path.exists("salida/historia.json") else \
+            SES.get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/historia.json", timeout=30).json()
         assert isinstance(H.get("serie"), list)
     except Exception:
         H = {"serie": []}
