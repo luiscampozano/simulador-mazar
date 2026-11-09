@@ -749,6 +749,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod = _con_previo(mod, ts)
     mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
+    mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
     mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (tit_.get("promovidos") or []) or cid in retirados:
@@ -2122,7 +2123,7 @@ def c_memoria_mitad_coca_real_reparto(P, ctx, mod):
 # elasticidad no se conoce. Se compara con la fracción de días ≥ 30 mm de los 7 días anteriores (la demanda base
 # sale de días medidos que ya traen sus aguaceros: revisor), o con el día de referencia del titular si faltan datos. Distinta de demanda_real_lluvia (umbral 2 mm sobre la demanda medida).
 # El 20 nov (Decreto 507) ya va como domingo en el titular (manual.feriados): esa pieza no se repite.
-def _lluvia_gye30(P, ctx, mod, mw=100.0, umbral=30.0):
+def _lluvia_gye30(P, ctx, mod, mw=100.0, umbral=30.0, ref_ventana=None):
     try:
         from datetime import date as _d
         ts = str(mod.get("_ts") or "")
@@ -2139,8 +2140,9 @@ def _lluvia_gye30(P, ctx, mod, mw=100.0, umbral=30.0):
         f_t = _d.fromisoformat(gen[:10]) + timedelta(days=1 if int(gen[11:13]) >= 18 else 0)
         # referencia (revisor): la demanda base sale de los días medidos recientes, que ya traen sus aguaceros → fracción
         # de días ≥ umbral en los 7 días anteriores a la corrida (si hay ≥ 5 con dato); si no, el día de referencia
-        prev = [por[(f0 - timedelta(days=i)).isoformat()] for i in range(1, 8) if (f0 - timedelta(days=i)).isoformat() in por]
-        if len(prev) >= 5:
+        rng = range(0, ref_ventana + 1) if ref_ventana else range(1, 8)   # ref_ventana: días de la ventana medida de la demanda (revisor 9 nov)
+        prev = [por[(f0 - timedelta(days=i)).isoformat()] for i in rng if (f0 - timedelta(days=i)).isoformat() in por]
+        if len(prev) >= (min(4, ref_ventana + 1) if ref_ventana else 5):
             ref = sum(1 for x in prev if x >= umbral) / len(prev)
         elif f_t.isoformat() in por:
             ref = float(por[f_t.isoformat()] >= umbral)
@@ -2457,3 +2459,126 @@ _cand_3nov("escala_grande_ambas", c_escala_grande_ambas, "Ramal sur Y aire carga
            "Más exigente: solo los días con las dos señales a la vez (menos falsas alarmas).", origen=_OR9B)
 _cand_3nov("escala_grande_alguna_media", c_escala_grande_alguna_media, "Ramal sur O aire cargado: medio descuento",
            "Más suave: con cualquiera de las dos señales, la mitad del efecto (descuento de ~0,84 en vez de 0,72).", origen=_OR9B)
+# ---------------------------------------------------------------- Cerebro 9 nov (aprobado por Luis, 7 nov: "que ellos propongan y el laboratorio ejecute")
+# Mazar 9 nov: lidera memoria_mitad_coca_real (+5,3 %, 42 casos, 5 días); coca_rio_real gana a 7 días (+35 %); el domingo
+# Mazar casi no turbinó y Amaluza prestó 1,66 hm³ (embalse_combinado lo descuenta). Hoy el guardián ve Paute en 299 MW de
+# 00:00 a 06:00 frente a 676 del modelo (el domingo 642 frente a 353): el total de Paute falla ±300 MW el mismo día.
+_OR_C9 = "cerebro 2026-11-09 (aprobado por Luis)"
+
+
+def c_combinado_coca_real(P, ctx, mod):
+    """embalse_combinado (déficit de Amaluza) + memoria de 48 h a la mitad + río Coca real desde el día 2."""
+    return _combinar(P, ctx, mod, c_embalse_combinado, c_memoria_mitad, _coca_real_desde_dia2)
+
+
+def c_semana_costa_lluviosa(P, ctx, mod):
+    """demanda medida (con media memoria) + aguaceros de Guayaquil −100 MW + embalse combinado."""
+    # revisor (9 nov): la demanda base de demanda_real_mem sale de las últimas 72 h, así que la referencia de aguaceros es
+    # la fracción de días ≥ 30 mm de esa ventana (f0−3 … f0), no la de la semana anterior
+    return _combinar(P, ctx, mod, c_demanda_real_mem, lambda P_, c_, m_: _lluvia_gye30(P_, c_, m_, ref_ventana=3), c_embalse_combinado)
+
+
+def _paute_medido_hoy(ts):
+    """Complejo Paute (Paute + Sopladora + Mazar) medido por Cenace hoy desde las 00:00 (MW medios) y las horas cubiertas.
+    Solo datos ya publicados antes de la corrida (serie_cenace.json, la guarda el robot en esta misma corrida)."""
+    pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(str(ts)[:10]) or {}
+    h = float(pl.get("horas") or 0)
+    if h < 4 or not all(isinstance(pl.get(k), (int, float)) for k in ("Paute", "Sopladora", "Mazar")):
+        return None, h
+    return (pl["Paute"] + pl["Sopladora"] + pl["Mazar"]) / h, h
+
+
+def _forma_dia(ts, horas):
+    """Cociente (promedio del día completo) ÷ (promedio de 00:00 a 00:00 + horas) de la generación hidráulica total de
+    Cenace en los días completos anteriores guardados (≤ 3). Aproxima la forma del día de Paute (Cenace no da la curva
+    por central). Mediana; None si no hay ningún día anterior con ≥ 44 medias horas."""
+    pts = (_leer_json_lab("serie_cenace.json") or {}).get("puntos") or {}
+    hoy = str(ts)[:10]
+    lim = f"{int(horas):02d}:{'30' if horas - int(horas) >= 0.5 else '00'}"
+    por = {}
+    for k, v in pts.items():
+        if k[:10] < hoy and isinstance(v.get("h"), (int, float)):
+            por.setdefault(k[:10], []).append((k[11:16], v["h"]))
+    rs, Hs = [], []
+    for d, xs in por.items():
+        if len(xs) < 44:
+            continue
+        Hs.append(len(xs) / 2.0)
+        tot = sum(x for _, x in xs) / len(xs)
+        par_ = [x for t, x in xs if t < lim]
+        if len(par_) >= 4 and sum(par_) > 0:
+            rs.append(tot / (sum(par_) / len(par_)))
+    if not rs:
+        return None, None
+    rs.sort(); Hs.sort()
+    return rs[len(rs) // 2], Hs[len(Hs) // 2]
+
+
+def c_paute_guardian_dia0(P, ctx, mod):
+    """Día 0: el total del complejo Paute = lo medido hoy por Cenace desde las 00:00 × la forma del día (cociente día
+    completo / tramo medido, mediana de los días anteriores, acotado a 0,8–1,25). La diferencia con lo que el titular
+    pone hoy entra como corte equivalente del día 0 (más corte = menos demanda para Paute). Días 1+ = titular."""
+    try:
+        med, h = _paute_medido_hoy(mod.get("_ts"))
+        if med is None:
+            return None
+        forma, H = _forma_dia(mod.get("_ts"), h)
+        if forma is None or H - h < 2:
+            return None
+        forma = max(0.8, min(1.25, forma))
+        objetivo = med * forma                                   # promedio del día completo
+        resto = med * (forma * H - h) / (H - h)                  # lo que falta del día (la cota de la corrida ya trae lo medido)
+        modelo0 = mod.get("_tit_paute0")
+        if not isinstance(modelo0, (int, float)) or resto < 0:
+            return None
+        dif = (modelo0 - resto) * (24 - h) / 24                  # solo pesa la parte del día 0 que aún no pasó (revisor)
+        if abs(dif) < 10:
+            return None
+        plan = list(ctx.get("cutPlan") or []); plan += [None] * max(0, 61 - len(plan))
+        dia = ctx["diaSemana0"] % 7
+        v = plan[0] if isinstance(plan[0], (int, float)) and not isinstance(plan[0], bool) else (P["cut"] if (not ctx.get("cutDias") or ctx["cutDias"][dia]) else 0)
+        plan[0] = round(v + dif, 1)
+        ctx["cutPlan"] = plan
+        return P, ctx, {"cutPlan": plan[:15], "paute_medido_hoy_mw": round(med, 1), "horas_medidas": h,
+                        "forma_dia": round(forma, 3), "paute_dia0_objetivo_mw": round(objetivo, 1), "paute_resto_dia_mw": round(resto, 1), "horas_dia_ref": H,
+                        "paute_dia0_titular_mw": round(modelo0, 1)}
+    except Exception:
+        return None
+
+
+_cand_3nov("combinado_coca_real", c_combinado_coca_real, "Embalse combinado + media memoria + río Coca real desde el día 2",
+           "Idea 'combinado_coca_real' del cerebro de Mazar del 9 nov: junta al mejor a 1 día (memoria a la mitad, de "
+           "memoria_mitad_coca_real: +5,3 %, 42 casos), al que gana a 7 días (río Coca real: coca_rio_real +35 %; aquí desde el "
+           "día 2 para no tocar mañana) y la causa del error del domingo 8 nov (Amaluza prestó 1,66 hm³: embalse_combinado). "
+           "Atacan errores distintos (hoy, días 2+, reparto). Piezas sueltas ya en sombra: embalse_combinado, memoria_mitad, "
+           "coca_rio_real.", origen=_OR_C9)
+_cand_3nov("semana_costa_lluviosa", c_semana_costa_lluviosa, "Demanda medida + aguaceros de Guayaquil + embalse combinado",
+           "Idea 'semana_costa_lluviosa' del cerebro de Mazar del 9 nov para los aguaceros pronosticados del 12–14 nov en "
+           "Guayaquil: demanda_real_mem (demanda medida de Cenace, media memoria) + lluvia_gye30 (≥ 30 mm → −100 MW) + "
+           "embalse_combinado. La demanda baja con aguaceros y Mazar turbina menos. Ojo: demanda_real_mem ya lleva la máxima "
+           "de Guayaquil (un día lluvioso es más fresco): puede contar dos veces parte del efecto; comparar con sus piezas "
+           "sueltas (demanda_real_mem, lluvia_gye30, embalse_combinado).", origen=_OR_C9)
+_cand_3nov("paute_guardian_dia0", c_paute_guardian_dia0, "Paute del día 0 según lo medido hoy por Cenace",
+           "Idea 'paute_guardian_dia0' del cerebro de Mazar del 9 nov: el total del complejo Paute falla ±300 MW el mismo día "
+           "(domingo 8 nov 642 medidos vs 353 del modelo; lunes 9 nov 00–06 h 299 vs 676) y el modelo no usa lo ya medido. "
+           "Aquí el día 0 usa lo medido por Cenace desde las 00:00 (Paute + Sopladora + Mazar, MW medios) × la forma del día "
+           "(cociente día completo / tramo medido de la hidráulica total de los días anteriores; Cenace no publica la curva "
+           "por central), acotada a 0,8–1,25; como la cota de la corrida ya trae las horas medidas, se usa lo que FALTA del día "
+           "(med·(forma·H − h)/(H − h)) y la diferencia con el titular entra como corte equivalente del día 0 por (24 − h)/24 "
+           "(revisor 9 nov). Necesita ≥ 4 h medidas hoy "
+           "(no corre a las 00:17 ni a las 02:17). Simplificación: la idea pedía la forma de Paute de 7 días; solo se guardan "
+           "3 días de la curva total.", origen=_OR_C9)
+
+
+# ---------------------------------------------------------------- Gemini 9 nov (segundo auditor; revisor Claude independiente: aprobado con cambios)
+def c_memoria_mitad_coca_real_autoajuste_comp(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_memoria_mitad_coca_real, c_autoajuste_completo)
+
+
+CANDIDATOS["memoria_mitad_coca_real_autoajuste_comp"] = {
+    "f": c_memoria_mitad_coca_real_autoajuste_comp, "promocion": "luis", "origen": "Gemini 2026-11-09",
+    "nombre": "Media memoria + Coca real + autoajuste entero",
+    "hipotesis": "Sumar el autoajuste medido entero al líder a 1 día (memoria_mitad_coca_real: +5,3 %, 42 casos, 5 días) baja "
+                 "el pesimismo a 5–7 días (autoajuste_completo: +36 % a 7 días en las mismas corridas). Hay que comprobar si "
+                 "conserva la ganancia a 1 día: la estimación aditiva del revisor da −1,4 % a 1 día (el autoajuste entero solo va "
+                 "−8,6 % a 1 día)."}
