@@ -1,0 +1,94 @@
+{
+ "fecha": "2026-11-09",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 4.189,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "memoria_mitad_sin_autoajuste",
+    "nombre": "Media memoria + sin autoajuste",
+    "hipotesis": "Quitar el autoajuste (−5 % de error a 1 día en el marcador) y reducir la memoria de 48 h a la mitad baja el error por rezago a 1 día sin la inestabilidad de quitar toda la memoria.",
+    "promocion": "luis",
+    "por_que": "En el marcador a 1 día (71 casos), sin_autoajuste baja el error medio de 0,220 a 0,209 m (−5 %) y la mediana de 17,3 a 16,6 cm. Por su parte, reducir la memoria de 48 h a la mitad en memoria_mitad_coca_real es la pieza clave del líder actual a 1 día (+8,9 %). Combinar media memoria con sin_autoajuste ataca el rezago de corto plazo y el sesgo del factor de bajada al mismo tiempo.",
+    "codigo": "def c_memoria_mitad_sin_autoajuste(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]\n    ctx[\"memoria\"] = nueva_mem\n    ctx[\"ajuste\"] = 1.0\n    return P, ctx, {\"memoria\": nueva_mem, \"ajuste\": 1.0}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.91,
+     2121.76,
+     2117.07
+    ],
+    "candidato_1_7_14": [
+     2126.88,
+     2121.07,
+     2116.81
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_mitad_coca_real_autoajuste_comp",
+    "nombre": "Media memoria + Coca real + autoajuste entero",
+    "hipotesis": "Sumar el autoajuste medido entero (que baja el error a 7 días en 45 %) al líder a 1 día (memoria_mitad_coca_real) mantiene la ganancia a 1 día y reduce más el pesimismo a 5 y 7 días.",
+    "promocion": "luis",
+    "por_que": "memoria_mitad_coca_real lidera el marcador a 1 día (+8,9 %, mediana 12,7 cm). A 5 y 7 días, los dos candidatos que más reducen el error medio frente al titular (1,16 m a 7 días) son autoajuste_completo (0,634 m, −45 %) y coca_rio_real (0,788 m, −32 %). Unir las tres piezas busca cumplir tanto la meta de corto plazo como la exigencia de estabilidad a 7 y 14 días.",
+    "codigo": "def c_memoria_mitad_coca_real_autoajuste_comp(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    s = mod.get(\"serieCocaRio\")\n    r = (mod.get(\"ajuste_info\") or {}).get(\"ratio_mediana\")\n    if not mem or not s or not isinstance(r, (int, float)) or r <= 0:\n        return None\n    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]\n    nueva_coca = list(s)\n    v = round(max(0.5, min(1.3, float(r))), 3)\n    ctx[\"memoria\"] = nueva_mem\n    ctx[\"serieCoca\"] = nueva_coca\n    ctx[\"ajuste\"] = v\n    return P, ctx, {\"memoria\": nueva_mem, \"serieCoca\": nueva_coca, \"ajuste\": v}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.91,
+     2121.76,
+     2117.07
+    ],
+    "candidato_1_7_14": [
+     2127.02,
+     2123.86,
+     2122.08
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "coca_real_autoajuste_completo",
+    "nombre": "Río Coca real + autoajuste entero",
+    "hipotesis": "Combinar la serie del río Coca real con el autoajuste medido entero reduce el error a 5 y 7 días más que cualquiera de los dos por separado, con promoción automática.",
+    "promocion": "auto",
+    "por_que": "El titular tiene un sesgo pesimista fuerte a 5 y 7 días (−0,66 m y −1,16 m en el marcador). autoajuste_completo corrige el ritmo de bajada de Mazar (error 0,634 m a 7 días) y coca_rio_real corrige la generación de Coca Codo (0,788 m a 7 días). Al tocar mecanismos físicos distintos (salida de Mazar vs. aporte de Coca Codo) y usar solo entradas publicadas, se combinan con promoción automática.",
+    "codigo": "def c_coca_real_autoajuste_completo(P, ctx, mod):\n    s = mod.get(\"serieCocaRio\")\n    r = (mod.get(\"ajuste_info\") or {}).get(\"ratio_mediana\")\n    if not s or not isinstance(r, (int, float)) or r <= 0:\n        return None\n    nueva_coca = list(s)\n    v = round(max(0.5, min(1.3, float(r))), 3)\n    ctx[\"serieCoca\"] = nueva_coca\n    ctx[\"ajuste\"] = v\n    return P, ctx, {\"serieCoca\": nueva_coca, \"ajuste\": v}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.91,
+     2121.76,
+     2117.07
+    ],
+    "candidato_1_7_14": [
+     2127.0,
+     2123.56,
+     2120.65
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-09"
+}
