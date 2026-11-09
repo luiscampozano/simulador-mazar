@@ -672,6 +672,52 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_memoria_mitad_sin_autoajuste(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not mem:
+        return None
+    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]
+    ctx["memoria"] = nueva_mem
+    ctx["ajuste"] = 1.0
+    return P, ctx, {"memoria": nueva_mem, "ajuste": 1.0}
+
+
+CANDIDATOS["memoria_mitad_sin_autoajuste"] = {"f": c_memoria_mitad_sin_autoajuste, "promocion": "luis", "origen": "Gemini 2026-11-09", "nombre": "Media memoria + sin autoajuste", "hipotesis": "Quitar el autoajuste (−5 % de error a 1 día en el marcador) y reducir la memoria de 48 h a la mitad baja el error por rezago a 1 día sin la inestabilidad de quitar toda la memoria."}
+
+
+def c_memoria_mitad_coca_real_autoajuste_comp(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    if not mem or not s or not isinstance(r, (int, float)) or r <= 0:
+        return None
+    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]
+    nueva_coca = list(s)
+    v = round(max(0.5, min(1.3, float(r))), 3)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    ctx["ajuste"] = v
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca, "ajuste": v}
+
+
+CANDIDATOS["memoria_mitad_coca_real_autoajuste_comp"] = {"f": c_memoria_mitad_coca_real_autoajuste_comp, "promocion": "luis", "origen": "Gemini 2026-11-09", "nombre": "Media memoria + Coca real + autoajuste entero", "hipotesis": "Sumar el autoajuste medido entero (que baja el error a 7 días en 45 %) al líder a 1 día (memoria_mitad_coca_real) mantiene la ganancia a 1 día y reduce más el pesimismo a 5 y 7 días."}
+
+
+def c_coca_real_autoajuste_completo(P, ctx, mod):
+    s = mod.get("serieCocaRio")
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    if not s or not isinstance(r, (int, float)) or r <= 0:
+        return None
+    nueva_coca = list(s)
+    v = round(max(0.5, min(1.3, float(r))), 3)
+    ctx["serieCoca"] = nueva_coca
+    ctx["ajuste"] = v
+    return P, ctx, {"serieCoca": nueva_coca, "ajuste": v}
+
+
+CANDIDATOS["coca_real_autoajuste_completo"] = {"f": c_coca_real_autoajuste_completo, "promocion": "auto", "origen": "Gemini 2026-11-09", "nombre": "Río Coca real + autoajuste entero", "hipotesis": "Combinar la serie del río Coca real con el autoajuste medido entero reduce el error a 5 y 7 días más que cualquiera de los dos por separado, con promoción automática."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
