@@ -1,0 +1,30 @@
+# Señales del satélite cada 10 min para los puntos ciegos de la lluvia de datalabecuador.com/clima (Luis, 9 nov).
+# Guarda solo salida/ahora.json en la rama "satelite" (un único commit, se reemplaza cada vez): NO toca main ni Pages.
+name: Satélite cada 10 min (lluvia en puntos ciegos)
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: satelite-ahora, cancel-in-progress: true }
+jobs:
+  satelite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/satelite_ahora.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q numpy h5py requests
+      - run: python scripts/satelite_ahora.py
+      - name: Publicar en la rama satelite
+        run: |
+          cd salida
+          git init -q && git checkout -q -b satelite
+          git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json
+          git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" commit -q -m "satélite $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" satelite
