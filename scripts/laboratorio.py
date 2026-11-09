@@ -2390,19 +2390,23 @@ def _dias_futuros(n):
     return [(h + timedelta(days=k)).isoformat() for k in range(n)]
 
 
-def _sin_descuento(ctx, dias_humedos, fuerza=1.0):
-    """En los días húmedos (índice 1..7 de la serie), la subida de caudal que promete la lluvia se toma sin el
-    descuento del 0,72 (× 1/0,72 ≈ 1,39; fuerza 0,5 = la mitad del efecto). Las bajadas no se tocan."""
+def _sin_descuento(ctx, dias_humedos, fuerza=1.0, mod=None):
+    """En los días húmedos (índice 1..7 de la serie) el aporte de la lluvia pronosticada se toma sin el descuento del
+    0,72 (× 1/0,72 ≈ 1,39; fuerza 0,5 = la mitad). Aporte de la lluvia = serie del titular − serie "semana seca" del
+    robot (la misma cuenca con la mitad de la lluvia normal): así también cuenta cuando la lluvia solo frena la bajada
+    del caudal (9 nov: en recesión la versión que solo agrandaba subidas no cambiaba nada). Sin la serie seca, solo
+    agranda las subidas sobre 1. El agua extra de un día húmedo se va desvaneciendo en los días siguientes (mitad por día)."""
     s = list(ctx.get("serieMazar") or [])
     if len(s) < 9 or not dias_humedos: return None
+    seca = list((mod or {}).get("serieMazarSeca") or [])
     f = 1 + (1 / 0.72 - 1) * fuerza
     base = s[:]
+    aporte = [max(0.0, base[j] - seca[j]) if j < len(seca) else max(0.0, base[j] - 1) for j in range(len(base))]
     for k in range(1, len(s)):
         extra = 0.0
-        # el agua extra de un día húmedo se queda en la serie los días siguientes (el embalse la acumula vía caudal)
         for j in range(1, min(k, 7) + 1):
-            if j in dias_humedos and base[j] > 1:
-                extra = max(extra, (base[j] - 1) * (f - 1) * (1.0 if k == j else 0.5 ** (k - j)))
+            if j in dias_humedos and aporte[j] > 0:
+                extra = max(extra, aporte[j] * (f - 1) * (0.5 ** (k - j)))
         s[k] = round(base[k] + extra, 4)
     ctx["serieMazar"] = s
     return s
@@ -2423,25 +2427,25 @@ def _humedos_agua(eg):
 
 def c_zcit_sur_lluvia_paute(P, ctx, mod):
     eg = escala_grande(); hum = _humedos_zcit(eg)
-    s = _sin_descuento(ctx, hum)
+    s = _sin_descuento(ctx, hum, mod=mod)
     return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
 
 
 def c_agua_paute_alta(P, ctx, mod):
     eg = escala_grande(); hum = _humedos_agua(eg)
-    s = _sin_descuento(ctx, hum)
+    s = _sin_descuento(ctx, hum, mod=mod)
     return (P, ctx, {"dias_humedos": sorted(hum), "agua_p75": eg.get("agua_paute_p75_30d"), "serieMazar": s}) if s else None
 
 
 def c_escala_grande_ambas(P, ctx, mod):
     eg = escala_grande(); hum = _humedos_zcit(eg) & _humedos_agua(eg)
-    s = _sin_descuento(ctx, hum)
+    s = _sin_descuento(ctx, hum, mod=mod)
     return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
 
 
 def c_escala_grande_alguna_media(P, ctx, mod):
     eg = escala_grande(); hum = _humedos_zcit(eg) | _humedos_agua(eg)
-    s = _sin_descuento(ctx, hum, fuerza=0.5)
+    s = _sin_descuento(ctx, hum, fuerza=0.5, mod=mod)
     return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
 
 
