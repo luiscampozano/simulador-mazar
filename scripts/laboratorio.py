@@ -705,7 +705,10 @@ def _rasgos(P, ctx, mod, datos):
             "paro_coca": 1 if paro else 0, "ajuste": round(float(ctx.get("ajuste") or 1), 3),
             "lluvia_paute_mm": (round(float(ll), 1) if isinstance(ll, (int, float)) else None),
             "q_mazar_3d": round(float(P.get("qMazar") or 0) * float((ctx.get("serieMazar") or [1, 1, 1, 1])[3]), 1),
-            "hora": int(str(datos.get("fecha", "T00"))[11:13] or 0)}
+            "hora": int(str(datos.get("fecha", "T00"))[11:13] or 0),
+            # escala grande (9 nov): ramal sur de la ZCIT hoy y agua en el aire sobre el Paute (si ya se bajó en esta corrida)
+            "zcit_sur_activo": ((_EG.get("zcit_sur") or {}).get(datetime.now().date().isoformat()) or {}).get("activo"),
+            "agua_paute": (_EG.get("agua_paute") or {}).get(datetime.now().date().isoformat())}
 
 
 def _con_previo(mod, ts):
@@ -2304,3 +2307,153 @@ _cand_3nov("mazar_domingo_parado", c_mazar_domingo_parado, "Mazar cerrado doming
            "extrema de la idea 'mazar_calendario' de los cerebros (8 nov).", origen=_OR9)
 _cand_3nov("combinado_domingo_intermedia", c_combinado_domingo_intermedia, "Embalse combinado + domingo parado + ríos fijos",
            "Las tres piezas del análisis del 8 nov juntas.", origen=_OR9)
+
+
+# ---------- Escala grande: ZCIT (ramal sur) y humedad del Paute (Luis, 9 nov) ----------
+# "Cosas como las de hoy, tormentas que nadie vio venir, debemos verlas desde antes: este tipo de variables son claves".
+# El titular toma la lluvia del ECMWF en el Paute con un descuento fijo (× 0,72, porque en promedio pronostica de más).
+# Hipótesis: en los regímenes húmedos de escala grande ese descuento sobra (los modelos se quedan cortos con la
+# convección). Las señales son PRONÓSTICOS (Open-Meteo, mejor modelo) de hoy a 7 días: no usan datos del futuro.
+_EG = {}
+
+
+def _om(url):
+    import urllib.request
+    for i in range(3):
+        try:
+            return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "DataLab Ec"}), timeout=60).read())
+        except Exception:
+            import time; time.sleep(10 * (i + 1))
+    return None
+
+
+def escala_grande():
+    """Una vez por corrida. Devuelve {"zcit_sur": {día: {lat, lluvia, convergencia, activo}} (85° y 81° O),
+    "agua_paute": {día: kg/m²}, "agua_paute_p75_30d": ...}. Ramal sur = pico de lluvia entre 0 y 8° S separado del
+    ramal norte (2–10° N), con ≥ 3 mm/día y vientos a 10 m que chocan (−dv/dy > 0). Misma regla que clima/convectivo."""
+    if _EG: return _EG
+    lats = [10 - i for i in range(19)]
+    pts = [(la, lo) for lo in (-81.0, -85.0) for la in lats]
+    j = _om("https://api.open-meteo.com/v1/forecast?latitude=" + ",".join(str(p[0]) for p in pts) + "&longitude="
+            + ",".join(str(p[1]) for p in pts) + "&daily=precipitation_sum&hourly=wind_speed_10m,wind_direction_10m"
+            "&wind_speed_unit=ms&past_days=2&forecast_days=8&timezone=America%2FGuayaquil")
+    zs = {}
+    if j:
+        j = j if isinstance(j, list) else [j]
+        for lo in (-81.0, -85.0):
+            fil = {p[0]: loc for p, loc in zip(pts, j) if p[1] == lo}
+            for dia in (fil[10].get("daily") or {}).get("time") or []:
+                ll, vv = {}, {}
+                for la, loc in fil.items():
+                    d, h = loc.get("daily") or {}, loc.get("hourly") or {}
+                    x = d["precipitation_sum"][d["time"].index(dia)]
+                    if x is not None: ll[la] = x
+                    vs = [-s * math.cos(math.radians(w)) for t, s, w in zip(h.get("time") or [], h.get("wind_speed_10m") or [], h.get("wind_direction_10m") or [])
+                          if t[:10] == dia and s is not None and w is not None]
+                    if vs: vv[la] = sum(vs) / len(vs)
+                sur = [(ll[la], la) for la in range(-8, 1) if la in ll]; nor = [(ll[la], la) for la in range(2, 11) if la in ll]
+                if not sur: continue
+                mx, la = max(sur); ln = max(nor)[1] if nor else 10
+                conv = (-(vv[la + 1] - vv[la - 1]) / (2 * 111e3) * 1e6) if (la + 1 in vv and la - 1 in vv) else None
+                entre = [ll[x] for x in range(la + 1, ln) if x in ll]
+                act = int(mx >= 3 and (conv or 0) > 0 and bool(entre) and min(entre) < 0.6 * mx)
+                z = zs.setdefault(dia, {"activo": 0})
+                z[f"lat_{int(-lo)}W"] = la; z[f"lluvia_{int(-lo)}W"] = round(mx, 1)
+                if conv is not None: z[f"conv_{int(-lo)}W"] = round(conv, 2)
+                z["activo"] = max(z["activo"], act)
+    a = _om("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
+            "&hourly=total_column_integrated_water_vapour&past_days=30&forecast_days=8&timezone=America%2FGuayaquil")
+    agua = {}
+    if a:
+        for loc in (a if isinstance(a, list) else [a]):
+            h = loc.get("hourly") or {}
+            for t, x in zip(h.get("time") or [], h.get("total_column_integrated_water_vapour") or []):
+                if x is not None: agua.setdefault(t[:10], []).append(x)
+    agua = {d: round(sum(v) / len(v), 1) for d, v in agua.items()}
+    hoy = datetime.now().date().isoformat()
+    pasado = sorted(v for d, v in agua.items() if d < hoy)[-30:] if agua else []
+    pasado = sorted(pasado)
+    _EG.update({"zcit_sur": zs, "agua_paute": agua,
+                "agua_paute_p75_30d": pasado[int(0.75 * (len(pasado) - 1))] if len(pasado) >= 10 else None})
+    try:
+        _escribir(os.path.join(DIR, "escala_grande.json"), dict(_EG, generado=datetime.now().isoformat(timespec="minutes")))
+    except Exception:
+        pass
+    return _EG
+
+
+def _dias_futuros(n):
+    from datetime import date
+    h = date.today()
+    return [(h + timedelta(days=k)).isoformat() for k in range(n)]
+
+
+def _sin_descuento(ctx, dias_humedos, fuerza=1.0):
+    """En los días húmedos (índice 1..7 de la serie), la subida de caudal que promete la lluvia se toma sin el
+    descuento del 0,72 (× 1/0,72 ≈ 1,39; fuerza 0,5 = la mitad del efecto). Las bajadas no se tocan."""
+    s = list(ctx.get("serieMazar") or [])
+    if len(s) < 9 or not dias_humedos: return None
+    f = 1 + (1 / 0.72 - 1) * fuerza
+    base = s[:]
+    for k in range(1, len(s)):
+        extra = 0.0
+        # el agua extra de un día húmedo se queda en la serie los días siguientes (el embalse la acumula vía caudal)
+        for j in range(1, min(k, 7) + 1):
+            if j in dias_humedos and base[j] > 1:
+                extra = max(extra, (base[j] - 1) * (f - 1) * (1.0 if k == j else 0.5 ** (k - j)))
+        s[k] = round(base[k] + extra, 4)
+    ctx["serieMazar"] = s
+    return s
+
+
+def _humedos_zcit(eg):
+    fut = _dias_futuros(8)
+    return {k for k, d in enumerate(fut) if k >= 1 and ((eg.get("zcit_sur") or {}).get(d) or {}).get("activo")
+            or (k >= 1 and k <= 2 and ((eg.get("zcit_sur") or {}).get(fut[0]) or {}).get("activo"))}
+
+
+def _humedos_agua(eg):
+    p75 = eg.get("agua_paute_p75_30d")
+    if p75 is None: return set()
+    fut = _dias_futuros(8)
+    return {k for k, d in enumerate(fut) if k >= 1 and (eg.get("agua_paute") or {}).get(d, 0) >= p75}
+
+
+def c_zcit_sur_lluvia_paute(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_zcit(eg)
+    s = _sin_descuento(ctx, hum)
+    return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
+
+
+def c_agua_paute_alta(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_agua(eg)
+    s = _sin_descuento(ctx, hum)
+    return (P, ctx, {"dias_humedos": sorted(hum), "agua_p75": eg.get("agua_paute_p75_30d"), "serieMazar": s}) if s else None
+
+
+def c_escala_grande_ambas(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_zcit(eg) & _humedos_agua(eg)
+    s = _sin_descuento(ctx, hum)
+    return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
+
+
+def c_escala_grande_alguna_media(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_zcit(eg) | _humedos_agua(eg)
+    s = _sin_descuento(ctx, hum, fuerza=0.5)
+    return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
+
+
+_OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
+_cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
+           "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
+           "pronóstico marca ramal sur activo (81° u 85° O) un día de los próximos 7 (o hoy, para los días 1–2), la subida de "
+           "caudal que promete la lluvia del ECMWF en el Paute se toma sin el descuento de 0,72. Debe bajar el error a 3–7 días "
+           "en los episodios húmedos.", origen=_OR9B)
+_cand_3nov("agua_paute_alta", c_agua_paute_alta, "Mucha agua en el aire sobre el Paute: lluvia sin descuento",
+           "Si el agua precipitable pronosticada sobre la cuenca del Paute está por encima de su percentil 75 de los últimos "
+           "30 días, ese día la lluvia del ECMWF se toma sin el descuento de 0,72 (los modelos se quedan cortos cuando el aire "
+           "está muy cargado).", origen=_OR9B)
+_cand_3nov("escala_grande_ambas", c_escala_grande_ambas, "Ramal sur Y aire cargado: lluvia sin descuento",
+           "Más exigente: solo los días con las dos señales a la vez (menos falsas alarmas).", origen=_OR9B)
+_cand_3nov("escala_grande_alguna_media", c_escala_grande_alguna_media, "Ramal sur O aire cargado: medio descuento",
+           "Más suave: con cualquiera de las dos señales, la mitad del efecto (descuento de ~0,84 en vez de 0,72).", origen=_OR9B)
