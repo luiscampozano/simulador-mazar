@@ -750,6 +750,9 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod = _con_previo(mod, ts)
     mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
+    mod["_tit_qt"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(3)]   # caudal turbinado de Mazar del titular, días 0–2 (base_laboral_lunes)
+    mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
+    mod["_cota_obs"] = float(ctx["cota"])   # cota observada de la corrida (una pieza previa puede cambiar ctx["cota"], p. ej. embalse_combinado)
     mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
     mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
@@ -2387,6 +2390,23 @@ def escala_grande():
                 if v is not None and d is not None: por.setdefault(t[:10], []).append(-v * math.sin(math.radians(d)))
             for dia, us in por.items():
                 if len(us) >= 12: u850.setdefault(dia, {})[tag] = round(sum(us) / len(us), 1)
+    # Registro (cerebro de Mazar 10 nov, idea agua_paute_con_viento): viento a 850 hPa pronosticado en la Amazonía
+    # (-1,5°, -76,5°: el punto amazonia_ecuador de clima/convectivo.py), rapidez media (km/h) y dirección vectorial por día.
+    # Solo se guarda; ningún candidato lo usa todavía.
+    v = _om("https://api.open-meteo.com/v1/forecast?latitude=-1.5&longitude=-76.5&hourly=wind_speed_850hPa,wind_direction_850hPa"
+            "&past_days=2&forecast_days=8&timezone=America%2FGuayaquil")
+    v850 = {}
+    if v:
+        loc = v[0] if isinstance(v, list) else v
+        h = loc.get("hourly") or {}
+        por = {}
+        for t, sp, dr in zip(h.get("time") or [], h.get("wind_speed_850hPa") or [], h.get("wind_direction_850hPa") or []):
+            if sp is not None and dr is not None: por.setdefault(t[:10], []).append((sp, dr))
+        for dia, xs in por.items():
+            if len(xs) < 12: continue
+            uu = sum(-a_ * math.sin(math.radians(b_)) for a_, b_ in xs) / len(xs); vv_ = sum(-a_ * math.cos(math.radians(b_)) for a_, b_ in xs) / len(xs)
+            v850[dia] = {"rapidez_kmh": round(sum(a_ for a_, _ in xs) / len(xs), 1),
+                         "desde_grados": round((math.degrees(math.atan2(-uu, -vv_)) + 360) % 360)}
     a = _om("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
             "&hourly=total_column_integrated_water_vapour&past_days=30&forecast_days=8&timezone=America%2FGuayaquil")
     agua = {}
@@ -2399,7 +2419,7 @@ def escala_grande():
     hoy = datetime.now().date().isoformat()
     pasado = sorted(v for d, v in agua.items() if d < hoy)[-30:] if agua else []
     pasado = sorted(pasado)
-    _EG.update({"zcit_sur": zs, "agua_paute": agua, "u850": u850,
+    _EG.update({"zcit_sur": zs, "agua_paute": agua, "u850": u850, "viento850_amazonia": v850,
                 "agua_paute_p75_30d": pasado[int(0.75 * (len(pasado) - 1))] if len(pasado) >= 10 else None})
     try:
         _escribir(os.path.join(DIR, "escala_grande.json"), dict(_EG, generado=datetime.now().isoformat(timespec="minutes")))
@@ -2511,9 +2531,12 @@ def _paute_medido_hoy(ts):
     Solo datos ya publicados antes de la corrida (serie_cenace.json, la guarda el robot en esta misma corrida)."""
     pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(str(ts)[:10]) or {}
     h = float(pl.get("horas") or 0)
-    if h < 4 or not all(isinstance(pl.get(k), (int, float)) for k in ("Paute", "Sopladora", "Mazar")):
+    # Auditor 10 nov: Cenace no lista a Mazar cuando está en 0 MW (10 nov: 14,5 h sin la clave) y el candidato no corría
+    # desde el 9 nov 17:00. Con Paute y Sopladora presentes (la fuente respondió), Mazar ausente = 0.
+    if h < 4 or not all(isinstance(pl.get(k), (int, float)) for k in ("Paute", "Sopladora")):
         return None, h
-    return (pl["Paute"] + pl["Sopladora"] + pl["Mazar"]) / h, h
+    mz = pl.get("Mazar") if isinstance(pl.get("Mazar"), (int, float)) else 0.0
+    return (pl["Paute"] + pl["Sopladora"] + mz) / h, h
 
 
 def _forma_dia(ts, horas):
@@ -2636,3 +2659,203 @@ _cand_3nov("zcit_sur_con_oeste", c_zcit_sur_con_oeste, "Ramal sur + viento del o
            "en 81° O (como en la crecida del 31 oct–2 nov). Menos días húmedos, menos falsas alarmas.", origen=_OR10)
 _cand_3nov("zcit_oeste_y_agua", c_zcit_oeste_y_agua, "Ramal sur + oeste + aire cargado sobre el Paute",
            "La más exigente: ramal sur activo, viento del oeste en 81° O y agua precipitable sobre el Paute sobre su p75.", origen=_OR10)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar e investigador, 10 nov (aprobación permanente de Luis, 7 nov)
+# Lunes 9 nov: tras un domingo casi apagado (Celec maz 248 MWh) Mazar turbinó 2.332 MWh ≈ viernes 1.814 + reposición de
+# Amaluza (1,66 hm³ ≈ 530 MWh). mazar_domingo_parado explica ~36 de los 75 cm; los ~40 cm restantes = base de día laboral.
+_OR_C10 = "cerebro 2026-11-10 (aprobado por Luis)"
+_F_NOCHE = os.path.join(DIR, "noche_mazar.json")
+
+
+def _es_feriado_pasado(dia, manual):
+    # misma lista que robot.FERIADOS_PASADOS (copiada para no importar robot.py desde el laboratorio) + feriados del manual
+    fer = {"2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-05-01", "2026-05-25", "2026-08-10", "2026-10-09"}
+    return dia in (fer | set(((manual or {}).get("feriados") or {}).keys()))
+
+
+def _mazar_mwh_dia(dia):
+    """MWh de Mazar de un día completo: Celec si ya está; si no, Cenace (≥ 20 h medidas, escalado a 24 h). None si no hay."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    if isinstance((cel.get(dia) or {}).get("maz"), (int, float)):
+        return float(cel[dia]["maz"])
+    pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(dia) or {}
+    h = float(pl.get("horas") or 0)
+    if h >= 20 and isinstance(pl.get("Paute"), (int, float)):
+        return float(pl.get("Mazar") or 0.0) * 24.0 / h
+    return None
+
+
+def _base_laboral_mwh(hoy, manual, n=14):
+    """Último día laboral completo (lunes a viernes, sin feriado, sin corte registrado/planificado y con Mazar ≥ 300 MWh)
+    en el Celec diario ANTERIOR a hoy. Devuelve (MWh, día)."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    cortes = dict(((manual or {}).get("cortes_plan") or {})); cortes.update((manual or {}).get("cortes_registro") or {})
+    for d in sorted(cel, reverse=True)[:n]:
+        if d >= hoy: continue
+        x = cel[d]
+        try:
+            wd = datetime.fromisoformat(d).weekday()       # 0 = lunes
+        except Exception:
+            continue
+        if wd >= 5 or _es_feriado_pasado(d, manual) or (cortes.get(d) or 0) > 0: continue
+        if isinstance(x.get("maz"), (int, float)) and x["maz"] >= 300:
+            return float(x["maz"]), d
+    return None, None
+
+
+def _base_laboral(P, ctx, mod):
+    """Idea 'domingo_parado_base_laboral' (cerebro) / 'lunes_laboral_mas_reposicion' (investigador): el primer día laboral
+    después de un domingo o feriado con Mazar parado (< 300 MWh), Mazar turbina como el último día laboral completo (Celec),
+    no con el reparto del modelo. Se aplica al día objetivo k (0 si hoy es ese día laboral; 1 si hoy es domingo/feriado con
+    Mazar parado según Cenace de hoy y mañana es laboral) cambiando el caudal neto de ese día por la diferencia entre el
+    turbinado del titular y el de la base laboral (vía memoria). Si no corresponde, el titular sin cambios."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    par = mod.get("_par"); qt = mod.get("_tit_qt"); ts = mod.get("_ts")
+    if not par or not qt or not ts:
+        return None
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    hoy_dt = _ts_dt(ts); hoy = hoy_dt.date().isoformat(); ayer = (hoy_dt.date() - timedelta(days=1)).isoformat()
+    fer = ctx.get("feriados") or []
+    dia0 = ctx.get("diaSemana0", 1) % 7                    # 0 = domingo
+    def laboral(k):                                         # día k del horizonte: lunes a viernes y no feriado
+        dsem = (dia0 + k) % 7
+        return dsem not in (0, 6) and not (k < len(fer) and fer[k])
+    k = None
+    if laboral(0):
+        ay = (dia0 - 1) % 7
+        if ay == 0 or _es_feriado_pasado(ayer, manual):
+            m = _mazar_mwh_dia(ayer)
+            if m is not None and m < 300: k = 0
+    elif (dia0 == 0 or (fer and fer[0])) and laboral(1):
+        pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(hoy) or {}
+        h = float(pl.get("horas") or 0)
+        if h >= 4 and isinstance(pl.get("Paute"), (int, float)) and float(pl.get("Mazar") or 0.0) * 24.0 / h < 300: k = 1
+    if k is None:
+        return sin_cambio
+    base, dia_base = _base_laboral_mwh(hoy, manual)
+    if base is None:
+        return sin_cambio
+    kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+    q_base = base / 24.0 / kmz                              # m³/s de un día laboral
+    dq = -(q_base - float(qt[k]))                            # más turbinado = menos caudal neto en Mazar
+    corr = [0.0] * 60; corr[k] = dq
+    if k == 1:   # revisor 10 nov: el "día 0" del simulador va de la hora de la corrida a +24 h; la parte que cae en el día
+        # laboral (hora/24) también turbina como día laboral (si no, la cota a 1 día de una corrida de domingo no cambia)
+        corr[0] = -(q_base - float(qt[0])) * ((hoy_dt.hour + hoy_dt.minute / 60.0) / 24.0)
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "base_laboral_mwh": round(base, 1), "dia_base": dia_base, "dia_objetivo": k,
+                    "q_base_m3s": round(q_base, 2), "q_titular_m3s": round(float(qt[k]), 2)}
+
+
+def c_base_laboral_lunes(P, ctx, mod):
+    return _base_laboral(P, ctx, mod)
+
+
+def c_domingo_parado_base_laboral(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_mazar_domingo_parado, _base_laboral)
+
+
+def _noche_medida(ts, ctx, mod):
+    """Una medida limpia por noche: si Cenace da Mazar ≤ 5 MW medios desde las 00:00 (≥ 5 h medidas) y hay cotas del robot
+    cerca de las 00:00 y de ese momento (±1,5 h), la subida de la cota es el caudal de entrada. Se guarda la primera medida
+    del día (corrida de 05:00–09:59) en laboratorio/noche_mazar.json; las corridas siguientes del mismo día la reutilizan.
+    Solo datos anteriores a la corrida."""
+    ahora = _ts_dt(ts); hoy = ahora.date().isoformat()
+    reg = _leer(_F_NOCHE, {}) or {}
+    if hoy in reg:
+        return reg[hoy]
+    if not (5 <= ahora.hour <= 9):
+        return None
+    pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(hoy) or {}
+    h = float(pl.get("horas") or 0)
+    if h < 5 or not isinstance(pl.get("Paute"), (int, float)):
+        return None
+    mz = float(pl.get("Mazar") or 0.0) / h
+    if mz > 5:
+        reg[hoy] = {"mazar_mw": round(mz, 1), "q": None}; _escribir(_F_NOCHE, dict(sorted(reg.items())[-40:])); return reg[hoy]
+    runs = []
+    for x in _leer(os.path.join("registro", "predicciones.json"), []) or []:
+        try:
+            if isinstance(x.get("cota"), (int, float)) and _ts_dt(x["ts"]) < ahora: runs.append((_ts_dt(x["ts"]), float(x["cota"])))
+        except Exception:
+            continue
+    medianoche = datetime.fromisoformat(hoy + "T00:00")
+    c0 = [r for r in runs if 0 <= (r[0] - medianoche).total_seconds() <= 3 * 3600]   # revisor: solo desde las 00:00 (antes Mazar pudo turbinar)
+    if not c0:
+        return None
+    t0, z0 = min(c0, key=lambda r: (r[0] - medianoche).total_seconds())
+    dt_d = (ahora - t0).total_seconds() / 86400
+    if dt_d < 4 / 24:
+        return None
+    cota = float(mod.get("_cota_obs", ctx["cota"]))          # la observada, no la que deja otra pieza (revisor)
+    pend = (cota - z0) / dt_d                                 # m/día
+    q = pend * _dvdz({"cota": cota}, mod) / 0.0864
+    reg[hoy] = {"mazar_mw": round(mz, 1), "desde": t0.isoformat(timespec="minutes"), "hasta": str(ts)[:16],
+                "pendiente_m_dia": round(pend, 3), "q": round(q, 2)}
+    _escribir(_F_NOCHE, dict(sorted(reg.items())[-40:]))
+    return reg[hoy]
+
+
+def c_entrada_noche_mazar0(P, ctx, mod):
+    """Idea 'entrada_noche_mazar0' (cerebro 10 nov, respuesta al encargo del 3 nov): con Mazar ≤ 5 MW de madrugada, la
+    subida de la cota mide el caudal de entrada. Caudal de los días 0–1 = promedio entre el del titular y el medido, solo
+    si difieren > 6 m³/s. Si no hay medida limpia hoy, el titular sin cambios."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    ts = mod.get("_ts"); qin = mod.get("_tit_qin")
+    if not ts or not qin:
+        return None
+    n = _noche_medida(ts, ctx, mod)
+    if not n or not isinstance(n.get("q"), (int, float)):
+        return sin_cambio
+    mem = list(ctx.get("memoria") or [])
+    corr = [0.0] * 60; usados = []
+    for k in (0, 1):
+        q_mod = float(qin[k]) + (float(mem[k]) if k < len(mem) and isinstance(mem[k], (int, float)) else 0.0)
+        if abs(n["q"] - q_mod) > 6:
+            corr[k] = (n["q"] - q_mod) / 2.0; usados.append(round(q_mod, 1))
+    if not usados:
+        return sin_cambio
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "q_noche_m3s": n["q"], "q_titular_m3s": usados}
+
+
+def c_tres_medidos(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_demanda_real_mem, c_entrada_noche_mazar0, c_embalse_combinado)   # revisor: el embalse al final (cambia la cota)
+
+
+_cand_3nov("domingo_parado_base_laboral", c_domingo_parado_base_laboral, "Domingo parado + el lunes Mazar turbina como día laboral",
+           "Ideas del cerebro de Mazar ('domingo_parado_base_laboral') y del investigador ('lunes_laboral_mas_reposicion') del 10 nov: "
+           "el lunes 9 nov Mazar turbinó 2.332 MWh ≈ viernes (1.814) + reposición de Amaluza (~530). mazar_domingo_parado explica "
+           "~36 de los 75 cm de error; aquí, además, el primer día laboral tras un domingo o feriado con Mazar < 300 MWh, la base de "
+           "Mazar = el último Celec de día laboral completo (lunes a viernes, sin feriado ni cortes, ≥ 300 MWh), no el reparto del "
+           "modelo. Reparo del retador (Argón): el modelo no copia MWh, reparte por demanda; el error podría ser Paute total "
+           "subestimado. Por eso se mide también la pieza sola (base_laboral_lunes).", origen=_OR_C10)
+_cand_3nov("base_laboral_lunes", c_base_laboral_lunes, "El lunes Mazar turbina como el último día laboral (pieza sola)",
+           "Pieza sola de domingo_parado_base_laboral: solo la base de día laboral (sin el domingo parado ni la reposición de "
+           "Amaluza). Corre siempre; cambia solo el día objetivo (0 o 1) cuando corresponde.", origen=_OR_C10)
+_cand_3nov("entrada_noche_mazar0", c_entrada_noche_mazar0, "Caudal de hoy medido de madrugada con Mazar apagado",
+           "Idea del cerebro de Mazar del 10 nov (encargo del 3 nov: el titular va ~1 día atrasado con el caudal): si Cenace da "
+           "Mazar ≤ 5 MW desde las 00:00, la subida de la cota es el caudal de entrada (10 nov: 0,84 m/día ≈ 50 m³/s frente a 43 "
+           "del modelo). Una medida limpia por noche (corrida de 05:00–09:59, ≥ 5 h medidas, guardada en noche_mazar.json); días "
+           "0–1 = promedio entre el caudal del titular y el medido si difieren > 6 m³/s. Simplificación: se exige Mazar ≤ 5 MW en "
+           "todo lo medido desde las 00:00 hasta esa corrida.", origen=_OR_C10)
+_cand_3nov("tres_medidos", c_tres_medidos, "Amaluza + demanda medida + caudal de madrugada",
+           "Idea 'tres_medidos' del cerebro de Mazar del 10 nov: cada pieza cambia un supuesto por una medida distinta "
+           "(embalse_combinado: Amaluza; demanda_real_mem: demanda; entrada_noche_mazar0: caudal). Sin sumar corrige_error, "
+           "sesgos, patron_historico ni intermedia_fija (pierden). Estricta: solo corre cuando embalse_combinado corre "
+           "(déficit de Amaluza > 0,05 hm³).", origen=_OR_C10)
+
+
+# ---------------------------------------------------------------- Gemini 10 nov (segundo auditor; revisor Claude independiente: aprobado con cambios)
+def c_memoria_mitad_coca_real_intermedia(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_memoria_mitad_coca_real, c_intermedia_fija)
+
+
+CANDIDATOS["memoria_mitad_coca_real_intermedia"] = {
+    "f": c_memoria_mitad_coca_real_intermedia, "promocion": "luis", "origen": "Gemini 2026-11-10",
+    "nombre": "Media memoria + Coca real + ríos entre presas fijos",
+    "hipotesis": "Sumar el aporte fijo de los ríos entre presas (balance de Celec, mediana de 14 días, como intermedia_fija) a "
+                 "memoria_mitad_coca_real (hoy −1,6 % a 1 día con 51 casos; +11 % a 2 días) reduce el pesimismo en días secos. "
+                 "Revisor: armado con las piezas existentes (el cálculo propio de Gemini usaba salidas negativas y no descontaba "
+                 "lo que presta Amaluza)."}
