@@ -2,7 +2,8 @@ name: Robot del simulador y publicación
 
 on:
   schedule:
-    # cada 2 horas, minuto 17 (hora UTC; Ecuador = UTC-5)
+    # respaldo cada 2 horas (minuto 17, UTC). Desde el 10 nov (Luis) el "Reloj del robot" lo dispara CADA HORA al minuto
+    # 12, porque GitHub atrasa los cron; si el reloj se cae, este respaldo mantiene al menos una corrida cada 2 h.
     - cron: "17 */2 * * *"
   push:
     branches: [main]

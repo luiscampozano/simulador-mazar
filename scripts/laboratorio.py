@@ -2335,6 +2335,16 @@ def escala_grande():
     "agua_paute": {día: kg/m²}, "agua_paute_p75_30d": ...}. Ramal sur = pico de lluvia entre 0 y 8° S separado del
     ramal norte (2–10° N), con ≥ 3 mm/día y vientos a 10 m que chocan (−dv/dy > 0). Misma regla que clima/convectivo."""
     if _EG: return _EG
+    # Luis 10 nov: el pronóstico de los modelos globales cambia ~4 veces al día (corridas cada 6 h); si lo guardado tiene
+    # menos de 6 horas, se reutiliza en vez de volver a consultar Open-Meteo en cada corrida del robot.
+    try:
+        prev = json.load(open(os.path.join(DIR, "escala_grande.json"), encoding="utf-8"))
+        edad = (datetime.now() - datetime.fromisoformat(prev.get("generado", "2000-01-01T00:00"))).total_seconds() / 3600
+        if 0 <= edad < 6 and prev.get("zcit_sur") and prev.get("u850") and prev.get("agua_paute"):
+            _EG.update({k: v for k, v in prev.items() if k != "generado"})
+            return _EG
+    except Exception:
+        pass
     lats = [10 - i for i in range(19)]
     pts = [(la, lo) for lo in (-81.0, -85.0) for la in lats]
     j = _om("https://api.open-meteo.com/v1/forecast?latitude=" + ",".join(str(p[0]) for p in pts) + "&longitude="

@@ -1,0 +1,31 @@
+# Reloj del robot (Luis, 10 nov): dispara "Robot del simulador y publicación" cada hora al minuto 12 (Celec Sur publica la
+# cota una vez por hora), para que haya una predicción por hora y la tabla "dijo / fue" no tenga huecos. Cada corrida del
+# reloj es un bucle de ~5 h 40 min (repo público: minutos gratis); el cron solo lo reanima si se cae.
+name: Reloj del robot (cada hora)
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+permissions: { actions: write, contents: read }
+concurrency: { group: reloj-robot, cancel-in-progress: false }
+jobs:
+  reloj:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Disparar el robot cada hora (minuto 12)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          fin=$(( $(date +%s) + 340*60 ))
+          ultima=""
+          while [ $(date +%s) -lt $fin ]; do
+            hora=$(date -u +%Y%m%d%H); min=$(date -u +%M)
+            if [ "$hora" != "$ultima" ] && [ $((10#$min)) -ge 12 ] && [ $((10#$min)) -lt 50 ]; then
+              if gh api -X POST "repos/${{ github.repository }}/actions/workflows/robot-cota.yml/dispatches" -f ref=main; then
+                echo "robot disparado $(date -u +%H:%M) UTC"; ultima=$hora
+              else
+                echo "no se pudo disparar $(date -u +%H:%M)"
+              fi
+            fi
+            sleep 60
+          done
