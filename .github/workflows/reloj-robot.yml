@@ -1,6 +1,8 @@
-# Reloj del robot (Luis, 10 nov): dispara "Robot del simulador y publicación" cada hora al minuto 12 (Celec Sur publica la
-# cota una vez por hora), para que haya una predicción por hora y la tabla "dijo / fue" no tenga huecos. Cada corrida del
-# reloj es un bucle de ~5 h 40 min (repo público: minutos gratis); el cron solo lo reanima si se cae.
+# Reloj del robot (Luis, 10 nov). Celec Sur publica la cota una vez por hora pero con retraso variable (el 10 nov a las
+# 16:12 todavía no estaba la de las 16:00), así que el reloj no dispara a minuto fijo: cada 5 min mira la última hora
+# publicada de la cota de Mazar y, apenas aparece una hora nueva, dispara "Robot del simulador y publicación". Si en una
+# hora no aparece nada nuevo, igual lo dispara una vez al minuto 55 (para actualizar Cenace/clima). Bucle de ~5 h 40 min
+# (repo público: minutos gratis); el cron solo lo reanima si se cae.
 name: Reloj del robot (cada hora)
 on:
   schedule:
@@ -13,19 +15,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Disparar el robot cada hora (minuto 12)
+      - name: Vigilar Celec y disparar el robot
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
-          fin=$(( $(date +%s) + 340*60 ))
-          ultima=""
+          cat > /tmp/ultima.py <<'PY'
+          import json, urllib.request
+          from datetime import datetime, timedelta, timezone
+          EC = timezone(timedelta(hours=-5)); hoy = datetime.now(EC)
+          ini = datetime(hoy.year, hoy.month, hoy.day, 1, tzinfo=EC).astimezone(timezone.utc); fin = ini + timedelta(hours=23)
+          url = ("https://generacioncsr.celec.gob.ec:8443/ords/csr/sardomcsr/pointValues?mrid=30031"
+                 f"&fechaInicio={ini:%Y-%m-%dT%H:%M:%S.000Z}&fechaFin={fin:%Y-%m-%dT%H:%M:%S.000Z}&fecha={hoy:%d/%m/%Y}%2001:00:00")
+          try:
+              it = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (simulador-mazar)"}), timeout=30)).get("items", [])
+              ts = sorted(i["loctimestamp"] for i in it if i.get("valueedit") is not None)
+              print(ts[-1] if ts else "")
+          except Exception:
+              print("")
+          PY
+          disparar() { gh api -X POST "repos/${{ github.repository }}/actions/workflows/robot-cota.yml/dispatches" -f ref=main && echo "robot disparado $(date -u +%H:%M) UTC ($1)"; }
+          fin=$(( $(date +%s) + 340*60 )); ultima_celec=$(python3 /tmp/ultima.py); hora_disparo=""
+          echo "Celec al empezar: $ultima_celec"
           while [ $(date +%s) -lt $fin ]; do
-            hora=$(date -u +%Y%m%d%H); min=$(date -u +%M)
-            if [ "$hora" != "$ultima" ] && [ $((10#$min)) -ge 12 ] && [ $((10#$min)) -lt 50 ]; then
-              if gh api -X POST "repos/${{ github.repository }}/actions/workflows/robot-cota.yml/dispatches" -f ref=main; then
-                echo "robot disparado $(date -u +%H:%M) UTC"; ultima=$hora
-              else
-                echo "no se pudo disparar $(date -u +%H:%M)"
-              fi
+            sleep 300
+            c=$(python3 /tmp/ultima.py); h=$(date -u +%Y%m%d%H); m=$((10#$(date -u +%M)))
+            if [ -n "$c" ] && [ "$c" != "$ultima_celec" ]; then
+              disparar "nueva cota de Celec: $c"; ultima_celec=$c; hora_disparo=$h
+            elif [ "$hora_disparo" != "$h" ] && [ $m -ge 55 ]; then
+              disparar "sin cota nueva esta hora; actualización igual"; hora_disparo=$h
             fi
-            sleep 60
           done
