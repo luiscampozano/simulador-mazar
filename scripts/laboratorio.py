@@ -708,7 +708,8 @@ def _rasgos(P, ctx, mod, datos):
             "hora": int(str(datos.get("fecha", "T00"))[11:13] or 0),
             # escala grande (9 nov): ramal sur de la ZCIT hoy y agua en el aire sobre el Paute (si ya se bajó en esta corrida)
             "zcit_sur_activo": ((_EG.get("zcit_sur") or {}).get(datetime.now().date().isoformat()) or {}).get("activo"),
-            "agua_paute": (_EG.get("agua_paute") or {}).get(datetime.now().date().isoformat())}
+            "agua_paute": (_EG.get("agua_paute") or {}).get(datetime.now().date().isoformat()),
+            "u850_81W": ((_EG.get("u850") or {}).get(datetime.now().date().isoformat()) or {}).get("81W")}
 
 
 def _con_previo(mod, ts):
@@ -2363,6 +2364,19 @@ def escala_grande():
                 z[f"lat_{int(-lo)}W"] = la; z[f"lluvia_{int(-lo)}W"] = round(mx, 1)
                 if conv is not None: z[f"conv_{int(-lo)}W"] = round(conv, 2)
                 z["activo"] = max(z["activo"], act)
+    # 10 nov (retador Argón): en la crecida real (31 oct–2 nov) el ramal sur coincidió con viento del OESTE a 850 hPa
+    # en 81° O (+8 a +13 km/h); el 10 nov había ramal sur pero viento del este. Pronóstico de u850 en (0°, 81° O) y (0°, 95° O).
+    u = _om("https://api.open-meteo.com/v1/forecast?latitude=0,0&longitude=-81,-95&hourly=wind_speed_850hPa,wind_direction_850hPa"
+            "&past_days=2&forecast_days=8&timezone=America%2FGuayaquil")
+    u850 = {}
+    if u:
+        for tag, loc in zip(("81W", "95W"), u if isinstance(u, list) else [u]):
+            h = loc.get("hourly") or {}
+            por = {}
+            for t, v, d in zip(h.get("time") or [], h.get("wind_speed_850hPa") or [], h.get("wind_direction_850hPa") or []):
+                if v is not None and d is not None: por.setdefault(t[:10], []).append(-v * math.sin(math.radians(d)))
+            for dia, us in por.items():
+                if len(us) >= 12: u850.setdefault(dia, {})[tag] = round(sum(us) / len(us), 1)
     a = _om("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
             "&hourly=total_column_integrated_water_vapour&past_days=30&forecast_days=8&timezone=America%2FGuayaquil")
     agua = {}
@@ -2375,7 +2389,7 @@ def escala_grande():
     hoy = datetime.now().date().isoformat()
     pasado = sorted(v for d, v in agua.items() if d < hoy)[-30:] if agua else []
     pasado = sorted(pasado)
-    _EG.update({"zcit_sur": zs, "agua_paute": agua,
+    _EG.update({"zcit_sur": zs, "agua_paute": agua, "u850": u850,
                 "agua_paute_p75_30d": pasado[int(0.75 * (len(pasado) - 1))] if len(pasado) >= 10 else None})
     try:
         _escribir(os.path.join(DIR, "escala_grande.json"), dict(_EG, generado=datetime.now().isoformat(timespec="minutes")))
@@ -2586,3 +2600,29 @@ CANDIDATOS["memoria_mitad_coca_real_autoajuste_comp"] = {
                  "el pesimismo a 5–7 días (autoajuste_completo: +36 % a 7 días en las mismas corridas). Hay que comprobar si "
                  "conserva la ganancia a 1 día: la estimación aditiva del revisor da −1,4 % a 1 día (el autoajuste entero solo va "
                  "−8,6 % a 1 día)."}
+
+
+def _humedos_zcit_oeste(eg, umbral=0.0):
+    """Días con ramal sur activo Y viento del oeste a 850 hPa en 81° O (u > umbral, km/h)."""
+    fut = _dias_futuros(8); z = eg.get("zcit_sur") or {}; u = eg.get("u850") or {}
+    return {k for k, d in enumerate(fut) if k >= 1 and (z.get(d) or {}).get("activo") and ((u.get(d) or {}).get("81W") or -99) > umbral}
+
+
+def c_zcit_sur_con_oeste(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_zcit_oeste(eg)
+    s = _sin_descuento(ctx, hum, mod=mod)
+    return (P, ctx, {"dias_humedos": sorted(hum), "u850": eg.get("u850"), "serieMazar": s}) if s else None
+
+
+def c_zcit_oeste_y_agua(P, ctx, mod):
+    eg = escala_grande(); hum = _humedos_zcit_oeste(eg) & _humedos_agua(eg)
+    s = _sin_descuento(ctx, hum, mod=mod)
+    return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
+
+
+_OR10 = "Claude 2026-11-10 (retador Argón: el ramal sur sale activo 9 de 10 días; pedir también viento del oeste; Luis aprobó)"
+_cand_3nov("zcit_sur_con_oeste", c_zcit_sur_con_oeste, "Ramal sur + viento del oeste: lluvia del Paute sin descuento",
+           "Versión más exigente de zcit_sur_lluvia_paute: solo los días con ramal sur activo Y viento del oeste a 850 hPa "
+           "en 81° O (como en la crecida del 31 oct–2 nov). Menos días húmedos, menos falsas alarmas.", origen=_OR10)
+_cand_3nov("zcit_oeste_y_agua", c_zcit_oeste_y_agua, "Ramal sur + oeste + aire cargado sobre el Paute",
+           "La más exigente: ramal sur activo, viento del oeste en 81° O y agua precipitable sobre el Paute sobre su p75.", origen=_OR10)
