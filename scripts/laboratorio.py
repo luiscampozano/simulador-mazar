@@ -672,6 +672,93 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_memoria_mitad_coca_real_intermedia(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    if not mem or not s:
+        return None
+    det = ((mod.get("_fisica") or {}).get("detalle")) or []
+    par = mod.get("_par") or {}
+    kms = float(par.get("k_molino_sopladora") or 10.67)
+    eta = float(par.get("eficiencia_mazar") or 0.87)
+    am_cota = float(ctx.get("amaluzaCota") or 1975.0)
+    vals = []
+    for f in det[-14:]:
+        p = f.get("paute_mw")
+        q_sal = f.get("salida")
+        c = f.get("cota")
+        if isinstance(p, (int, float)) and isinstance(q_sal, (int, float)) and isinstance(c, (int, float)):
+            kmz = 0.00981 * eta * max(20.0, float(c) - am_cota)
+            inter = (float(p) - float(q_sal) * (kmz + kms)) / kms
+            vals.append(max(0.0, min(80.0, inter)))
+    if len(vals) < 5:
+        return None
+    vals.sort()
+    n = len(vals)
+    med = vals[n // 2] if n % 2 == 1 else 0.5 * (vals[n // 2 - 1] + vals[n // 2])
+    inter_fijo = round(med, 2)
+    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]
+    nueva_coca = list(s)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    ctx["interFijo"] = inter_fijo
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca, "interFijo": inter_fijo}
+
+
+CANDIDATOS["memoria_mitad_coca_real_intermedia"] = {"f": c_memoria_mitad_coca_real_intermedia, "promocion": "luis", "origen": "Gemini 2026-11-10", "nombre": "Media memoria + Coca real + cuenca intermedia fija", "hipotesis": "Sumar el aporte fijo de la cuenca intermedia (mediana de 14 días de Celec) al líder actual (memoria_mitad_coca_real) corrige la subestimación de los ríos entre presas en días secos sin perder la ganancia a 1 y 7 días."}
+
+
+def c_sin_autoajuste_coca_dia2_autoajuste_largo(P, ctx, mod):
+    s_rio = mod.get("serieCocaRio")
+    s_tit = ctx.get("serieCoca")
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    if not s_rio or not s_tit or not isinstance(r, (int, float)) or r <= 0:
+        return None
+    ka_comp = max(0.5, min(1.3, float(r)))
+    ctx["ajuste"] = 1.0
+    n_coca = min(len(s_tit), len(s_rio))
+    nueva_coca = [s_tit[0], s_tit[1]] + [round((s_tit[2] + s_rio[2]) * 0.5, 4)] + [s_rio[i] for i in range(3, n_coca)]
+    ctx["serieCoca"] = nueva_coca
+    det = ((mod.get("_fisica") or {}).get("detalle")) or []
+    salidas = [float(f["salida"]) for f in det[-7:] if isinstance(f.get("salida"), (int, float))]
+    q_sal = sum(salidas) / len(salidas) if salidas else 50.0
+    q0 = float(P.get("qMazar") or 30.0)
+    s_maz = ctx.get("serieMazar") or [1.0] * 60
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), 60)
+    out = []
+    for d in range(n):
+        b = float(base[d]) if d < len(base) else 0.0
+        if d >= 2:
+            qin = q0 * float(s_maz[min(d, len(s_maz) - 1)])
+            dq = qin - q_sal
+            corr = dq * (ka_comp - 1.0) if dq < 0 else 0.0
+            corr = max(-50.0, min(50.0, corr))
+        else:
+            corr = 0.0
+        out.append(round(b + corr, 2))
+    ctx["memoria"] = out
+    return P, ctx, {"ajuste": 1.0, "serieCoca": nueva_coca, "memoria": out}
+
+
+CANDIDATOS["sin_autoajuste_coca_dia2_autoajuste_largo"] = {"f": c_sin_autoajuste_coca_dia2_autoajuste_largo, "promocion": "luis", "origen": "Gemini 2026-11-10", "nombre": "Sin autoajuste corto + Coca real y autoajuste completo desde día 2", "hipotesis": "Desactivar el autoajuste en los días 0–1 (como sin_autoajuste) y aplicar desde el día 2 tanto el río Coca real como el autoajuste medido entero a través de la memoria mantiene la mejora a 1–2 días y elimina el fuerte pesimismo a 5–7 días."}
+
+
+def c_memoria_tercio_coca_real(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    if not mem or not s:
+        return None
+    nueva_mem = [round(float(x) / 3.0, 2) for x in mem]
+    nueva_coca = list(s)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["memoria_tercio_coca_real"] = {"f": c_memoria_tercio_coca_real, "promocion": "luis", "origen": "Gemini 2026-11-10", "nombre": "Un tercio de memoria + río Coca real", "hipotesis": "Reducir la memoria de 48 h a un tercio (en vez de la mitad) junto con el río Coca real disminuye aún más el sesgo optimista a 1–2 días (+9,6 y +13,6 cm en el titular) acercando el error a la meta de 5 cm sin perder el acierto a 7 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
