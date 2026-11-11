@@ -755,7 +755,9 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
         except Exception as e:
             log(f"Laboratorio: anterior falló: {e}")
     mod = _con_previo(mod, ts)
-    mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
+    # factor de Coca Codo de esta corrida (ccs_por_regimen) y cortes de la ventana de Paute del titular (balance_3_laborales, cerebro 11 nov)
+    mod["_datos_robot"] = {"ccs_rendimiento": ((datos.get("robot") or {}).get("ccs_rendimiento")),
+                           "cortes_semana_medida": ((datos.get("robot") or {}).get("cortes_semana_medida"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
     mod["_tit_qt"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(3)]   # caudal turbinado de Mazar del titular, días 0–2 (base_laboral_lunes)
     mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
@@ -2962,3 +2964,106 @@ CANDIDATOS["coca_crecida_historia"] = {
     "hipotesis": "Con el pronóstico del río Coca (GloFAS) se anticipa la menor disponibilidad de Coca Codo por crecida "
                  "(calibrada con un año de datos horarios: 0,92 a 600–750 m³/s, 0,83 a 750–1.200, 0,5 sobre 1.200), "
                  "en vez de esperar a que el paro ocurra; si Coca Codo da menos, Mazar debe turbinar más."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 11 nov (aprobación permanente de Luis, 7 nov)
+_OR_C11 = "cerebro 2026-11-11 (aprobado por Luis)"
+
+
+def _laborales_previos(hoy, manual, n, atras=12):
+    """Los n últimos días laborales completos ANTERIORES a hoy en el Celec diario (lunes a viernes, sin feriado ni corte
+    registrado/planificado, con maz, mol y sop). A diferencia de _base_laboral_mwh, acepta días con Mazar flojo."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    cortes = dict(((manual or {}).get("cortes_plan") or {})); cortes.update((manual or {}).get("cortes_registro") or {})
+    lim = (datetime.fromisoformat(hoy) - timedelta(days=atras)).date().isoformat()
+    out = []
+    for d in sorted(cel, reverse=True):
+        if d >= hoy: continue
+        if d < lim or len(out) >= n: break
+        x = cel[d] or {}
+        try:
+            wd = datetime.fromisoformat(d).weekday()
+        except Exception:
+            continue
+        if wd >= 5 or _es_feriado_pasado(d, manual) or (cortes.get(d) or 0) > 0: continue
+        if all(isinstance(x.get(k), (int, float)) for k in ("maz", "mol", "sop")):
+            out.append((d, x))
+    return out
+
+
+def c_mazar_media_2d(P, ctx, mod):
+    """Idea 'mazar_media_2d' (cerebro 11 nov): Mazar alterna días fuertes y flojos (8–10 nov: 248, 2.332 y 795 MWh) según
+    si Molino toma el agua de Mazar o de Amaluza; el reparto del titular no sigue esa alternancia. En las próximas 48 h (días 0 y 1
+    del simulador, si son laborales) Mazar turbina el promedio de los 2 últimos días laborales del Celec, vía memoria (como base_laboral_lunes:
+    así se atiende el reparo del retador de que el motor no fija MWh). Desde el día 2 y días no laborales = titular."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    par = mod.get("_par"); qt = mod.get("_tit_qt"); ts = mod.get("_ts")
+    if not par or not qt or len(qt) < 3 or not ts:
+        return None
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    hoy = _ts_dt(ts).date().isoformat()
+    dias = _laborales_previos(hoy, manual, 2)
+    if len(dias) < 2:
+        return None
+    mwh = sum(float(x["maz"]) for _, x in dias) / 2.0
+    kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+    q_base = mwh / 24.0 / kmz
+    fer = ctx.get("feriados") or []
+    dia0 = ctx.get("diaSemana0", 1) % 7
+    corr = [0.0] * 60; usados = []
+    for k in (0, 1):   # días 0–1 del simulador = las próximas 48 h (el plazo "1 día" es el fin del día 0)
+        if (dia0 + k) % 7 in (0, 6) or (k < len(fer) and fer[k]): continue
+        corr[k] = -(q_base - float(qt[k])); usados.append(k)
+    if not usados:
+        return sin_cambio
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "mazar_media_mwh": round(mwh, 1), "dias_base": [d for d, _ in dias],
+                    "dias_objetivo": usados, "q_base_m3s": round(q_base, 2), "q_titular_m3s": [round(float(qt[k]), 2) for k in usados]}
+
+
+def c_balance_3_laborales(P, ctx, mod):
+    """Pieza medible de la idea 'balance_medido' (cerebro 11 nov). El titular arma la demanda para que Paute genere su
+    promedio ponderado de ~10 días (vida media 3 días, con fines de semana y los cortes de esa ventana); aquí Paute parte
+    del promedio de los 3 últimos días laborales del Celec (Mazar + Molino + Sopladora), sin cortes, quitándole el patrón
+    de cada día (deltaDia) para no contarlo dos veces. Demanda = la del titular + (base de 3 laborales − (Paute del
+    titular + sus cortes)). Coca Codo, térmica, otras e importación = titular (el retador: el balance ya cierra por
+    construcción; lo que cambia es la ventana)."""
+    fis = mod.get("_fisica") or {}; ts = mod.get("_ts")
+    pp = fis.get("paute_prom_mw")
+    cs = ((mod.get("_datos_robot") or {}).get("cortes_semana_medida") or {}).get("mw_promedio")
+    if not ts or not isinstance(pp, (int, float)) or not isinstance(cs, (int, float)) or not isinstance(P.get("demanda"), (int, float)):
+        return None
+    try:   # revisor: con Celec caído > 3 días el titular no usa esta física
+        if (_ts_dt(ts).date() - datetime.fromisoformat(str(fis.get("actualizado"))[:10]).date()).days > 3: return None
+    except Exception:
+        return None
+    det = {x.get("dia"): x.get("paute_mw") for x in (fis.get("detalle") or []) if isinstance(x, dict)}   # misma fuente que paute_prom_mw
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    hoy = _ts_dt(ts).date().isoformat()
+    dias = _laborales_previos(hoy, manual, 3)
+    if len(dias) < 3:
+        return None
+    dd = ctx.get("deltaDia") or [0.0] * 7
+    if len(dd) != 7:
+        return None
+    vals = [(float(det[d]) if isinstance(det.get(d), (int, float)) else (float(x["maz"]) + float(x["mol"]) + float(x["sop"])) / 24.0)
+            - float(dd[(datetime.fromisoformat(d).weekday() + 1) % 7]) for d, x in dias]
+    base = sum(vals) / 3.0
+    delta = max(-400.0, min(400.0, base - (float(pp) + float(cs))))   # tope: un dato raro del Celec no puede mover más de 400 MW
+    P["demanda"] = round(float(P["demanda"]) + delta, 1)
+    return P, ctx, {"demanda": P["demanda"], "paute_base_3lab_mw": round(base, 1), "paute_titular_mw": pp,
+                    "cortes_titular_mw": cs, "dias_base": [d for d, _ in dias]}
+
+
+_cand_3nov("mazar_media_2d", c_mazar_media_2d, "Mazar de las próximas 48 h = promedio de los 2 últimos días laborales",
+           "Idea del cerebro de Mazar del 11 nov: Mazar alterna días fuertes y flojos (Mazar fue ~1,5 %, 11,3 % y 4,2 % del "
+           "complejo el 8, 9 y 10 nov, Celec) y el reparto del titular no sigue esa alternancia; el titular falla menos a 2 días (0,26 m) que a 1 "
+           "(0,29 m). Próximas 48 h (días 0–1 del simulador), si son laborales: turbinado de Mazar = promedio Celec de los 2 últimos días laborales (9–10 nov: "
+           "1.563 MWh), aplicado como corrección de caudal (memoria). Reparo del retador (Carbon): el motor no fija MWh; por "
+           "eso se hace como base_laboral_lunes.", origen=_OR_C11)
+_cand_3nov("balance_3_laborales", c_balance_3_laborales, "Paute parte de los 3 últimos días laborales (no de ~10 días ponderados)",
+           "Pieza de la idea 'balance_medido' del cerebro de Mazar del 11 nov: la demanda se fija para que Paute parta del "
+           "promedio de los 3 últimos días laborales sin cortes (Celec, sin el patrón de cada día), en vez del promedio "
+           "ponderado de ~10 días con fines de semana y cortes. Reparo del retador: la térmica y 'otras' ya se miden cada "
+           "corrida y el balance cierra por construcción; la otra pieza (térmica + otras = total − Coca − Paute − importación) "
+           "no cambiaría la trayectoria, así que no se pone sola.", origen=_OR_C11)
