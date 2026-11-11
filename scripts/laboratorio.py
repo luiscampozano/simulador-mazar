@@ -695,6 +695,10 @@ def _copia(x):
     return json.loads(json.dumps(x))
 
 
+def _ultimo_valor(d):
+    return d[sorted(d)[-1]] if d else None
+
+
 def _rasgos(P, ctx, mod, datos):
     """Variables de la corrida, para ver después cuáles se relacionan con el error."""
     paro = (mod.get("ccs_paro") or {}).get("paro")
@@ -709,7 +713,10 @@ def _rasgos(P, ctx, mod, datos):
             # escala grande (9 nov): ramal sur de la ZCIT hoy y agua en el aire sobre el Paute (si ya se bajó en esta corrida)
             "zcit_sur_activo": ((_EG.get("zcit_sur") or {}).get(datetime.now().date().isoformat()) or {}).get("activo"),
             "agua_paute": (_EG.get("agua_paute") or {}).get(datetime.now().date().isoformat()),
-            "u850_81W": ((_EG.get("u850") or {}).get(datetime.now().date().isoformat()) or {}).get("81W")}
+            "u850_81W": ((_EG.get("u850") or {}).get(datetime.now().date().isoformat()) or {}).get("81W"),
+            # Colombia (10 nov): importación de las últimas 6 h y embalses de Colombia (XM), para ver si anuncian el despacho
+            "importacion_6h": (lambda v: round(v) if v is not None else None)(_importacion_reciente(6)),
+            "colombia_embalse_pct": _ultimo_valor(colombia().get("embalses_pct"))}
 
 
 def _con_previo(mod, ts):
@@ -2859,3 +2866,60 @@ CANDIDATOS["memoria_mitad_coca_real_intermedia"] = {
                  "memoria_mitad_coca_real (hoy −1,6 % a 1 día con 51 casos; +11 % a 2 días) reduce el pesimismo en días secos. "
                  "Revisor: armado con las piezas existentes (el cálculo propio de Gemini usaba salidas negativas y no descontaba "
                  "lo que presta Amaluza)."}
+
+
+# ---------------------------------------------------------------- Importación de Colombia (Luis, 10 nov: "ser más proactivos")
+# El 10 nov la importación pasó de ~5 a ~205 MW (promedio del día) y Mazar casi no generó (35 MW vs 100 MW el 9):
+# la cota se sostuvo y el titular falló −46 cm a 1 día porque usa la importación promedio de las últimas 24 h.
+F_COLOMBIA = os.path.join("laboratorio", "colombia.json")
+
+
+def colombia():
+    """Embalses de Colombia (% de volumen útil del sistema) y precio de bolsa (XM, datos públicos, ~1 día de retraso).
+    Caché de 12 h; si XM no responde se usa lo guardado. Nunca rompe la corrida."""
+    import time, urllib.request
+    c = _leer(F_COLOMBIA, {})
+    if c.get("_t") and time.time() - float(c["_t"]) < 12 * 3600:
+        return c
+    hoy = datetime.now().date()
+
+    def q(metric):
+        cuerpo = {"MetricId": metric, "Entity": "Sistema", "StartDate": (hoy - timedelta(days=30)).isoformat(), "EndDate": hoy.isoformat()}
+        req = urllib.request.Request("https://servapibi.xm.com.co/daily", data=json.dumps(cuerpo).encode(),
+                                     headers={"Content-Type": "application/json", "User-Agent": "DataLabEc"})
+        j = json.load(urllib.request.urlopen(req, timeout=20))
+        return {it["Date"]: float(it["DailyEntities"][0]["Value"]) for it in j.get("Items", []) if it.get("DailyEntities")}
+    try:
+        emb, pre = q("PorcVoluUtilDiar"), q("PPPrecBolsNaci")
+        c = {"_t": time.time(), "fuente": "XM (servapibi.xm.com.co): PorcVoluUtilDiar y PPPrecBolsNaci, Sistema",
+             "embalses_pct": {k: round(v * 100, 1) for k, v in sorted(emb.items())},
+             "precio_bolsa_cop_kwh": {k: round(v, 1) for k, v in sorted(pre.items())}}
+        _escribir(F_COLOMBIA, c)
+    except Exception:
+        pass
+    return c
+
+
+def _importacion_reciente(horas):
+    """Importación media (MW) de las últimas `horas` según la serie de medias horas del Cenace (la misma que usa el robot)."""
+    pts = (_leer("serie_cenace.json", {}) or {}).get("puntos") or {}
+    ks = sorted(pts)[-2 * horas:]
+    v = [float(pts[k].get("i") or 0) for k in ks if isinstance(pts[k], dict)]
+    return (sum(v) / len(v)) if len(v) >= horas else None
+
+
+def c_importacion_6h(P, ctx, mod):
+    v = _importacion_reciente(6)
+    if v is None:
+        return None
+    imp = int(min(450, max(0, round(v / 5) * 5)))
+    P["imp"] = imp
+    return P, ctx, {"imp": imp}
+
+
+CANDIDATOS["importacion_6h"] = {
+    "f": c_importacion_6h, "promocion": "luis", "origen": "Claude 2026-11-10 (pedido de Luis: anticipar el despacho)",
+    "nombre": "Importación de Colombia de las últimas 6 h",
+    "hipotesis": "El titular usa la importación promedio de 24 h y la mantiene fija; cuando Colombia empieza o deja de vender "
+                 "(10 nov: ~5 → ~205 MW, Mazar 100 → 35 MW, error −46 cm a 1 día) reacciona con casi un día de retraso. Con las "
+                 "últimas 6 h el modelo ve el cambio de despacho el mismo día y baja el error a 1–3 días."}
