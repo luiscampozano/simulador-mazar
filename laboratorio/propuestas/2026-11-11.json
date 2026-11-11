@@ -1,0 +1,59 @@
+{
+ "fecha": "2026-11-11",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 4.544,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "autoajuste_suave_coca_real",
+    "nombre": "Autoajuste suave (25 %) + río Coca real",
+    "hipotesis": "Aplicar solo un cuarto del autoajuste medido (en vez de sin_autoajuste o el recortado del titular) junto con el pronóstico real del río Coca conserva la mejora a 1–2 días de sin_autoajuste sin empeorar a 7 días.",
+    "promocion": "auto",
+    "por_que": "En el marcador (72 casos), sin_autoajuste gana a 1 y 2 días (0,280 y 0,220 m vs 0,283 y 0,239 m del titular), pero pierde fuerte a 7 días (1,841 m vs 1,430 m), mientras que autoajuste_completo gana a 7 días (0,880 m) pero pierde a 1–2 días (0,295 y 0,264 m). Un punto cercano a 1,0 (25 % de distancia hacia la mediana medida) combinado con coca_rio_real (1,219 m a 7 días) equilibra ambos plazos con promoción automática.",
+    "codigo": "def c_autoajuste_suave_coca_real(P, ctx, mod):\n    r = (mod.get(\"ajuste_info\") or {}).get(\"ratio_mediana\")\n    s = mod.get(\"serieCocaRio\")\n    if not isinstance(r, (int, float)) or r <= 0 or not s:\n        return None\n    v = round(max(0.5, min(1.3, 1.0 + 0.25 * (float(r) - 1.0))), 3)\n    ctx[\"ajuste\"] = v\n    ctx[\"serieCoca\"] = list(s)\n    return P, ctx, {\"ajuste\": v, \"serieCoca\": list(s)}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2126.15,
+     2122.34,
+     2120.53
+    ],
+    "candidato_1_7_14": [
+     2126.1,
+     2121.54,
+     2118.32
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "guardian_dia0_coca_real_autoajuste",
+    "nombre": "Guardián día 0 + Coca real + autoajuste entero",
+    "hipotesis": "Corregir el despacho de Paute del día 0 con la generación medida por Cenace desde las 00:00 y sumar el río Coca real con el autoajuste medido entero reduce el error de despacho a 1 día y corrige el pesimismo de 5 a 10 días.",
+    "promocion": "luis",
+    "por_que": "Las verificaciones recientes a 1 día (10–11 nov) muestran errores de −0,27 a −0,60 m porque Paute generó mucho menos de lo supuesto por el titular (hoy 347 MW medidos vs 850 MW del titular). A la vez, a 7 días el titular tiene un sesgo pesimista de −1,43 m que autoajuste_completo (0,880 m) y coca_rio_real (1,219 m) reducen drásticamente.",
+    "codigo": "def c_guardian_dia0_coca_real_autoajuste(P, ctx, mod):\n    r_g = c_paute_guardian_dia0(P, ctx, mod)\n    if not r_g:\n        return None\n    P, ctx, c1 = r_g\n    cambios = dict(c1 or {})\n    s = mod.get(\"serieCocaRio\")\n    if s:\n        ctx[\"serieCoca\"] = list(s)\n        cambios[\"serieCoca\"] = list(s)\n    r = (mod.get(\"ajuste_info\") or {}).get(\"ratio_mediana\")\n    if isinstance(r, (int, float)) and r > 0:\n        v = round(max(0.5, min(1.3, float(r))), 3)\n        ctx[\"ajuste\"] = v\n        cambios[\"ajuste\"] = v\n    return P, ctx, cambios"
+   },
+   "estado": "rechazada por validación: función no permitida: c_paute_guardian_dia0"
+  },
+  {
+   "propuesta": {
+    "id": "importacion_6h_y_guardian_dia0",
+    "nombre": "Importación de 6 h + guardián de Paute día 0",
+    "hipotesis": "Combinar la importación media de las últimas 6 h (para los días 1 en adelante) con la generación real medida hoy en Paute (para el resto del día 0) corrige de inmediato los cambios de despacho en todos los horizontes.",
+    "promocion": "luis",
+    "por_que": "El 10 nov Colombia subió la venta de ~5 a ~205 MW y Paute bajó de golpe, causando errores de −46 a −60 cm a 1 día. paute_guardian_dia0 corrige solo las horas que faltan del día 0, mientras que importacion_6h actualiza el flujo de interconexión para toda la ventana; juntos evitan contar dos veces el ahorro en el día 0 si se descuenta el cambio de importación de ese primer día.",
+    "codigo": "def c_importacion_6h_y_guardian_dia0(P, ctx, mod):\n    imp0 = float(P.get(\"imp\") or 0.0)\n    r_i = c_importacion_6h(P, ctx, mod)\n    if not r_i:\n        return None\n    P, ctx, ci = r_i\n    d_imp = float(P.get(\"imp\") or 0.0) - imp0\n    r_g = c_paute_guardian_dia0(P, ctx, mod)\n    if not r_g:\n        return P, ctx, ci\n    P, ctx, cg = r_g\n    ts = str(mod.get(\"_ts\") or \"\")\n    h = int(ts[11:13]) + int(ts[14:16]) / 60.0 if len(ts) >= 16 else 12.0\n    peso_resto = max(0.0, min(1.0, (24.0 - h) / 24.0))\n    plan = list(ctx.get(\"cutPlan\") or [])\n    if plan and isinstance(plan[0], (int, float)):\n        plan[0] = round(float(plan[0]) - d_imp * peso_resto, 1)\n        ctx[\"cutPlan\"] = plan\n    cambios = dict(ci or {})\n    cambios.update(cg or {})\n    cambios[\"cutPlan\"] = plan[:15]\n    return P, ctx, cambios"
+   },
+   "estado": "rechazada por validación: función no permitida: c_importacion_6h"
+  }
+ ],
+ "estado": "1 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-11"
+}
