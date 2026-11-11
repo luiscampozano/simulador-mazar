@@ -1,7 +1,7 @@
 {
-  "fecha": "2026-11-10T20:00:00-05:00",
-  "etiqueta": "datos al mar 10 nov 2026, 20:00 (actualización automática)",
-  "cota": 2126.7,
+  "fecha": "2026-11-10T21:00:00-05:00",
+  "etiqueta": "datos al mar 10 nov 2026, 21:00 (actualización automática)",
+  "cota": 2126.64,
   "historico": [
     [
       "2026-10-01",
@@ -149,47 +149,47 @@
     ],
     [
       "2026-11-10",
-      2126.7
+      2126.64
     ]
   ],
   "hoy": {
-    "qMazar": 45,
+    "qMazar": 44,
     "wPaute": "auto",
     "qCoca": 166,
     "wCoca": "auto",
     "dBase": 4590,
     "tCosta": 33.0,
     "cut": 300,
-    "imp": 200,
+    "imp": 205,
     "therm": 1270,
     "other": 1510
   },
   "notas": {
-    "mazar": "Promedio de las últimas 24 h: 45 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 182 m³/s en promedio de 24 h; a las 19:00 iba en 174 m³/s. Con ese río Coca Codo puede generar ~845 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 831 MW de promedio hoy. En el modelo equivale a 166 m³/s (rendimiento aplicado 98.4 %).",
-    "importacion": "Promedio de las últimas 24 h: 202 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
-    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 884 MW y para eso Mazar suelta ≈ 61 m³/s mientras le entran 45: hoy baja ≈ 0,27 m/día. Promedio real de los últimos 7 días: baja 0,13 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1973,1 m, casi en su nivel mínimo, y casi no puede ayudar.",
-    "termica": "Promedio de las últimas 24 h: 1213 MW térmicos + 61 MW renovables no convencionales (Cenace, automático).",
+    "mazar": "Promedio de las últimas 24 h: 44 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 182 m³/s en promedio de 24 h; a las 19:00 iba en 174 m³/s. Con ese río Coca Codo puede generar ~843 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 830 MW de promedio hoy. En el modelo equivale a 166 m³/s (rendimiento aplicado 98.4 %).",
+    "importacion": "Promedio de las últimas 24 h: 206 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
+    "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 880 MW y para eso Mazar suelta ≈ 61 m³/s mientras le entran 44: hoy baja ≈ 0,29 m/día. Promedio real de los últimos 7 días: baja 0,13 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1972,9 m, casi en su nivel mínimo, y casi no puede ayudar.",
+    "termica": "Promedio de las últimas 24 h: 1212 MW térmicos + 59 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-11-11: 33.2 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 25 mm en los últimos 7 días y 38 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 61 mm en los últimos 7 días y 43 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "demanda": "Equivale a los últimos días: Paute generó 650 MW en promedio ponderado del 2026-10-31 al 2026-11-09 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~63 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4585 MW (Cenace).",
-    "otras": "Generación medida de las demás hidroeléctricas: 1507 MW (hoy, 20 h, Cenace, automático). El complejo Paute generó 665 MW en ese mismo periodo.",
+    "otras": "Generación medida de las demás hidroeléctricas: 1512 MW (hoy, 22 h, Cenace, automático). El complejo Paute generó 709 MW en ese mismo periodo.",
     "cortes": "9/11: sin cortes desde el 5/11 (AV1/AV2 terminaron el 4/11). Nada anunciado ni de emergencia para 10–16 nov (Teleamazonas, El Comercio, Primicias; prensa 9/11)."
   },
   "robot": {
-    "ultima_lectura": "2026-11-10T20:00:00-05:00",
+    "ultima_lectura": "2026-11-10T21:00:00-05:00",
     "caudal_entrada_24h": 182,
-    "variacion_cota_24h": 0.07,
+    "variacion_cota_24h": 0.05,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
       "celec": {
         "ok": true,
-        "lectura": "2026-11-10T20:00:00-05:00"
+        "lectura": "2026-11-10T21:00:00-05:00"
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-11-10T20:00",
+        "ultimo_dato": "2026-11-10T21:00",
         "medias_horas_propias": 44,
         "completadas_con_dia": "2026-11-09"
       },
@@ -206,16 +206,16 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-10T20:17-05:00",
+    "ultima_ejecucion": "2026-11-10T21:10-05:00",
     "registro": [
-      "Cortes conocidos: 19 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
-      "Memoria: 27 corridas de las últimas 48 h; sin memoria la zona crítica sería en 57.2 días",
-      "Laboratorio: coca_rio_real empate (+1% a 1 día, 8 días), sin_autoajuste empate (+4% a 1 día, 8 días), paute_sin_ajuste empate (-1% a 1 día, 8 días), sin_memoria empate (-8% a 1 día, 8 días), corrige_error_3 pierde (-51% a 1 día, 8 días), corrige_error_6 pierde (-47% a 1 día, 8 días), corrige_error_6_lento pierde (-47% a 1 día, 8 días), sesgo_plazo_50 pierde (-11% a 1 día, 8 días), sesgo_plazo_100 pierde (-25% a 1 día, 8 días), autoajuste_completo empate (-7% a 1 día, 8 días), paute_ajuste_completo empate (+0% a 1 día, 8 días), coca_mitad empate (+1% a 1 día, 8 días), otros_rios_planos empate (-2% a 1 día, 8 días), dia_semana_suave pierde (-14% a 1 día, 8 días), humedo_completo empate (+2% a 1 día, 8 días), cortes_siguen_7d midiendo (+0% a 1 día, 3 días), corrige_y_sesgo pierde (-51% a 1 día, 8 días), ajustes_completos empate (-7% a 1 día, 8 días), memoria_mitad empate (-2% a 1 día, 8 días), memoria_desde_dia3 empate (-8% a 1 día, 8 días), sin_memoria_paute_bruto empate (-8% a 1 día, 8 días), demanda_real empate (-6% a 1 día, 8 días), demanda_real_mem empate (-1% a 1 día, 8 días), demanda_real_lluvia empate (-6% a 1 día, 8 días), patron_1ano pierde (-16% a 1 día, 8 días), patron_temporada pierde (-18% a 1 día, 8 días), patron_historico pierde (-20% a 1 día, 8 días), sesgo_plazo_reciente pierde (-40% a 1 día, 8 días), sesgo_y_error6 pierde (-47% a 1 día, 8 días), ajustes_y_sesgo50 pierde (-20% a 1 día, 8 días), corte_medido midiendo (-16% a 1 día, 3 días), corte_medido_tend midiendo (-55% a 1 día, 3 días), sesgo_plazo_75 pierde (-18% a 1 día, 8 días), coca_real_y_sesgo50 empate (-8% a 1 día, 8 días), corrige_tendencia_3 pierde (-52% a 1 día, 8 días), sesgo_reciente_7d pierde (-38% a 1 día, 8 días), demanda_real_y_sesgo50 pierde (-18% a 1 día, 8 días), entrada_por_pendiente empate (-1% a 1 día, 7 días), entrada_por_pendiente_6h empate (-2% a 1 día, 7 días), tendencia_24h_mitad pierde (-62% a 1 día, 7 días), tendencia_y_sesgo50_largo pierde (-62% a 1 día, 7 días), sesgo_semana pierde (-19% a 1 día, 7 días), coca_real_cortes_7d midiendo (-6% a 1 día, 2 días), memoria_mitad_coca_real midiendo (+1% a 1 día, 6 días), memoria_mitad_y_sesgo50_largo midiendo (-1% a 1 día, 6 días), caudal_72h_mitad midiendo (-4% a 1 día, 6 días), patron_hist_y_caudal72 midiendo (-31% a 1 día, 6 días), nov_mas_lluvioso midiendo (-2% a 1 día, 5 días), nov_mucho_mas_lluvioso midiendo (-10% a 1 día, 5 días), corrige_tendencia_mitad midiendo (-29% a 1 día, 5 días), patron_hist_y_tendencia_mitad midiendo (-47% a 1 día, 5 días), patron_tend_mitad_sesgo50_largo midiendo (-47% a 1 día, 5 días), dia_semana_suave_coca_real midiendo (-11% a 1 día, 5 días), ccs_por_regimen midiendo (-0% a 1 día, 5 días), tend_mitad_coca_dia2 midiendo (-37% a 1 día, 4 días), patron_hist_coca_dia2 midiendo (-16% a 1 día, 4 días), pht_mitad_coca_dia2 midiendo (-51% a 1 día, 4 días), otras_hidro_rios midiendo (+0% a 1 día, 4 días), reparto_reciente midiendo (-9% a 1 día, 3 días), reparto_reciente_y_tendencia_mitad midiendo (-50% a 1 día, 3 días), sin_autoajuste_coca_real midiendo (-4% a 1 día, 3 días), sin_autoajuste_sesgo50_largo midiendo (-1% a 1 día, 3 días), recesion_paute_piso midiendo (+1% a 1 día, 3 días), demanda_tmax_dia midiendo (+0% a 1 día, 3 días), reparto_y_recesion midiendo (+7% a 1 día, 2 días), memoria_mitad_coca_real_reparto midiendo (-9% a 1 día, 2 días), lluvia_gye30 midiendo (+0% a 1 día, 2 días), demanda_tmax_lluvia30 midiendo (+0% a 1 día, 2 días), embalse_combinado midiendo (-7% a 1 día, 1 días), intermedia_fija midiendo (-0% a 1 día, 1 días), mazar_domingo_parado midiendo (-4% a 1 día, 1 días), combinado_domingo_intermedia midiendo (+5% a 1 día, 1 días), zcit_sur_lluvia_paute midiendo (+0% a 1 día, 1 días), agua_paute_alta midiendo (+0% a 1 día, 1 días), escala_grande_ambas midiendo (+0% a 1 día, 1 días), escala_grande_alguna_media midiendo (+0% a 1 día, 1 días), combinado_coca_real midiendo (-40% a 1 día, 1 días), semana_costa_lluviosa midiendo (-84% a 1 día, 1 días), paute_guardian_dia0 midiendo (-27% a 1 día, 1 días), memoria_mitad_coca_real_autoajuste_comp midiendo (+32% a 1 día, 1 días)",
-      "Número grande (trayectoria promedio de 27 corridas): zona crítica 55.5 días [19.3, 59.9], parada 58.5 días",
-      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.053, '30': 0.105}, semana seca {'7': 0.0, '14': 0.105, '30': 0.316}",
-      "Zona crítica (2.116): 55.48866632010752; ventana hasta None; mínimo {'t': 59.0, 'cota': 2115.0}",
-      "Modelo: 58.4 días hasta 2.115 (rango 43.6504778284146–None); hoy -0.27 m/día",
-      "Verificación: 0 comparaciones nuevas; última a 1 día: dijo 2126.23 y fue 2126.7 (-0.47 m)"
+      "Memoria: 27 corridas de las últimas 48 h; sin memoria la zona crítica sería en 22.7 días",
+      "Laboratorio: coca_rio_real empate (+2% a 1 día, 8 días), sin_autoajuste empate (+3% a 1 día, 8 días), paute_sin_ajuste empate (-1% a 1 día, 8 días), sin_memoria empate (-7% a 1 día, 8 días), corrige_error_3 pierde (-55% a 1 día, 8 días), corrige_error_6 pierde (-48% a 1 día, 8 días), corrige_error_6_lento pierde (-48% a 1 día, 8 días), sesgo_plazo_50 pierde (-10% a 1 día, 8 días), sesgo_plazo_100 pierde (-23% a 1 día, 8 días), autoajuste_completo empate (-7% a 1 día, 8 días), paute_ajuste_completo empate (+0% a 1 día, 8 días), coca_mitad empate (+1% a 1 día, 8 días), otros_rios_planos empate (-2% a 1 día, 8 días), dia_semana_suave pierde (-14% a 1 día, 8 días), humedo_completo empate (+2% a 1 día, 8 días), cortes_siguen_7d midiendo (+0% a 1 día, 3 días), corrige_y_sesgo pierde (-55% a 1 día, 8 días), ajustes_completos empate (-6% a 1 día, 8 días), memoria_mitad empate (-2% a 1 día, 8 días), memoria_desde_dia3 empate (-7% a 1 día, 8 días), sin_memoria_paute_bruto empate (-8% a 1 día, 8 días), demanda_real empate (-6% a 1 día, 8 días), demanda_real_mem empate (-2% a 1 día, 8 días), demanda_real_lluvia empate (-6% a 1 día, 8 días), patron_1ano pierde (-15% a 1 día, 8 días), patron_temporada pierde (-17% a 1 día, 8 días), patron_historico pierde (-20% a 1 día, 8 días), sesgo_plazo_reciente pierde (-38% a 1 día, 8 días), sesgo_y_error6 pierde (-48% a 1 día, 8 días), ajustes_y_sesgo50 pierde (-19% a 1 día, 8 días), corte_medido midiendo (-17% a 1 día, 3 días), corte_medido_tend midiendo (-60% a 1 día, 3 días), sesgo_plazo_75 pierde (-16% a 1 día, 8 días), coca_real_y_sesgo50 empate (-6% a 1 día, 8 días), corrige_tendencia_3 pierde (-56% a 1 día, 8 días), sesgo_reciente_7d pierde (-36% a 1 día, 8 días), demanda_real_y_sesgo50 pierde (-17% a 1 día, 8 días), entrada_por_pendiente empate (-1% a 1 día, 7 días), entrada_por_pendiente_6h empate (-2% a 1 día, 7 días), tendencia_24h_mitad pierde (-61% a 1 día, 7 días), tendencia_y_sesgo50_largo pierde (-61% a 1 día, 7 días), sesgo_semana pierde (-19% a 1 día, 7 días), coca_real_cortes_7d midiendo (-6% a 1 día, 2 días), memoria_mitad_coca_real midiendo (+1% a 1 día, 6 días), memoria_mitad_y_sesgo50_largo midiendo (-1% a 1 día, 6 días), caudal_72h_mitad midiendo (-4% a 1 día, 6 días), patron_hist_y_caudal72 midiendo (-30% a 1 día, 6 días), nov_mas_lluvioso midiendo (-2% a 1 día, 5 días), nov_mucho_mas_lluvioso midiendo (-8% a 1 día, 5 días), corrige_tendencia_mitad midiendo (-30% a 1 día, 5 días), patron_hist_y_tendencia_mitad midiendo (-48% a 1 día, 5 días), patron_tend_mitad_sesgo50_largo midiendo (-48% a 1 día, 5 días), dia_semana_suave_coca_real midiendo (-10% a 1 día, 5 días), ccs_por_regimen midiendo (-0% a 1 día, 5 días), tend_mitad_coca_dia2 midiendo (-38% a 1 día, 4 días), patron_hist_coca_dia2 midiendo (-15% a 1 día, 4 días), pht_mitad_coca_dia2 midiendo (-51% a 1 día, 4 días), otras_hidro_rios midiendo (+0% a 1 día, 4 días), reparto_reciente midiendo (-6% a 1 día, 3 días), reparto_reciente_y_tendencia_mitad midiendo (-49% a 1 día, 3 días), sin_autoajuste_coca_real midiendo (-4% a 1 día, 3 días), sin_autoajuste_sesgo50_largo midiendo (-1% a 1 día, 3 días), recesion_paute_piso midiendo (+1% a 1 día, 3 días), demanda_tmax_dia midiendo (+0% a 1 día, 3 días), reparto_y_recesion midiendo (+10% a 1 día, 2 días), memoria_mitad_coca_real_reparto midiendo (-2% a 1 día, 2 días), lluvia_gye30 midiendo (+0% a 1 día, 2 días), demanda_tmax_lluvia30 midiendo (+0% a 1 día, 2 días), embalse_combinado midiendo (-12% a 1 día, 1 días), intermedia_fija midiendo (+2% a 1 día, 1 días), mazar_domingo_parado midiendo (-10% a 1 día, 1 días), combinado_domingo_intermedia midiendo (+1% a 1 día, 1 días), zcit_sur_lluvia_paute midiendo (+0% a 1 día, 1 días), agua_paute_alta midiendo (+0% a 1 día, 1 días), escala_grande_ambas midiendo (+0% a 1 día, 1 días), escala_grande_alguna_media midiendo (+0% a 1 día, 1 días), combinado_coca_real midiendo (-40% a 1 día, 1 días), semana_costa_lluviosa midiendo (-81% a 1 día, 1 días), paute_guardian_dia0 midiendo (-27% a 1 día, 1 días), memoria_mitad_coca_real_autoajuste_comp midiendo (+32% a 1 día, 1 días)",
+      "Número grande (trayectoria promedio de 27 corridas): zona crítica 50.1 días [20.2, 59.8], parada 55.8 días",
+      "Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {'7': 0.0, '14': 0.105, '30': 0.105}, semana seca {'7': 0.053, '14': 0.105, '30': 0.316}",
+      "Zona crítica (2.116): 50.610673180975986; ventana hasta None; mínimo {'t': 57.0, 'cota': 2115.0}",
+      "Modelo: 56.6 días hasta 2.115 (rango 37.555699937466976–None); hoy -0.29 m/día",
+      "Predicción guardada en registro/predicciones.json",
+      "Verificación: 8 comparaciones nuevas; última a 1 día: dijo 2126.18 y fue 2126.64 (-0.46 m)"
     ],
     "cortes_semana_medida": {
       "desde": "2026-10-31",
@@ -391,7 +391,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-10T20:17-05:00"
+    "actualizado": "2026-11-10T21:10-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -546,9 +546,9 @@
         1.488
       ]
     },
-    "amaluzaCota": 1973.08,
-    "amaluzaRitmo": 0.19,
-    "amaluzaVolumen": 0.41,
+    "amaluzaCota": 1972.92,
+    "amaluzaRitmo": 0.197,
+    "amaluzaVolumen": 0.35,
     "deltaDia": [
       -280.0,
       44.6,
@@ -649,66 +649,66 @@
     ],
     "serieMazarBruta": [
       1.0,
-      0.8264,
-      0.7484,
-      0.7116,
-      0.7056,
-      0.7254,
-      0.8127,
-      0.8429,
-      0.7977,
-      0.8698,
-      0.9022,
-      0.8899,
-      0.9121,
-      0.9078,
-      0.9126,
-      0.9328,
-      0.9497,
-      0.9635,
-      0.9722,
-      0.9766,
-      0.9829,
-      0.9906,
-      0.9951,
-      0.9998,
-      1.003,
-      1.0075,
-      1.0118,
-      1.0174,
-      1.0213,
-      1.0246,
-      1.0254,
-      1.0244,
+      0.8324,
+      0.7574,
+      0.7224,
+      0.7177,
+      0.7389,
+      0.8284,
+      0.8596,
+      0.8138,
+      0.8875,
+      0.9208,
+      0.9083,
+      0.931,
+      0.9266,
+      0.9314,
+      0.952,
+      0.9693,
+      0.9833,
+      0.9921,
+      0.9965,
+      1.0029,
+      1.0107,
+      1.0152,
+      1.0199,
       1.0231,
-      1.0221,
-      1.0238,
-      1.029,
-      1.0338,
-      1.0398,
-      1.0431,
-      1.0459,
-      1.0491,
-      1.0487,
-      1.0479,
-      1.0482,
-      1.0491,
-      1.0505,
-      1.0511,
-      1.0522,
-      1.0557,
-      1.0598,
-      1.0618,
-      1.0616,
-      1.0602,
-      1.0587,
-      1.0567,
-      1.0538,
-      1.0515,
-      1.0509,
-      1.0527,
-      1.0553,
-      1.0594
+      1.0275,
+      1.0318,
+      1.0375,
+      1.0414,
+      1.0447,
+      1.0454,
+      1.0446,
+      1.0434,
+      1.0426,
+      1.0445,
+      1.05,
+      1.0549,
+      1.0612,
+      1.0646,
+      1.0675,
+      1.0708,
+      1.0704,
+      1.0696,
+      1.0699,
+      1.0709,
+      1.0723,
+      1.0729,
+      1.074,
+      1.0776,
+      1.0818,
+      1.0839,
+      1.0837,
+      1.0823,
+      1.0807,
+      1.0787,
+      1.0758,
+      1.0734,
+      1.0728,
+      1.0747,
+      1.0774,
+      1.0816
     ],
     "ajuste_paute": {
       "factor": 0.579,
@@ -719,129 +719,129 @@
     },
     "serieMazar": [
       1.0,
-      0.8264,
-      0.7484,
-      0.7116,
-      0.7056,
-      0.7254,
-      0.8127,
-      0.8429,
-      0.7977,
-      0.8698,
-      0.9022,
-      0.8899,
-      0.9121,
-      0.9078,
-      0.9126,
-      0.9328,
-      0.9497,
-      0.9635,
-      0.9722,
-      0.9766,
-      0.9829,
-      0.9906,
-      0.9951,
-      0.9998,
+      0.8324,
+      0.7574,
+      0.7224,
+      0.7177,
+      0.7389,
+      0.8284,
+      0.8596,
+      0.8138,
+      0.8875,
+      0.9208,
+      0.9083,
+      0.931,
+      0.9266,
+      0.9314,
+      0.952,
+      0.9693,
+      0.9833,
+      0.9921,
+      0.9965,
       1.0017,
-      1.0043,
-      1.0068,
-      1.0101,
-      1.0123,
-      1.0143,
-      1.0147,
-      1.0141,
+      1.0062,
+      1.0088,
+      1.0115,
       1.0134,
-      1.0128,
-      1.0138,
-      1.0168,
-      1.0196,
-      1.0231,
-      1.025,
-      1.0266,
-      1.0284,
-      1.0282,
-      1.0278,
-      1.0279,
-      1.0284,
-      1.0293,
-      1.0296,
-      1.0302,
-      1.0323,
-      1.0346,
-      1.0358,
-      1.0357,
-      1.0349,
-      1.034,
-      1.0329,
-      1.0312,
-      1.0298,
-      1.0295,
-      1.0305,
-      1.032,
-      1.0344
+      1.0159,
+      1.0184,
+      1.0217,
+      1.024,
+      1.0259,
+      1.0263,
+      1.0258,
+      1.0251,
+      1.0247,
+      1.0258,
+      1.029,
+      1.0318,
+      1.0355,
+      1.0374,
+      1.0391,
+      1.041,
+      1.0408,
+      1.0403,
+      1.0405,
+      1.0411,
+      1.0419,
+      1.0422,
+      1.0429,
+      1.045,
+      1.0474,
+      1.0486,
+      1.0485,
+      1.0477,
+      1.0468,
+      1.0456,
+      1.0439,
+      1.0425,
+      1.0422,
+      1.0433,
+      1.0448,
+      1.0473
     ],
     "serieMazarSeca": [
       1.0,
-      0.8003,
-      0.6936,
-      0.6302,
-      0.593,
-      0.5674,
-      0.5521,
-      0.5427,
-      0.5798,
-      0.6842,
-      0.7368,
-      0.7502,
-      0.7893,
-      0.8133,
-      0.8405,
-      0.8746,
-      0.9008,
-      0.9207,
-      0.9331,
-      0.9394,
-      0.9464,
-      0.954,
-      0.9573,
-      0.9605,
-      0.9623,
-      0.9654,
-      0.9684,
-      0.973,
-      0.976,
-      0.9784,
-      0.9785,
-      0.9757,
-      0.9731,
-      0.9703,
-      0.9709,
-      0.9742,
-      0.9777,
-      0.9813,
-      0.9843,
-      0.9886,
-      0.994,
-      0.9964,
-      0.9983,
-      1.0012,
-      1.0043,
-      1.0075,
-      1.0094,
-      1.0115,
-      1.0156,
-      1.0201,
-      1.0224,
-      1.0225,
-      1.0213,
-      1.02,
-      1.0181,
-      1.0156,
-      1.0134,
-      1.013,
-      1.0149,
-      1.0176,
-      1.0218
+      0.8061,
+      0.702,
+      0.6397,
+      0.6032,
+      0.5779,
+      0.5628,
+      0.5535,
+      0.5916,
+      0.6982,
+      0.752,
+      0.7658,
+      0.8057,
+      0.8302,
+      0.8579,
+      0.8926,
+      0.9194,
+      0.9397,
+      0.9523,
+      0.9586,
+      0.9658,
+      0.9734,
+      0.9766,
+      0.9799,
+      0.9815,
+      0.9846,
+      0.9876,
+      0.9922,
+      0.9952,
+      0.9976,
+      0.9976,
+      0.9949,
+      0.9924,
+      0.9898,
+      0.9905,
+      0.9941,
+      0.9978,
+      1.0015,
+      1.0046,
+      1.0091,
+      1.0146,
+      1.017,
+      1.0191,
+      1.022,
+      1.0252,
+      1.0284,
+      1.0304,
+      1.0325,
+      1.0368,
+      1.0413,
+      1.0437,
+      1.0438,
+      1.0426,
+      1.0412,
+      1.0394,
+      1.0367,
+      1.0346,
+      1.0342,
+      1.0362,
+      1.0389,
+      1.0432
     ],
     "ajuste_coca": {
       "deriva_dia": -0.0144,
@@ -869,66 +869,66 @@
     },
     "serieCoca": [
       1.0,
-      0.965,
-      0.9714,
-      0.9678,
-      0.9518,
-      0.9088,
-      0.8532,
-      0.8383,
-      0.9253,
-      0.995,
-      0.9932,
-      0.9651,
-      0.9362,
-      0.9464,
-      0.9823,
-      1.0416,
-      1.0846,
-      1.0764,
-      1.0407,
-      1.0061,
-      1.0177,
-      1.0307,
-      1.0414,
-      1.0346,
-      1.0253,
-      1.02,
-      1.0087,
-      1.0289,
-      1.0431,
-      1.0386,
-      1.0183,
-      1.0003,
-      0.9792,
-      0.9602,
-      0.9507,
-      0.9436,
-      0.9381,
-      0.9339,
-      0.9565,
-      1.0755,
-      1.1177,
-      1.094,
-      1.0656,
-      1.038,
-      1.0371,
-      1.038,
-      1.028,
-      1.0139,
-      0.9987,
-      0.9832,
-      0.9746,
-      0.9684,
-      0.9565,
-      0.9485,
-      0.9443,
+      0.961,
+      0.9298,
+      0.9186,
+      0.9014,
+      0.8682,
+      0.8189,
+      0.8035,
+      0.8774,
       0.936,
-      0.9394,
-      0.9387,
-      0.9278,
-      0.916,
-      0.9079
+      0.9425,
+      0.9001,
+      0.8764,
+      0.8848,
+      0.9142,
+      0.963,
+      0.9983,
+      0.9915,
+      0.9622,
+      0.9338,
+      0.9434,
+      0.954,
+      0.9628,
+      0.9572,
+      0.9496,
+      0.9453,
+      0.9359,
+      0.9526,
+      0.9642,
+      0.9605,
+      0.9438,
+      0.9291,
+      0.9117,
+      0.8961,
+      0.8883,
+      0.8824,
+      0.8779,
+      0.8745,
+      0.8931,
+      0.9908,
+      1.0255,
+      1.006,
+      0.9827,
+      0.96,
+      0.9593,
+      0.96,
+      0.9518,
+      0.9402,
+      0.9277,
+      0.915,
+      0.9079,
+      0.9028,
+      0.8931,
+      0.8865,
+      0.883,
+      0.8762,
+      0.879,
+      0.8784,
+      0.8695,
+      0.8598,
+      0.8531
     ],
     "serieCocaBruta": [
       1.0,
@@ -993,216 +993,101 @@
       0.951,
       0.9436
     ],
-    "serieCocaRio": [
-      1.0,
-      0.961,
-      0.9298,
-      0.9186,
-      0.9014,
-      0.8682,
-      0.8189,
-      0.8035,
-      0.8774,
-      0.936,
-      0.9425,
-      0.9001,
-      0.8764,
-      0.8848,
-      0.9142,
-      0.963,
-      0.9983,
-      0.9915,
-      0.9622,
-      0.9338,
-      0.9434,
-      0.954,
-      0.9628,
-      0.9572,
-      0.9496,
-      0.9453,
-      0.9359,
-      0.9526,
-      0.9642,
-      0.9605,
-      0.9438,
-      0.9291,
-      0.9117,
-      0.8961,
-      0.8883,
-      0.8824,
-      0.8779,
-      0.8745,
-      0.8931,
-      0.9908,
-      1.0255,
-      1.006,
-      0.9827,
-      0.96,
-      0.9593,
-      0.96,
-      0.9518,
-      0.9402,
-      0.9277,
-      0.915,
-      0.9079,
-      0.9028,
-      0.8931,
-      0.8865,
-      0.883,
-      0.8762,
-      0.879,
-      0.8784,
-      0.8695,
-      0.8598,
-      0.8531
-    ],
-    "coca_rio": {
-      "q24": 182.0,
-      "mw24": 845,
-      "k": 5.25,
-      "e": 21.0,
-      "tope": 1200.0,
-      "ahora": 174.0,
-      "q72": 196.9,
-      "mediana7": 196.0,
-      "crecida": false,
-      "mw_1d": 816,
-      "mw_3d": 818,
-      "mw_7d": 709
-    },
     "serie_fecha": "2026-11-10",
     "ccs_paro": {
       "dia": "2026-11-10",
-      "horas": 20.5,
-      "real_mw": 831,
+      "horas": 21.5,
+      "real_mw": 830,
       "posible_mw": 830,
-      "fraccion": 1.001,
+      "fraccion": 1.0,
       "paro": false
     },
-    "ccs_crecida": {
-      "dias": 401,
-      "tabla": [
-        {
-          "desde": 0,
-          "hasta": 500,
-          "dias": 357,
-          "rendimiento": 0.97,
-          "malos": 7,
-          "factor": 1.0
-        },
-        {
-          "desde": 500,
-          "hasta": 700,
-          "dias": 29,
-          "rendimiento": 0.953,
-          "malos": 1,
-          "factor": 0.985
-        },
-        {
-          "desde": 700,
-          "hasta": 1000,
-          "dias": 13,
-          "rendimiento": 0.843,
-          "malos": 4,
-          "factor": 0.905
-        },
-        {
-          "desde": 1000,
-          "hasta": null,
-          "dias": 2,
-          "rendimiento": 0.697,
-          "malos": 1,
-          "factor": 0.905
-        }
-      ],
-      "previsto": []
-    },
     "otrasRios": {
-      "frac": 0.287,
+      "frac": 0.289,
       "serie": [
         1.0,
         0.9967,
         0.979,
         0.9648,
-        0.9689,
-        0.9881,
-        1.0311,
-        1.0362,
-        1.0681,
-        1.1314,
-        1.1244,
-        1.0601,
-        1.0656,
-        1.1161,
-        1.1106,
-        1.1167,
-        1.1593,
-        1.1731,
-        1.1478,
-        1.128,
-        1.1529,
-        1.1506,
-        1.1348,
-        1.1136,
-        1.1103,
-        1.1082,
-        1.1079,
-        1.1014,
-        1.094,
-        1.0859,
-        1.0687,
-        1.0482,
-        1.032,
-        1.0368,
-        1.0674,
-        1.0672,
-        1.0439,
-        1.0285,
-        1.0148,
-        1.0175,
+        0.9685,
+        0.9872,
+        1.0295,
         1.0345,
-        1.0277,
-        1.0208,
-        1.0172,
-        1.0156,
-        1.0096,
-        1.0083,
-        1.0048,
-        1.0004,
-        0.9993,
-        1.0046,
-        1.0214,
-        1.0569,
+        1.0662,
+        1.1291,
+        1.122,
         1.0584,
-        1.0594,
-        1.0423,
-        1.0268,
-        1.0557,
-        1.0591,
-        1.0597,
-        1.0339
+        1.0639,
+        1.1138,
+        1.1085,
+        1.1149,
+        1.1579,
+        1.1719,
+        1.1465,
+        1.1267,
+        1.1521,
+        1.1499,
+        1.1341,
+        1.113,
+        1.1099,
+        1.1076,
+        1.1073,
+        1.1007,
+        1.0933,
+        1.0851,
+        1.0679,
+        1.0477,
+        1.0316,
+        1.0364,
+        1.0666,
+        1.0664,
+        1.0433,
+        1.0281,
+        1.0146,
+        1.0174,
+        1.0345,
+        1.0276,
+        1.0207,
+        1.0171,
+        1.0154,
+        1.0095,
+        1.0081,
+        1.0047,
+        1.0003,
+        0.9992,
+        1.0044,
+        1.021,
+        1.056,
+        1.0575,
+        1.0585,
+        1.0416,
+        1.0263,
+        1.0548,
+        1.0582,
+        1.0588,
+        1.0333
       ]
     },
     "otras_rios_info": {
       "pastaza": {
-        "mw_ayer": 246,
+        "mw_ayer": 247,
         "rel_7d": 0.944,
         "aprendizaje": 0.5,
         "casos": 0
       },
       "zamora": {
-        "mw_ayer": 118,
+        "mw_ayer": 121,
         "rel_7d": 0.6,
         "aprendizaje": 0.389,
         "casos": 36
       },
       "jubones": {
-        "mw_ayer": 69,
+        "mw_ayer": 68,
         "rel_7d": 2.124,
         "aprendizaje": 0.529,
         "casos": 36
       },
-      "mw_total": 433,
+      "mw_total": 436,
       "other": 1510
     },
     "otras_sombra": {
@@ -1219,71 +1104,71 @@
       "nota": "la realidad bajó 0.65 veces lo predicho; se corrige 0.811 (con 12 días)"
     },
     "prediccion_foto": {
-      "dias_critica": 57.2,
-      "cota_3d": 2125.19,
-      "cota_5d": 2124.03
+      "dias_critica": 22.7,
+      "cota_3d": 2124.95,
+      "cota_5d": 2123.54
     },
     "memoria": [
-      -4.05,
-      0.22,
-      -0.78,
-      2.78,
-      1.39,
-      -5.62,
-      2.05,
-      -1.75,
-      -1.7,
-      15.0,
-      10.84,
-      18.02,
-      2.48,
-      2.16,
-      -4.46,
-      -9.45,
-      -10.7,
+      -3.34,
+      2.9,
+      5.28,
+      9.86,
+      7.93,
+      -1.21,
+      6.26,
+      3.77,
+      6.04,
+      23.26,
+      18.2,
+      25.31,
+      9.14,
+      10.37,
+      5.36,
+      2.09,
+      1.41,
+      9.38,
+      10.29,
       -2.22,
-      -1.48,
-      -13.62,
-      -8.64,
-      -11.73,
-      -11.83,
-      -10.38,
-      -3.68,
-      -4.07,
-      -13.35,
-      -1.9,
-      1.75,
-      7.04,
-      9.07,
-      14.38,
-      13.15,
-      1.42,
-      7.15,
-      5.42,
-      5.31,
-      4.94,
-      4.95,
-      -7.54,
-      -19.26,
-      -6.09,
-      -6.18,
-      -4.68,
-      5.74,
-      -8.25,
-      2.16,
-      -7.82,
       1.65,
-      0.71,
-      0.84,
-      10.07,
-      -4.17,
-      3.66,
-      -7.15,
-      3.18,
-      5.87,
-      10.45,
-      13.74,
-      14.71
+      -0.79,
+      -0.54,
+      0.78,
+      7.62,
+      8.05,
+      -0.91,
+      8.89,
+      12.43,
+      17.13,
+      18.52,
+      23.76,
+      21.78,
+      10.37,
+      15.26,
+      13.61,
+      13.6,
+      13.67,
+      15.93,
+      8.45,
+      -3.87,
+      6.32,
+      5.66,
+      6.88,
+      17.81,
+      4.92,
+      13.92,
+      4.06,
+      11.59,
+      10.58,
+      10.78,
+      20.32,
+      6.1,
+      12.72,
+      2.27,
+      12.25,
+      14.8,
+      18.76,
+      21.43,
+      22.15
     ],
     "memoria_info": {
       "corridas": 27,
@@ -1291,17 +1176,17 @@
       "nota": "promedio ponderado de las 27 corridas de las últimas 48 h (antigüedad y acierto), cada una anclada a su cota"
     },
     "laboratorio": {
-      "actualizado": "2026-11-10T20:00-05:00",
-      "titular_1d_m": 0.252,
+      "actualizado": "2026-11-10T21:00-05:00",
+      "titular_1d_m": 0.255,
       "candidatos": {
         "coca_rio_real": {
           "estado": "empate",
-          "mejora_1d": 0.013,
+          "mejora_1d": 0.015,
           "dias": 8
         },
         "sin_autoajuste": {
           "estado": "empate",
-          "mejora_1d": 0.038,
+          "mejora_1d": 0.034,
           "dias": 8
         },
         "paute_sin_ajuste": {
@@ -1311,62 +1196,62 @@
         },
         "sin_memoria": {
           "estado": "empate",
-          "mejora_1d": -0.076,
+          "mejora_1d": -0.071,
           "dias": 8
         },
         "corrige_error_3": {
           "estado": "pierde",
-          "mejora_1d": -0.511,
+          "mejora_1d": -0.545,
           "dias": 8
         },
         "corrige_error_6": {
           "estado": "pierde",
-          "mejora_1d": -0.466,
+          "mejora_1d": -0.482,
           "dias": 8
         },
         "corrige_error_6_lento": {
           "estado": "pierde",
-          "mejora_1d": -0.466,
+          "mejora_1d": -0.482,
           "dias": 8
         },
         "sesgo_plazo_50": {
           "estado": "pierde",
-          "mejora_1d": -0.11,
+          "mejora_1d": -0.101,
           "dias": 8
         },
         "sesgo_plazo_100": {
           "estado": "pierde",
-          "mejora_1d": -0.25,
+          "mejora_1d": -0.231,
           "dias": 8
         },
         "autoajuste_completo": {
           "estado": "empate",
-          "mejora_1d": -0.072,
+          "mejora_1d": -0.068,
           "dias": 8
         },
         "paute_ajuste_completo": {
           "estado": "empate",
-          "mejora_1d": 0.005,
+          "mejora_1d": 0.004,
           "dias": 8
         },
         "coca_mitad": {
           "estado": "empate",
-          "mejora_1d": 0.012,
+          "mejora_1d": 0.013,
           "dias": 8
         },
         "otros_rios_planos": {
           "estado": "empate",
-          "mejora_1d": -0.018,
+          "mejora_1d": -0.019,
           "dias": 8
         },
         "dia_semana_suave": {
           "estado": "pierde",
-          "mejora_1d": -0.145,
+          "mejora_1d": -0.143,
           "dias": 8
         },
         "humedo_completo": {
           "estado": "empate",
-          "mejora_1d": 0.016,
+          "mejora_1d": 0.018,
           "dias": 8
         },
         "cortes_siguen_7d": {
@@ -1376,107 +1261,107 @@
         },
         "corrige_y_sesgo": {
           "estado": "pierde",
-          "mejora_1d": -0.511,
+          "mejora_1d": -0.545,
           "dias": 8
         },
         "ajustes_completos": {
           "estado": "empate",
-          "mejora_1d": -0.068,
+          "mejora_1d": -0.064,
           "dias": 8
         },
         "memoria_mitad": {
           "estado": "empate",
-          "mejora_1d": -0.018,
+          "mejora_1d": -0.015,
           "dias": 8
         },
         "memoria_desde_dia3": {
           "estado": "empate",
-          "mejora_1d": -0.076,
+          "mejora_1d": -0.071,
           "dias": 8
         },
         "sin_memoria_paute_bruto": {
           "estado": "empate",
-          "mejora_1d": -0.083,
+          "mejora_1d": -0.077,
           "dias": 8
         },
         "demanda_real": {
           "estado": "empate",
-          "mejora_1d": -0.058,
+          "mejora_1d": -0.061,
           "dias": 8
         },
         "demanda_real_mem": {
           "estado": "empate",
-          "mejora_1d": -0.009,
+          "mejora_1d": -0.015,
           "dias": 8
         },
         "demanda_real_lluvia": {
           "estado": "empate",
-          "mejora_1d": -0.055,
+          "mejora_1d": -0.056,
           "dias": 8
         },
         "patron_1ano": {
           "estado": "pierde",
-          "mejora_1d": -0.155,
+          "mejora_1d": -0.151,
           "dias": 8
         },
         "patron_temporada": {
           "estado": "pierde",
-          "mejora_1d": -0.178,
+          "mejora_1d": -0.174,
           "dias": 8
         },
         "patron_historico": {
           "estado": "pierde",
-          "mejora_1d": -0.204,
+          "mejora_1d": -0.201,
           "dias": 8
         },
         "sesgo_plazo_reciente": {
           "estado": "pierde",
-          "mejora_1d": -0.405,
+          "mejora_1d": -0.375,
           "dias": 8
         },
         "sesgo_y_error6": {
           "estado": "pierde",
-          "mejora_1d": -0.466,
+          "mejora_1d": -0.482,
           "dias": 8
         },
         "ajustes_y_sesgo50": {
           "estado": "pierde",
-          "mejora_1d": -0.202,
+          "mejora_1d": -0.189,
           "dias": 8
         },
         "corte_medido": {
           "estado": "midiendo",
-          "mejora_1d": -0.16,
+          "mejora_1d": -0.174,
           "dias": 3
         },
         "corte_medido_tend": {
           "estado": "midiendo",
-          "mejora_1d": -0.552,
+          "mejora_1d": -0.601,
           "dias": 3
         },
         "sesgo_plazo_75": {
           "estado": "pierde",
-          "mejora_1d": -0.177,
+          "mejora_1d": -0.164,
           "dias": 8
         },
         "coca_real_y_sesgo50": {
           "estado": "empate",
-          "mejora_1d": -0.075,
+          "mejora_1d": -0.065,
           "dias": 8
         },
         "corrige_tendencia_3": {
           "estado": "pierde",
-          "mejora_1d": -0.524,
+          "mejora_1d": -0.561,
           "dias": 8
         },
         "sesgo_reciente_7d": {
           "estado": "pierde",
-          "mejora_1d": -0.385,
+          "mejora_1d": -0.363,
           "dias": 8
         },
         "demanda_real_y_sesgo50": {
           "estado": "pierde",
-          "mejora_1d": -0.178,
+          "mejora_1d": -0.173,
           "dias": 8
         },
         "entrada_por_pendiente": {
@@ -1486,17 +1371,17 @@
         },
         "entrada_por_pendiente_6h": {
           "estado": "empate",
-          "mejora_1d": -0.019,
+          "mejora_1d": -0.018,
           "dias": 7
         },
         "tendencia_24h_mitad": {
           "estado": "pierde",
-          "mejora_1d": -0.618,
+          "mejora_1d": -0.614,
           "dias": 7
         },
         "tendencia_y_sesgo50_largo": {
           "estado": "pierde",
-          "mejora_1d": -0.618,
+          "mejora_1d": -0.614,
           "dias": 7
         },
         "sesgo_semana": {
@@ -1511,72 +1396,72 @@
         },
         "memoria_mitad_coca_real": {
           "estado": "midiendo",
-          "mejora_1d": 0.006,
+          "mejora_1d": 0.012,
           "dias": 6
         },
         "memoria_mitad_y_sesgo50_largo": {
           "estado": "midiendo",
-          "mejora_1d": -0.014,
+          "mejora_1d": -0.01,
           "dias": 6
         },
         "caudal_72h_mitad": {
           "estado": "midiendo",
-          "mejora_1d": -0.044,
+          "mejora_1d": -0.045,
           "dias": 6
         },
         "patron_hist_y_caudal72": {
           "estado": "midiendo",
-          "mejora_1d": -0.311,
+          "mejora_1d": -0.302,
           "dias": 6
         },
         "nov_mas_lluvioso": {
           "estado": "midiendo",
-          "mejora_1d": -0.023,
+          "mejora_1d": -0.017,
           "dias": 5
         },
         "nov_mucho_mas_lluvioso": {
           "estado": "midiendo",
-          "mejora_1d": -0.099,
+          "mejora_1d": -0.084,
           "dias": 5
         },
         "corrige_tendencia_mitad": {
           "estado": "midiendo",
-          "mejora_1d": -0.289,
+          "mejora_1d": -0.302,
           "dias": 5
         },
         "patron_hist_y_tendencia_mitad": {
           "estado": "midiendo",
-          "mejora_1d": -0.473,
+          "mejora_1d": -0.479,
           "dias": 5
         },
         "patron_tend_mitad_sesgo50_largo": {
           "estado": "midiendo",
-          "mejora_1d": -0.473,
+          "mejora_1d": -0.479,
           "dias": 5
         },
         "dia_semana_suave_coca_real": {
           "estado": "midiendo",
-          "mejora_1d": -0.112,
+          "mejora_1d": -0.104,
           "dias": 5
         },
         "ccs_por_regimen": {
           "estado": "midiendo",
-          "mejora_1d": -0.004,
+          "mejora_1d": -0.003,
           "dias": 5
         },
         "tend_mitad_coca_dia2": {
           "estado": "midiendo",
-          "mejora_1d": -0.371,
+          "mejora_1d": -0.385,
           "dias": 4
         },
         "patron_hist_coca_dia2": {
           "estado": "midiendo",
-          "mejora_1d": -0.159,
+          "mejora_1d": -0.151,
           "dias": 4
         },
         "pht_mitad_coca_dia2": {
           "estado": "midiendo",
-          "mejora_1d": -0.507,
+          "mejora_1d": -0.513,
           "dias": 4
         },
         "otras_hidro_rios": {
@@ -1586,27 +1471,27 @@
         },
         "reparto_reciente": {
           "estado": "midiendo",
-          "mejora_1d": -0.09,
+          "mejora_1d": -0.064,
           "dias": 3
         },
         "reparto_reciente_y_tendencia_mitad": {
           "estado": "midiendo",
-          "mejora_1d": -0.499,
+          "mejora_1d": -0.488,
           "dias": 3
         },
         "sin_autoajuste_coca_real": {
           "estado": "midiendo",
-          "mejora_1d": -0.041,
+          "mejora_1d": -0.039,
           "dias": 3
         },
         "sin_autoajuste_sesgo50_largo": {
           "estado": "midiendo",
-          "mejora_1d": -0.008,
+          "mejora_1d": -0.014,
           "dias": 3
         },
         "recesion_paute_piso": {
           "estado": "midiendo",
-          "mejora_1d": 0.01,
+          "mejora_1d": 0.008,
           "dias": 3
         },
         "demanda_tmax_dia": {
@@ -1616,12 +1501,12 @@
         },
         "reparto_y_recesion": {
           "estado": "midiendo",
-          "mejora_1d": 0.066,
+          "mejora_1d": 0.098,
           "dias": 2
         },
         "memoria_mitad_coca_real_reparto": {
           "estado": "midiendo",
-          "mejora_1d": -0.086,
+          "mejora_1d": -0.022,
           "dias": 2
         },
         "lluvia_gye30": {
@@ -1636,22 +1521,22 @@
         },
         "embalse_combinado": {
           "estado": "midiendo",
-          "mejora_1d": -0.067,
+          "mejora_1d": -0.124,
           "dias": 1
         },
         "intermedia_fija": {
           "estado": "midiendo",
-          "mejora_1d": -0.004,
+          "mejora_1d": 0.022,
           "dias": 1
         },
         "mazar_domingo_parado": {
           "estado": "midiendo",
-          "mejora_1d": -0.044,
+          "mejora_1d": -0.101,
           "dias": 1
         },
         "combinado_domingo_intermedia": {
           "estado": "midiendo",
-          "mejora_1d": 0.054,
+          "mejora_1d": 0.006,
           "dias": 1
         },
         "zcit_sur_lluvia_paute": {
@@ -1671,17 +1556,17 @@
         },
         "escala_grande_alguna_media": {
           "estado": "midiendo",
-          "mejora_1d": 0.001,
+          "mejora_1d": 0.002,
           "dias": 1
         },
         "combinado_coca_real": {
           "estado": "midiendo",
-          "mejora_1d": -0.405,
+          "mejora_1d": -0.397,
           "dias": 1
         },
         "semana_costa_lluviosa": {
           "estado": "midiendo",
-          "mejora_1d": -0.84,
+          "mejora_1d": -0.811,
           "dias": 1
         },
         "paute_guardian_dia0": {
@@ -1691,56 +1576,56 @@
         },
         "memoria_mitad_coca_real_autoajuste_comp": {
           "estado": "midiendo",
-          "mejora_1d": 0.32,
+          "mejora_1d": 0.319,
           "dias": 1
         }
       }
     },
     "prediccion": {
-      "dias_zona_2120": 21.5,
+      "dias_zona_2120": 20.8,
       "rango_zona_2120": [
-        14.8,
+        14.3,
         null
       ],
-      "dias": 58.4,
+      "dias": 56.6,
       "rango": [
-        43.7,
+        37.6,
         null
       ],
-      "ritmo_hoy_m_dia": -0.27,
+      "ritmo_hoy_m_dia": -0.29,
       "numero": {
         "critica": {
-          "dias": 55.5,
+          "dias": 50.1,
           "rango": [
-            19.3,
-            59.9
+            20.2,
+            59.8
           ],
-          "entran": 0.54,
-          "promedio_fechas": 44.4
+          "entran": 0.57,
+          "promedio_fechas": 43.0
         },
         "parada": {
-          "dias": 58.5,
+          "dias": 55.8,
           "rango": [
-            22.3,
-            59.9
+            22.2,
+            59.8
           ],
-          "entran": 0.54,
-          "promedio_fechas": 46.2
+          "entran": 0.57,
+          "promedio_fechas": 44.8
         },
         "corridas": 27,
-        "peso_ultima": 0.071,
-        "corregidas_por_cortes": 19,
+        "peso_ultima": 0.068,
+        "corregidas_por_cortes": 18,
         "nota": "fecha en que la trayectoria promedio ponderada de las corridas de las últimas 48 h (antigüedad y acierto) cruza la cota; el rango sale de las fechas de cada corrida"
       },
-      "dias_critica": 55.5,
+      "dias_critica": 50.6,
       "rango_critica": [
-        36.8,
+        35.6,
         null
       ],
       "salida_critica": null,
       "parada_en_ventana": true,
       "minimo_critica": {
-        "t": 59.0,
+        "t": 57.0,
         "cota": 2115.0
       }
     },
@@ -1754,17 +1639,17 @@
         "2116": {
           "7": 0.0,
           "14": 0.105,
-          "30": 0.105
+          "30": 0.158
         },
         "2115": {
           "7": 0.0,
-          "14": 0.053,
+          "14": 0.105,
           "30": 0.105
         }
       },
       "semana_seca": {
         "2120": {
-          "7": 0.105,
+          "7": 0.158,
           "14": 0.474,
           "30": 0.737
         },
@@ -1774,7 +1659,7 @@
           "30": 0.368
         },
         "2115": {
-          "7": 0.0,
+          "7": 0.053,
           "14": 0.105,
           "30": 0.316
         }
@@ -1783,69 +1668,65 @@
     "aciertos": {
       "por_horizonte": {
         "1": {
-          "n": 299,
+          "n": 300,
           "dias": 24,
           "error_medio_m": 0.34,
           "sesgo_m": -0.09
         },
         "2": {
-          "n": 284,
+          "n": 285,
           "dias": 23,
           "error_medio_m": 0.57,
           "sesgo_m": -0.26
         },
         "3": {
-          "n": 275,
+          "n": 276,
           "dias": 22,
           "error_medio_m": 0.81,
           "sesgo_m": -0.56
         },
         "5": {
-          "n": 246,
+          "n": 247,
           "dias": 20,
           "error_medio_m": 1.51,
           "sesgo_m": -1.42
         },
         "7": {
-          "n": 222,
+          "n": 223,
           "dias": 18,
-          "error_medio_m": 2.5,
+          "error_medio_m": 2.49,
           "sesgo_m": -2.4
         },
         "10": {
-          "n": 181,
+          "n": 182,
           "dias": 15,
           "error_medio_m": 3.42,
-          "sesgo_m": -3.13
+          "sesgo_m": -3.14
         },
         "14": {
-          "n": 128,
+          "n": 129,
           "dias": 11,
-          "error_medio_m": 4.47,
-          "sesgo_m": -4.45
+          "error_medio_m": 4.44,
+          "sesgo_m": -4.41
+        },
+        "20": {
+          "n": 1,
+          "dias": 1,
+          "error_medio_m": 8.63,
+          "sesgo_m": -8.63
         }
       },
       "ultimo_1d": {
-        "pred_ts": "2026-11-09T20:00-05:00",
+        "pred_ts": "2026-11-09T21:00-05:00",
         "h": 1,
-        "obj_ts": "2026-11-10T20:00-05:00",
-        "cota0": 2126.63,
-        "pred": 2126.23,
-        "real": 2126.7,
-        "err": -0.47,
+        "obj_ts": "2026-11-10T21:00-05:00",
+        "cota0": 2126.58,
+        "pred": 2126.18,
+        "real": 2126.64,
+        "err": -0.46,
         "origen": "robot"
       },
       "recientes_1d": [
-        {
-          "pred_ts": "2026-11-09T05:00-05:00",
-          "h": 1,
-          "obj_ts": "2026-11-10T05:00-05:00",
-          "cota0": 2127.34,
-          "pred": 2127.09,
-          "real": 2126.64,
-          "err": 0.45,
-          "origen": "robot"
-        },
         {
           "pred_ts": "2026-11-09T08:00-05:00",
           "h": 1,
@@ -1915,57 +1796,67 @@
           "real": 2126.7,
           "err": -0.47,
           "origen": "robot"
+        },
+        {
+          "pred_ts": "2026-11-09T21:00-05:00",
+          "h": 1,
+          "obj_ts": "2026-11-10T21:00-05:00",
+          "cota0": 2126.58,
+          "pred": 2126.18,
+          "real": 2126.64,
+          "err": -0.46,
+          "origen": "robot"
         }
       ],
       "semana": {
         "1": {
-          "n": 87,
-          "mediana_m": 0.2,
+          "n": 88,
+          "mediana_m": 0.21,
           "p90_m": 0.59,
           "error_medio_m": 0.26,
           "persistencia_m": 0.41
         },
         "2": {
-          "n": 88,
+          "n": 89,
           "mediana_m": 0.27,
           "p90_m": 0.57,
           "error_medio_m": 0.29,
           "persistencia_m": 0.68
         },
         "3": {
-          "n": 89,
-          "mediana_m": 0.28,
+          "n": 90,
+          "mediana_m": 0.3,
           "p90_m": 0.75,
-          "error_medio_m": 0.33,
-          "persistencia_m": 1.09
+          "error_medio_m": 0.34,
+          "persistencia_m": 1.08
         },
         "5": {
-          "n": 92,
+          "n": 93,
           "mediana_m": 0.71,
           "p90_m": 1.61,
           "error_medio_m": 0.75,
-          "persistencia_m": 2.07
+          "persistencia_m": 2.06
         },
         "7": {
-          "n": 92,
+          "n": 93,
           "mediana_m": 1.32,
           "p90_m": 2.21,
-          "error_medio_m": 1.29,
-          "persistencia_m": 3.07
+          "error_medio_m": 1.3,
+          "persistencia_m": 3.05
         },
         "10": {
-          "n": 91,
-          "mediana_m": 2.43,
+          "n": 92,
+          "mediana_m": 2.46,
           "p90_m": 3.92,
-          "error_medio_m": 2.35,
-          "persistencia_m": 3.95
+          "error_medio_m": 2.37,
+          "persistencia_m": 3.93
         },
         "14": {
-          "n": 88,
-          "mediana_m": 1.42,
+          "n": 89,
+          "mediana_m": 1.36,
           "p90_m": 8.67,
-          "error_medio_m": 2.5,
-          "persistencia_m": 4.49
+          "error_medio_m": 2.47,
+          "persistencia_m": 4.48
         }
       },
       "semana_1d": {
@@ -2062,10 +1953,10 @@
           },
           {
             "dia": "2026-11-10",
-            "n": 11,
+            "n": 12,
             "n5": 0,
             "n10": 0,
-            "mediana_m": 0.45,
+            "mediana_m": 0.46,
             "mejor": {
               "pred_ts": "2026-11-09T09:00-05:00",
               "obj_ts": "2026-11-10T09:00-05:00",
@@ -2076,7 +1967,7 @@
             "paro_h": 0
           }
         ],
-        "n": 87,
+        "n": 88,
         "n5": 18,
         "n10": 12,
         "hasta": {
@@ -2087,9 +1978,9 @@
           "30": 55,
           "40": 64
         },
-        "sesgo_m": 0.059,
-        "direccion": 0.793,
-        "mediana_m": 0.2,
+        "sesgo_m": 0.053,
+        "direccion": 0.784,
+        "mediana_m": 0.21,
         "p90_m": 0.59,
         "error_medio_m": 0.26,
         "persistencia_m": 0.41,
