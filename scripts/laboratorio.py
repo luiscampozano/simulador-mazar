@@ -2923,3 +2923,42 @@ CANDIDATOS["importacion_6h"] = {
     "hipotesis": "El titular usa la importación promedio de 24 h y la mantiene fija; cuando Colombia empieza o deja de vender "
                  "(10 nov: ~5 → ~205 MW, Mazar 100 → 35 MW, error −46 cm a 1 día) reacciona con casi un día de retraso. Con las "
                  "últimas 6 h el modelo ve el cambio de despacho el mismo día y baja el error a 1–3 días."}
+
+
+# ---------------------------------------------------------------- Coca Codo y las crecidas del río (Luis, 10 nov)
+# Historia (oct 2025 – nov 2026, registro/coca_rio.json y ccs_turbinado.json, horario): con el río Coca bajo ~600 m³/s de
+# promedio diario Coca Codo turbina casi lleno (disponibilidad 0,95–0,97 entre 300 y 600); los paros por crecida llegan
+# con el río alto: 600–750 → 0,92; 750–1.200 → 0,83 (paros de 4–11 h: 10 y 14 nov 2025, 28 nov 2025, 11 y 21 may 2026);
+# ≥ 1.200 → 0,42 (21 may 2026, 2.784 m³/s). Con el río bajo 900 m³/s por hora, paros solo 0,3–5 % de las horas (otras
+# causas). El titular solo recorta Coca Codo a la mitad si el caudal equivalente pasa de 450 (casi nunca) o con el paro de
+# hoy. Este candidato usa el pronóstico GloFAS del río (coca_predicciones.json: q0 × serie diaria) para anticipar el paro.
+def _disp_ccs(rio):
+    if rio is None: return 1.0
+    if rio < 600: return 1.0
+    if rio < 750: return 0.92
+    if rio < 1200: return 0.83
+    return 0.5
+
+
+def c_coca_crecida_historia(P, ctx, mod):
+    pr = _leer(os.path.join("registro", "coca_predicciones.json"), [])
+    if not isinstance(pr, list) or not pr: return None
+    u = pr[-1]; q0 = u.get("q0"); serie = u.get("serie") or []
+    if not q0 or not serie: return None
+    rio = [q0 * s for s in serie]
+    f_rio = [_disp_ccs(r) for r in rio]
+    if all(f >= 0.999 for f in f_rio):
+        return P, ctx, {"rio_max_pronosticado": round(max(rio)), "sin_cambio": True}
+    base = ctx.get("ccsFactor") or [1.0] * len(f_rio)
+    n = max(len(base), len(f_rio))
+    nuevo = [round(base[min(d, len(base) - 1)] * (f_rio[d] if d < len(f_rio) else 1.0), 3) for d in range(n)]
+    ctx["ccsFactor"] = nuevo
+    return P, ctx, {"ccsFactor": nuevo, "rio_max_pronosticado": round(max(rio))}
+
+
+CANDIDATOS["coca_crecida_historia"] = {
+    "f": c_coca_crecida_historia, "promocion": "luis", "origen": "Claude 2026-11-11 (pedido de Luis: anticipar el paro de Coca Codo)",
+    "nombre": "Coca Codo: paro por crecida según el pronóstico del río",
+    "hipotesis": "Con el pronóstico del río Coca (GloFAS) se anticipa la menor disponibilidad de Coca Codo por crecida "
+                 "(calibrada con un año de datos horarios: 0,92 a 600–750 m³/s, 0,83 a 750–1.200, 0,5 sobre 1.200), "
+                 "en vez de esperar a que el paro ocurra; si Coca Codo da menos, Mazar debe turbinar más."}
