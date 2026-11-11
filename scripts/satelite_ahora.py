@@ -220,6 +220,11 @@ def main():
     os.makedirs("salida", exist_ok=True)
     json.dump(out, open("salida/ahora.json", "w"), separators=(",", ":"))
     historia(t1, pun1, pun0, flashes)
+    try:   # laboratorio de los avisos de tormenta: cada variante avisa y se califica sola con las imágenes siguientes (Luis, 11 nov)
+        import avisos_lab
+        avisos_lab.actualizar(T1, t1, (mov or {}).get("vectores") or [], N, O, PASO, SES)
+    except Exception as e:
+        print("avisos_lab:", str(e)[:160])
     frio = int((T1 < 215).sum()); print(f"Satélite {t1:%H:%M} UTC: celdas < 215 K: {frio} · rayos: {int(rayos.sum())} ({nglm} archivos GLM) · vectores de movimiento: {len((mov or {}).get('vectores') or [])}")
 
 
