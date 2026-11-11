@@ -148,6 +148,44 @@ def historia(t1, pun1, pun0, flashes):
     print(f"Historia: {len(H['serie'])} imágenes · {len(reg)} puntos")
 
 
+def movimiento(T0, T1, minutos, bloque=16, paso=8, busca=6, min_frio=8, min_corr=0.5):
+    """Luis 11 nov ("llega a tu barrio en ~40 min"): hacia dónde y a qué velocidad se mueven las nubes frías.
+    Correlación por bloques de 16×16 celdas (~88 km, cada ~44 km) entre la imagen de hace ~30 min y la actual, buscando
+    desplazamientos de hasta ±6 celdas (~33 km en 30 min) con ajuste parabólico fino. Solo bloques con ≥ 8 celdas ≤ 235 K y
+    correlación ≥ 0,5. Devuelve [lat, lon del centro del bloque, u (km/h hacia el este), v (km/h hacia el norte), correlación].
+    Es una extrapolación: sirve para la próxima hora o dos; las tormentas también nacen y mueren en el camino."""
+    I0 = np.nan_to_num(np.clip(255 - T0, 0, 40)); I1 = np.nan_to_num(np.clip(255 - T1, 0, 40))
+    F, Cc = I1.shape; out = []
+    for bi in range(0, F - bloque + 1, paso):
+        for bj in range(0, Cc - bloque + 1, paso):
+            b1 = I1[bi:bi + bloque, bj:bj + bloque]
+            if (b1 >= 20).sum() < min_frio: continue          # ≤ 235 K
+            best = None; sc = {}
+            for di in range(-busca, busca + 1):
+                for dj in range(-busca, busca + 1):
+                    i0, j0 = bi - di, bj - dj
+                    if i0 < 0 or j0 < 0 or i0 + bloque > F or j0 + bloque > Cc: continue
+                    b0 = I0[i0:i0 + bloque, j0:j0 + bloque]
+                    a, b = b1 - b1.mean(), b0 - b0.mean()
+                    den = math.sqrt((a * a).sum() * (b * b).sum())
+                    if den <= 0: continue
+                    r = float((a * b).sum() / den); sc[(di, dj)] = r
+                    if best is None or r > best[0]: best = (r, di, dj)
+            if not best or best[0] < min_corr: continue
+            r, di, dj = best
+            def sub(c, m, p):   # ajuste parabólico
+                d = m - 2 * c + p
+                return 0.0 if d >= 0 else 0.5 * (m - p) / d
+            fi = di + (sub(r, sc.get((di - 1, dj), r), sc.get((di + 1, dj), r)) if (di - 1, dj) in sc and (di + 1, dj) in sc else 0)
+            fj = dj + (sub(r, sc.get((di, dj - 1), r), sc.get((di, dj + 1), r)) if (di, dj - 1) in sc and (di, dj + 1) in sc else 0)
+            lat = N - PASO * (bi + bloque / 2); lon = O + PASO * (bj + bloque / 2)
+            h = minutos / 60
+            u = fj * PASO * 111.2 * math.cos(math.radians(lat)) / h; v = -fi * PASO * 111.2 / h
+            if abs(di) == busca or abs(dj) == busca: continue   # en el borde de la búsqueda: no confiable
+            out.append([round(lat, 2), round(lon, 2), round(u, 1), round(v, 1), round(r, 2)])
+    return out
+
+
 def b64(a):
     return base64.b64encode(np.ascontiguousarray(a).tobytes()).decode()
 
@@ -162,6 +200,15 @@ def main():
     if len(ks) < 2: sys.exit("sin imágenes GOES recientes")
     T1, t1, pun1 = escena(ks[-1]); T0, t0, pun0 = escena(ks[-2])
     rayos, nglm, flashes = glm(t1 - timedelta(minutes=10), t1 + timedelta(minutes=5))
+    mov = None
+    try:   # imagen de hace ~30 min (3 escenas antes) para el movimiento de las tormentas
+        if len(ks) >= 4:
+            Tm, tm, _ = escena(ks[-4]); mins = (t1 - tm).total_seconds() / 60
+            if 15 <= mins <= 45:
+                mov = {"desde": tm.isoformat(), "minutos": round(mins, 1), "campos": ["lat", "lon", "u_kmh_este", "v_kmh_norte", "correlacion"],
+                       "vectores": movimiento(Tm, T1, mins)}
+    except Exception as e:
+        print("movimiento:", str(e)[:120])
     tb = np.where(np.isfinite(T1), np.clip(np.rint(T1) - 150, 0, 254), 255).astype(np.uint8)          # 255 = sin dato
     d = np.where(np.isfinite(T1) & np.isfinite(T0), np.clip(np.rint(T1 - T0), -127, 127), -128).astype(np.int8)
     out = {"generado": ahora.isoformat(timespec="seconds"), "imagen": t1.isoformat(), "imagen_previa": t0.isoformat(),
@@ -169,10 +216,11 @@ def main():
            "archivos_glm": nglm, "norte": N, "oeste": O, "paso": PASO, "filas": FILAS, "cols": COLS,
            "fuente": "NOAA GOES-19 (ABI banda 13 y GLM), datos públicos",
            "tb_menos_150_u8": b64(tb), "cambio_10min_i8": b64(d), "rayos_u8": b64(np.clip(rayos, 0, 255).astype(np.uint8))}
+    if mov: out["movimiento"] = mov
     os.makedirs("salida", exist_ok=True)
     json.dump(out, open("salida/ahora.json", "w"), separators=(",", ":"))
     historia(t1, pun1, pun0, flashes)
-    frio = int((T1 < 215).sum()); print(f"Satélite {t1:%H:%M} UTC: celdas < 215 K: {frio} · rayos: {int(rayos.sum())} ({nglm} archivos GLM)")
+    frio = int((T1 < 215).sum()); print(f"Satélite {t1:%H:%M} UTC: celdas < 215 K: {frio} · rayos: {int(rayos.sum())} ({nglm} archivos GLM) · vectores de movimiento: {len((mov or {}).get('vectores') or [])}")
 
 
 if __name__ == "__main__":
