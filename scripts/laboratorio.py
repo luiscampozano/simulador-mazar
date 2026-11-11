@@ -672,6 +672,20 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_autoajuste_suave_coca_real(P, ctx, mod):
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    s = mod.get("serieCocaRio")
+    if not isinstance(r, (int, float)) or r <= 0 or not s:
+        return None
+    v = round(max(0.5, min(1.3, 1.0 + 0.25 * (float(r) - 1.0))), 3)
+    ctx["ajuste"] = v
+    ctx["serieCoca"] = list(s)
+    return P, ctx, {"ajuste": v, "serieCoca": list(s)}
+
+
+CANDIDATOS["autoajuste_suave_coca_real"] = {"f": c_autoajuste_suave_coca_real, "promocion": "auto", "origen": "Gemini 2026-11-11", "nombre": "Autoajuste suave (25 %) + río Coca real", "hipotesis": "Aplicar solo un cuarto del autoajuste medido (en vez de sin_autoajuste o el recortado del titular) junto con el pronóstico real del río Coca conserva la mejora a 1–2 días de sin_autoajuste sin empeorar a 7 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
