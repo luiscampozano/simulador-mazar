@@ -56,15 +56,31 @@ def llegada(cla, clo, cu, cv, la, lo, margen):
     return float(t[ok].min() * 60) if ok.any() else None
 
 
-def actualizar(T1, t1, vectores, N, O, PASO, SES=None):
+def _cargar(SES):
+    """Estado acumulado: el de disco (misma corrida del bucle) o el publicado. Vacío SOLO si aún no existe (404);
+    ante cualquier otro fallo devuelve None y la vuelta se salta, para no borrar lo acumulado."""
+    if os.path.exists("salida/avisos_lab.json"):
+        try:
+            L = json.load(open("salida/avisos_lab.json"))
+            if isinstance(L.get("pend"), list): return L
+        except Exception:
+            pass
+    if not SES: return {}
     try:
-        L = json.load(open("salida/avisos_lab.json")) if os.path.exists("salida/avisos_lab.json") else (SES.get(URL, timeout=30).json() if SES else {})
-        assert isinstance(L.get("pend"), list)
-    except Exception:
-        L = {}
+        r = SES.get(URL, timeout=30)
+        if r.status_code == 404: return {}
+        r.raise_for_status(); L = r.json()
+        return L if isinstance(L.get("pend"), list) else None
+    except Exception as e:
+        print("avisos_lab: no se pudo leer el estado, se salta esta vuelta:", str(e)[:100]); return None
+
+
+def actualizar(T1, t1, vectores, N, O, PASO, SES=None):
+    L = _cargar(SES)
+    if L is None: return None
     L.setdefault("pend", []); L.setdefault("obs", {}); L.setdefault("emit", {}); L.setdefault("dias", {}); L.setdefault("casos", [])
     ti = t1.isoformat(timespec="minutes")
-    if L.get("ultima") == ti: return L   # misma imagen: nada nuevo
+    if L.get("ultima") and ti <= L["ultima"]: return L   # misma imagen o una más vieja (listado atrasado): nada nuevo
     P = _puntos()
     dia = lambda t: (datetime.fromisoformat(t) - timedelta(hours=5)).strftime("%Y-%m-%d")
     def cuenta(t, v, campo, val=1):
@@ -79,8 +95,9 @@ def actualizar(T1, t1, vectores, N, O, PASO, SES=None):
     lim = (t1 - timedelta(hours=3)).isoformat(timespec="minutes")
     for p in hoy:
         prev = [e for e in L["obs"].get(p, []) if e[0] >= lim]
-        antes = prev[-1][1] if prev else None
-        if hoy[p] and antes is False:   # empieza la tormenta en el punto: ¿alguna variante lo había avisado?
+        # empieza la tormenta en el punto (2 imágenes seguidas sin ella, para no contar dos veces si la señal parpadea)
+        # y hay movimiento en esta vuelta (sin vectores ninguna variante puede avisar): ¿alguna lo había avisado?
+        if hoy[p] and vectores and len(prev) >= 2 and prev[-1][1] is False and prev[-2][1] is False:
             for v in VARIANTES:
                 e = L["emit"].get(f"{v}|{p}")
                 if not e or (t1 - datetime.fromisoformat(e)).total_seconds() > 150 * 60: cuenta(ti, v, "sorpresas")
@@ -91,7 +108,7 @@ def actualizar(T1, t1, vectores, N, O, PASO, SES=None):
         eta = datetime.fromisoformat(a["eta"])
         if t1 < eta + timedelta(minutes=VENTANA_MIN): quedan.append(a); continue
         ini, fin = (eta - timedelta(minutes=VENTANA_MIN)).isoformat(timespec="minutes"), (eta + timedelta(minutes=VENTANA_MIN)).isoformat(timespec="minutes")
-        vistos = [e[0] for e in L["obs"].get(a["p"], []) if ini <= e[0] <= fin and e[1]]
+        vistos = [e[0] for e in L["obs"].get(a["p"], []) if ini <= e[0] <= fin and e[0] > a["t"] and e[1]]   # solo después del aviso
         if vistos:
             err = (datetime.fromisoformat(vistos[0]) - eta).total_seconds() / 60
             cuenta(a["t"], a["v"], "aciertos"); cuenta(a["t"], a["v"], "err_abs_min", round(abs(err)))
@@ -119,7 +136,8 @@ def actualizar(T1, t1, vectores, N, O, PASO, SES=None):
     L.update({"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "ultima": ti,
               "variantes": {v: {"umbral_K": u, "margen_km": m} for v, (u, m) in VARIANTES.items()},
               "regla": f"verdad = celda ≤ {VERDAD_K} K a ≤ {VERDAD_KM:g} km del punto; acierto si aparece ±{VENTANA_MIN} min de la hora estimada; sorpresa = empieza sin aviso en 2 h 30 min"})
-    json.dump(L, open("salida/avisos_lab.json", "w"), ensure_ascii=False, separators=(",", ":"))
+    json.dump(L, open("salida/avisos_lab.json.tmp", "w"), ensure_ascii=False, separators=(",", ":"))
+    os.replace("salida/avisos_lab.json.tmp", "salida/avisos_lab.json")   # nunca un archivo a medias
     hoyd = L["dias"].get(dia(ti), {})
     print("Avisos (lab):", " · ".join(f"{v.split('_')[0]} {d['avisos']}a/{d['aciertos']}✓/{d['falsas']}✗/{d['sorpresas']}!" for v, d in hoyd.items()) or "sin avisos hoy",
           f"· pendientes {len(L['pend'])}")
