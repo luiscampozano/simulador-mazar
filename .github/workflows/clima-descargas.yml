@@ -1,0 +1,47 @@
+# Descargas públicas del clima (12 nov, Luis: "robots chicos a público" para ahorrar minutos de Actions del repo privado).
+# Solo bajan datos públicos; guardan en la rama datos-clima (no toca main ni la página).
+name: Clima · descargas públicas
+on:
+  schedule:
+    - cron: "27 */6 * * *"    # instrumentos del mar + SYNOP (cada 6 h)
+    - cron: "43 13 * * *"     # El Niño a fondo (08:43 en Ecuador)
+  workflow_dispatch:
+    inputs:
+      cual: { description: "instrumentos | enso | todo", default: "todo" }
+permissions: { contents: write }
+concurrency: { group: clima-descargas, cancel-in-progress: false }
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Traer lo guardado (rama datos-clima)
+        run: |
+          git fetch -q --depth 1 origin datos-clima && git --work-tree=clima_datos checkout FETCH_HEAD -- registro || echo "rama nueva"
+          mkdir -p clima_datos/registro
+      - name: Qué toca
+        id: q
+        run: |
+          c="${{ inputs.cual }}"; s="${{ github.event.schedule }}"
+          if [ "$c" = "instrumentos" ] || [ "$s" = "27 */6 * * *" ] || [ "$c" = "todo" ] || [ -z "$c$s" ]; then echo "ins=1" >> $GITHUB_OUTPUT; fi
+          if [ "$c" = "enso" ] || [ "$s" = "43 13 * * *" ] || [ "$c" = "todo" ]; then echo "enso=1" >> $GITHUB_OUTPUT; fi
+      - name: Instrumentos del mar y SYNOP
+        if: steps.q.outputs.ins == '1'
+        continue-on-error: true
+        run: python3 clima_datos/instrumentos.py && (python3 clima_datos/synop.py || echo "SYNOP no disponible esta vez")
+      - name: El Niño a fondo
+        if: steps.q.outputs.enso == '1'
+        continue-on-error: true
+        run: pip install -q requests && python3 clima_datos/enso_profundo.py
+      - name: Guardar en datos-clima
+        run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          rm -rf /tmp/d && cp -r clima_datos/registro /tmp/d
+          for i in 1 2 3; do
+            if git fetch -q --depth 1 origin datos-clima; then git checkout -q -f -B dc FETCH_HEAD; else git checkout -q --orphan dc && git rm -rqf . ; fi
+            rm -rf registro && mkdir -p registro && cp -r /tmp/d/. registro/
+            git add -A registro && (git commit -q -m "Descargas del clima $(date -u +%FT%H:%MZ)" || exit 0)
+            git push -q origin dc:datos-clima && exit 0; sleep 7
+          done
+          exit 1
