@@ -2539,11 +2539,11 @@ _cand_3nov("temporada_amazonia_seca", c_temporada_amazonia_seca, "Temporada dic�
 def _estacional_c3s():
     """Pronóstico de temporada de Copernicus C3S (multimodelo) que publica DataLab Ec cada mes: {"meses": {"AAAA-MM":
     {"paute": {"bajo", "sobre"}, "coca": {...}}}}. None si no está disponible."""
-    try:
-        import requests
-        r = requests.get("https://datalabecuador.com/d/c/estacional.json", timeout=30)
-        E = r.json() if r.ok else {}
-        return E if isinstance(E.get("meses"), dict) and E["meses"] else None
+    try:   # el robot es solo biblioteca estándar (sin requests); el servidor pide un User-Agent propio
+        import urllib.request
+        req = urllib.request.Request("https://datalabecuador.com/d/c/estacional.json", headers={"User-Agent": "DataLab Ec"})
+        E = json.loads(urllib.request.urlopen(req, timeout=30).read())
+        return E if isinstance(E, dict) and isinstance(E.get("meses"), dict) and E["meses"] else None
     except Exception:
         return None
 
@@ -2572,11 +2572,12 @@ def c_temporada_c3s(P, ctx, mod):
 
 def c_temporada_nino_coca(P, ctx, mod):
     """Con el mar de El Niño 1+2 en su tercio más cálido en oct–nov (este año: el más cálido desde 1981), el río Coca de
-    diciembre a febrero se toma ×0,85; el Paute no cambia (en Mazar la historia no muestra la señal)."""
+    diciembre a febrero se toma ×0,85; el Paute no cambia (en Mazar la historia no muestra la señal). Solo para la
+    temporada dic 2026–feb 2027: otro año habría que volver a mirar el mar."""
     sc = ctx.get("serieCoca")
     if not sc: return None
     fut = _dias_futuros(len(sc))
-    dentro = [k for k, d in enumerate(fut) if int(d[5:7]) in (12, 1, 2)]
+    dentro = [k for k, d in enumerate(fut) if "2026-12-01" <= d <= "2027-02-28"]
     if not dentro: return None
     sc2 = [round(v * 0.85, 4) if k in dentro else v for k, v in enumerate(sc)]
     ctx["serieCoca"] = sc2
@@ -2588,13 +2589,13 @@ _cand_3nov("temporada_c3s", c_temporada_c3s, "Temporada mes a mes según Coperni
            "El pronóstico de temporada de Copernicus C3S (hasta 9 sistemas, publicado por DataLab Ec cada mes) da para cada "
            "mes la probabilidad de lluvia bajo / sobre lo normal en las cuencas del Paute y del Coca. Multiplicar el caudal "
            "esperado de cada día por 1 − 0,3·(P bajo − P sobre) debe bajar el error a 14+ días. Con 3 sistemas (11 nov) "
-           "el Paute sale más lluvioso de lo normal y el Coca más seco en nov–dic: lo contrario de lo que muestra la "
-           "historia en años de mar cálido; este candidato mide quién tiene razón.", origen=_OR11)
+           "el Paute sale más lluvioso de lo normal (al revés de lo que muestra la historia en años de mar cálido) y el Coca "
+           "más seco en nov–dic (como la historia); este candidato mide quién tiene razón en el Paute.", origen=_OR11)
 _cand_3nov("temporada_nino_coca", c_temporada_nino_coca, "El Niño costero: río Coca ×0,85 en dic–feb",
-           "Prueba con 45 años de ERA5 (1981–2025): con el mar de El Niño 1+2 en su tercio más cálido en oct–nov, la lluvia "
+           "Prueba con 44 temporadas de ERA5 (dic 1981–feb 2025): con el mar de El Niño 1+2 en su tercio más cálido en oct–nov, la lluvia "
            "de dic–feb en la cuenca del Coca fue 9,1 mm/día contra 11,0 en los años fríos (r −0,42); en el Paute 7,6 contra "
            "8,7 (r −0,35), pero el caudal de Mazar 2010–2025 no muestra la señal (r 0,04), así que solo se toca el Coca. "
-           "Oct–nov 2026 es el más cálido desde 1981: el caudal del Coca de dic–feb debe venir ~15 % bajo el titular.",
+           "Octubre y lo que va de noviembre de 2026 es lo más cálido desde 1981: el caudal del Coca de dic–feb debe venir ~15 % bajo el titular.",
            origen=_OR11)
 
 
