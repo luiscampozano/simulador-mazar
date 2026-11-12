@@ -174,14 +174,14 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 31 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 180 m³/s en promedio de 24 h; a las 03:00 iba en 175 m³/s. Con ese río Coca Codo puede generar ~836 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 684 MW de promedio hoy. En el modelo equivale a 165 m³/s (rendimiento aplicado 98.8 %).",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 180 m³/s en promedio de 24 h; a las 03:00 iba en 175 m³/s. Con ese río Coca Codo puede generar ~836 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 675 MW de promedio hoy. En el modelo equivale a 165 m³/s (rendimiento aplicado 98.8 %).",
     "importacion": "Promedio de las últimas 24 h: 3 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 1017 MW y para eso Mazar suelta ≈ 79 m³/s mientras le entran 31: hoy baja ≈ 0,83 m/día. Promedio real de los últimos 7 días: baja 0,33 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1972,7 m, casi en su nivel mínimo, y casi no puede ayudar.",
     "termica": "Promedio de las últimas 24 h: 1218 MW térmicos + 51 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-11-12: 30.5 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 22 mm en los últimos 7 días y 57 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 56 mm en los últimos 7 días y 62 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
-    "demanda": "Equivale a los últimos días: Paute generó 794 MW en promedio ponderado del 2026-11-02 al 2026-11-11 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~33 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4654 MW (Cenace).",
+    "demanda": "Equivale a los últimos días: Paute generó 794 MW en promedio ponderado del 2026-11-02 al 2026-11-11 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~33 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4655 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1468 MW (día completo 2026-11-10, Cenace, automático). El complejo Paute generó 755 MW en ese mismo periodo.",
     "cortes": "10/11: sin cortes desde el 5/11 (AV1/AV2 terminaron el 4/11). Nada anunciado ni de emergencia para 11–17 nov (Primicias, El Comercio, Teleamazonas; prensa 10/11)."
   },
@@ -197,7 +197,7 @@
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-11-12T04:00",
+        "ultimo_dato": "2026-11-12T04:30",
         "medias_horas_propias": 47,
         "completadas_con_dia": "2026-11-10"
       },
@@ -214,7 +214,7 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-12T04:12-05:00",
+    "ultima_ejecucion": "2026-11-12T04:55-05:00",
     "registro": [
       "Cortes conocidos: 24 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
       "Memoria: 43 corridas de las últimas 48 h; sin memoria la zona crítica sería en 9.3 días",
@@ -399,7 +399,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-12T04:12-05:00"
+    "actualizado": "2026-11-12T04:55-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -1081,10 +1081,10 @@
     "serie_fecha": "2026-11-12",
     "ccs_paro": {
       "dia": "2026-11-12",
-      "horas": 4.5,
-      "real_mw": 684,
+      "horas": 5.0,
+      "real_mw": 675,
       "posible_mw": 825,
-      "fraccion": 0.829,
+      "fraccion": 0.818,
       "paro": false
     },
     "ccs_crecida": {
