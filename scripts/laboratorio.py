@@ -2502,6 +2502,40 @@ def c_escala_grande_alguna_media(P, ctx, mod):
     return (P, ctx, {"dias_humedos": sorted(hum), "serieMazar": s}) if s else None
 
 
+def _factor_estacional(cual, E):
+    """Cuánto cambia el caudal esperado en los meses de la temporada pronosticada: 1 − peso·(P(bajo lo normal) − P(sobre lo normal))."""
+    x = (E or {}).get(cual) or {}
+    if not isinstance(x.get("bajo"), (int, float)) or not isinstance(x.get("sobre"), (int, float)): return None
+    return max(0.7, min(1.3, 1 - float(E.get("peso", 0.3)) * (x["bajo"] - x["sobre"])))
+
+
+def c_temporada_amazonia_seca(P, ctx, mod):
+    """Pronóstico estacional (OMM): diciembre–febrero con lluvias bajo lo normal en la Amazonía y mixtas en los Andes.
+    Los días del pronóstico que caen en esos meses se multiplican por el factor de cada cuenca (Paute y Coca)."""
+    E = _leer(os.path.join(DIR, "estacional.json"), {})
+    meses = set(E.get("meses") or [])
+    fp, fc = _factor_estacional("paute", E), _factor_estacional("coca", E)
+    sm, sc = ctx.get("serieMazar"), ctx.get("serieCoca")
+    if not meses or fp is None or fc is None or not sm: return None
+    fut = _dias_futuros(max(len(sm), len(sc or [])))
+    dentro = [k for k, d in enumerate(fut) if int(d[5:7]) in meses]
+    if not dentro: return None   # todavía ningún día del pronóstico cae en la temporada: igual al titular
+    sm2 = [round(v * fp, 4) if k in dentro else v for k, v in enumerate(sm)]
+    ctx["serieMazar"] = sm2; out = {"serieMazar": sm2, "factor_paute": round(fp, 3), "dias_temporada": len(dentro)}
+    if sc:
+        sc2 = [round(v * fc, 4) if k in dentro else v for k, v in enumerate(sc)]
+        ctx["serieCoca"] = sc2; out.update({"serieCoca": sc2, "factor_coca": round(fc, 3)})
+    return P, ctx, out
+
+
+_cand_3nov("temporada_amazonia_seca", c_temporada_amazonia_seca, "Temporada dic–feb: Amazonía más seca (OMM)",
+           "El pronóstico estacional multimodelo de la OMM para diciembre–febrero da 40–70 % de probabilidad de lluvias bajo "
+           "lo normal en la Amazonía (Coca Codo) e influencia mixta en los Andes (Paute). Bajar el caudal esperado de esos "
+           "meses (Paute ×0,955, Coca ×0,88) debe reducir el error a 14+ días cuando el pronóstico llega a diciembre. "
+           "Los datos se leen de laboratorio/estacional.json (luego, Copernicus C3S cada mes).",
+           origen="Claude 2026-11-11 (Luis: pronóstico estacional OMM/ClimaTTic)")
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
