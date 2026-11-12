@@ -2536,6 +2536,68 @@ _cand_3nov("temporada_amazonia_seca", c_temporada_amazonia_seca, "Temporada dic�
            origen="Claude 2026-11-11 (Luis: pronóstico estacional OMM/ClimaTTic)")
 
 
+def _estacional_c3s():
+    """Pronóstico de temporada de Copernicus C3S (multimodelo) que publica DataLab Ec cada mes: {"meses": {"AAAA-MM":
+    {"paute": {"bajo", "sobre"}, "coca": {...}}}}. None si no está disponible."""
+    try:
+        import requests
+        r = requests.get("https://datalabecuador.com/d/c/estacional.json", timeout=30)
+        E = r.json() if r.ok else {}
+        return E if isinstance(E.get("meses"), dict) and E["meses"] else None
+    except Exception:
+        return None
+
+
+def c_temporada_c3s(P, ctx, mod):
+    """Cada día del pronóstico cuyo mes tenga pronóstico C3S cambia su caudal esperado: × (1 − 0,3·(P bajo − P sobre)),
+    entre 0,7 y 1,3, por separado para el Paute (Mazar) y el Coca."""
+    E = _estacional_c3s()
+    sm, sc = ctx.get("serieMazar"), ctx.get("serieCoca")
+    if not E or not sm: return None
+    def fac(cual, dia):
+        x = (E["meses"].get(dia[:7]) or {}).get(cual) or {}
+        if not isinstance(x.get("bajo"), (int, float)) or not isinstance(x.get("sobre"), (int, float)): return None
+        return max(0.7, min(1.3, 1 - 0.3 * (x["bajo"] - x["sobre"])))
+    fut = _dias_futuros(max(len(sm), len(sc or [])))
+    fp = [fac("paute", d) for d in fut]; fc = [fac("coca", d) for d in fut]
+    if not any(f is not None for f in fp + fc): return None
+    sm2 = [round(v * fp[k], 4) if k < len(fp) and fp[k] is not None else v for k, v in enumerate(sm)]
+    ctx["serieMazar"] = sm2; out = {"serieMazar": sm2, "dias_con_c3s": sum(f is not None for f in fp),
+                                    "sistemas": len(E.get("sistemas") or [])}
+    if sc:
+        sc2 = [round(v * fc[k], 4) if k < len(fc) and fc[k] is not None else v for k, v in enumerate(sc)]
+        ctx["serieCoca"] = sc2; out["serieCoca"] = sc2
+    return P, ctx, out
+
+
+def c_temporada_nino_coca(P, ctx, mod):
+    """Con el mar de El Niño 1+2 en su tercio más cálido en oct–nov (este año: el más cálido desde 1981), el río Coca de
+    diciembre a febrero se toma ×0,85; el Paute no cambia (en Mazar la historia no muestra la señal)."""
+    sc = ctx.get("serieCoca")
+    if not sc: return None
+    fut = _dias_futuros(len(sc))
+    dentro = [k for k, d in enumerate(fut) if int(d[5:7]) in (12, 1, 2)]
+    if not dentro: return None
+    sc2 = [round(v * 0.85, 4) if k in dentro else v for k, v in enumerate(sc)]
+    ctx["serieCoca"] = sc2
+    return P, ctx, {"serieCoca": sc2, "dias_temporada": len(dentro)}
+
+
+_OR11 = "Claude 2026-11-11 (Luis: probar todo con la historia de Copernicus)"
+_cand_3nov("temporada_c3s", c_temporada_c3s, "Temporada mes a mes según Copernicus C3S (multimodelo)",
+           "El pronóstico de temporada de Copernicus C3S (hasta 9 sistemas, publicado por DataLab Ec cada mes) da para cada "
+           "mes la probabilidad de lluvia bajo / sobre lo normal en las cuencas del Paute y del Coca. Multiplicar el caudal "
+           "esperado de cada día por 1 − 0,3·(P bajo − P sobre) debe bajar el error a 14+ días. Con 3 sistemas (11 nov) "
+           "el Paute sale más lluvioso de lo normal y el Coca más seco en nov–dic: lo contrario de lo que muestra la "
+           "historia en años de mar cálido; este candidato mide quién tiene razón.", origen=_OR11)
+_cand_3nov("temporada_nino_coca", c_temporada_nino_coca, "El Niño costero: río Coca ×0,85 en dic–feb",
+           "Prueba con 45 años de ERA5 (1981–2025): con el mar de El Niño 1+2 en su tercio más cálido en oct–nov, la lluvia "
+           "de dic–feb en la cuenca del Coca fue 9,1 mm/día contra 11,0 en los años fríos (r −0,42); en el Paute 7,6 contra "
+           "8,7 (r −0,35), pero el caudal de Mazar 2010–2025 no muestra la señal (r 0,04), así que solo se toca el Coca. "
+           "Oct–nov 2026 es el más cálido desde 1981: el caudal del Coca de dic–feb debe venir ~15 % bajo el titular.",
+           origen=_OR11)
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
