@@ -3164,3 +3164,167 @@ _cand_3nov("balance_3_laborales", c_balance_3_laborales, "Paute parte de los 3 �
            "ponderado de ~10 días con fines de semana y cortes. Reparo del retador: la térmica y 'otras' ya se miden cada "
            "corrida y el balance cierra por construcción; la otra pieza (térmica + otras = total − Coca − Paute − importación) "
            "no cambiaría la trayectoria, así que no se pone sola.", origen=_OR_C11)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 12 nov (aprobación permanente de Luis, 7 nov)
+_OR_C12 = "cerebro 2026-11-12 (aprobado por Luis)"
+F_BALANCE_DIA = os.path.join("registro", "balance_diario.json")
+F_GEN_HIST = os.path.join("registro", "generacion_hist.json")
+
+
+def _mazar_madrugada_mw(ts):
+    """Mazar medio (MW) de hoy desde las 00:00 hasta las ~06:00 según el Cenace acumulado (registro/generacion_hist.json:
+    [horas medidas, MWh acumulados]). Usa el último punto con ≤ 6,5 h y ≤ la hora de la corrida; exige ≥ 5 h medidas.
+    Solo datos anteriores a la corrida. Devuelve (MW, horas) o (None, None)."""
+    ahora = _ts_dt(ts); hoy = ahora.date().isoformat()
+    h_corr = ahora.hour + ahora.minute / 60.0
+    serie = ((_leer_json_lab(F_GEN_HIST) or {}).get("plantas") or {}).get(hoy) or []
+    pts = [(float(h), x) for h, x in serie if isinstance(h, (int, float)) and isinstance(x, dict)
+           and float(h) <= min(6.5, h_corr) and isinstance(x.get("Mazar"), (int, float))]
+    if not pts:
+        return None, None
+    h, x = max(pts, key=lambda p: p[0])
+    if h < 5:
+        return None, None
+    return float(x["Mazar"]) / h, h
+
+
+def c_mazar_noche_dia0(P, ctx, mod):
+    """Idea 'mazar_noche_dia0' (cerebro 12 nov): si Cenace da Mazar ≥ 60 MW medios de 00:00 a ~06:00, el turbinado de
+    Mazar del día 0 del simulador (las próximas 24 h) = esa media × 24 h, vía memoria (reparo del retador: el motor no
+    fija MWh; se hace como mazar_media_2d). Si no, el titular sin cambios."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    par = mod.get("_par"); qt = mod.get("_tit_qt"); ts = mod.get("_ts")
+    if not par or not qt or not ts:
+        return None
+    mw, h = _mazar_madrugada_mw(ts)
+    if mw is None or mw < 60:
+        return sin_cambio
+    kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+    q_noche = mw / kmz                                       # m³/s turbinados con esa potencia media
+    corr = [0.0] * 60; corr[0] = -(q_noche - float(qt[0]))   # más turbinado = menos caudal neto en Mazar
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "mazar_madrugada_mw": round(mw, 1), "horas_medidas": h,
+                    "q_madrugada_m3s": round(q_noche, 2), "q_titular_dia0_m3s": round(float(qt[0]), 2)}
+
+
+def c_paute_repone_importacion(P, ctx, mod):
+    """Idea 'paute_repone_importacion' (cerebro 12 nov): la base de Paute del titular (promedio ponderado de ~10 días de
+    Celec, vida media 3 días) baja los días en que Colombia vende y al día siguiente el titular dice de más. Aquí, cada día
+    de esa ventana con importación de Colombia ≥ 150 MW (balance diario Cenace) cuenta como Paute real + (importación − 5 MW),
+    con los mismos pesos; la demanda sube en esa diferencia (como balance_3_laborales). Si ningún día importó, = titular."""
+    fis = mod.get("_fisica") or {}; ts = mod.get("_ts")
+    det = [x for x in (fis.get("detalle") or []) if isinstance(x, dict) and isinstance(x.get("peso"), (int, float))]
+    if not ts or not det or not isinstance(P.get("demanda"), (int, float)):
+        return None
+    try:   # con Celec caído > 3 días el titular no usa esta física
+        if (_ts_dt(ts).date() - datetime.fromisoformat(str(fis.get("actualizado"))[:10]).date()).days > 3: return None
+    except Exception:
+        return None
+    bal = _leer_json_lab(F_BALANCE_DIA) or {}
+    hoy = _ts_dt(ts).date().isoformat()
+    sw = sum(float(x["peso"]) for x in det)
+    extra, dias = 0.0, []
+    for x in det:
+        d = x.get("dia")
+        if not d or d >= hoy: continue
+        imp = (bal.get(d) or {}).get("imp_col")
+        if isinstance(imp, (int, float)) and imp >= 150:
+            extra += float(x["peso"]) * (float(imp) - 5.0); dias.append(d)
+    if sw <= 0:
+        return None
+    if float(P.get("imp") or 0) >= 150:   # revisor: con un pulso de importación hoy Paute vuelve a bajar; no se sube la base
+        return P, ctx, {"demanda": P["demanda"], "dias_importacion": [], "importando_hoy": True}
+    if not dias:
+        return P, ctx, {"demanda": P["demanda"], "dias_importacion": []}
+    delta = min(300.0, extra / sw)
+    P["demanda"] = round(float(P["demanda"]) + delta, 1)
+    return P, ctx, {"demanda": P["demanda"], "paute_extra_mw": round(delta, 1), "dias_importacion": dias}
+
+
+def _opcional(f):
+    """Pieza que, si no corre (devuelve None), deja todo igual (para combinaciones no estrictas)."""
+    def g(P, ctx, mod):
+        return f(P, ctx, mod) or (P, ctx, {})
+    return g
+
+
+def c_medido_dia0(P, ctx, mod):
+    """Combinación 'medido_dia0' (cerebro 12 nov): turbinado de madrugada (mazar_noche_dia0) + base de Paute sin el hueco
+    de la importación (paute_repone_importacion) + caudal medido de madrugada con Mazar apagado (entrada_noche_mazar0; sus
+    umbrales y los de mazar_noche_dia0 se excluyen) + deuda de Amaluza (embalse_combinado, al final porque cambia la cota;
+    solo cuando corre)."""
+    r = _combinar(P, ctx, mod, c_mazar_noche_dia0, c_paute_repone_importacion, c_entrada_noche_mazar0)
+    if not r:
+        return None
+    P, ctx, cam = r
+    par = mod.get("_par") or {}
+    # revisor: si mazar_noche_dia0 ya fijó el turbinado del día 0, la demanda extra de paute_repone_importacion haría
+    # turbinar más a Mazar ese mismo día (doble conteo): se devuelve ese caudal en el día 0.
+    if cam.get("mazar_madrugada_mw") is not None and (cam.get("paute_extra_mw") or 0) > 0 and par.get("k_molino_sopladora"):
+        kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(mod.get("_cota_obs", ctx["cota"])) - float(ctx.get("amaluzaCota") or 1975.0))
+        corr = [0.0] * 60; corr[0] = float(cam["paute_extra_mw"]) / (kmz + float(par["k_molino_sopladora"]))
+        cam["memoria"] = _sumar_memoria(ctx, corr); cam["devuelto_dia0_m3s"] = round(corr[0], 2)
+    r = _opcional(c_embalse_combinado)(P, ctx, mod)
+    P, ctx, c2 = r; cam.update(c2)
+    return P, ctx, cam
+
+
+_cand_3nov("mazar_noche_dia0", c_mazar_noche_dia0, "Mazar de las próximas 24 h = su media de madrugada (si ≥ 60 MW)",
+           "Idea del cerebro de Mazar del 12 nov (causa principal del investigador): el 11 nov Mazar turbinó 2.474 MWh y el "
+           "titular suponía ~1.550–1.900 (dijo de más 0,90 m). La madrugada ya avisaba: el 12 nov Mazar iba a 135 MW medios de "
+           "00:00 a 06:00 (Cenace). Si la media de madrugada (≥ 5 h medidas) es ≥ 60 MW, el día 0 del simulador turbina esa "
+           "media × 24 h, vía memoria. Reparo del retador (Carbon): el motor no fija MWh (atendido: corrección de caudal) y "
+           "extrapolar la madrugada puede perder (se mide justamente eso).", origen=_OR_C12)
+_cand_3nov("paute_repone_importacion", c_paute_repone_importacion, "Base de Paute sin el hueco de los días con importación",
+           "Idea del cerebro de Mazar del 12 nov: los días con importación de Colombia (6 nov 209,5 MW; 10 nov 213,7 MW) Paute "
+           "genera menos (10 nov: 780 MW) y el promedio ponderado del titular queda bajo; al día siguiente Paute se enciende "
+           "(11 nov: 1.087 MW) y el titular dice de más. Cada día de la ventana con importación ≥ 150 MW cuenta como Paute + "
+           "(importación − 5 MW), mismos pesos; la demanda sube en esa diferencia (tope 300 MW). Revisor: si hoy se importa "
+           "≥ 150 MW no corrige (el pulso de hoy vuelve a bajar a Paute).", origen=_OR_C12)
+_cand_3nov("medido_dia0", c_medido_dia0, "Madrugada medida + Paute sin importación + caudal de madrugada + Amaluza",
+           "Combinación 'medido_dia0' del cerebro de Mazar del 12 nov: cada pieza mide algo distinto (turbinado de hoy, base de "
+           "Paute, caudal y deuda de Amaluza). embalse_combinado solo cuando corre (si no, el resto igual). Revisor: sin doble "
+           "conteo del turbinado del día 0 cuando corren a la vez la madrugada y la base de Paute.", origen=_OR_C12)
+
+
+# ---------------------------------------------------------------- Gemini 12 nov (segundo auditor; revisor Claude independiente: aprobados con cambios)
+def c_sin_autoajuste_y_autoajuste_largo(P, ctx, mod):
+    """Sin autoajuste en los días 0–1; desde el día 2 el autoajuste medido entero (ratio_mediana, 0,5–1,3) aproximado como
+    corrección de caudal en la memoria (recoge ~90 % del efecto de autoajuste_completo, según el revisor)."""
+    r = (mod.get("ajuste_info") or {}).get("ratio_mediana")
+    if not isinstance(r, (int, float)) or r <= 0:
+        return None
+    r_comp = max(0.5, min(1.3, float(r)))
+    ctx["ajuste"] = 1.0
+    qt_list = mod.get("_tit_qt") or [60.0]
+    qt_avg = sum(qt_list) / len(qt_list)
+    sm = ctx.get("serieMazar") or [1.0]
+    q0 = float(P.get("qMazar") or 40.0)                   # revisor: sin doble factor de la serie
+    corr = [0.0] * 60
+    for d in range(2, 60):
+        dq = q0 * float(sm[min(d, len(sm) - 1)]) - qt_avg
+        if dq < 0:
+            corr[d] = max(-80.0, min(80.0, dq * (r_comp - 1.0)))
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"ajuste": 1.0, "memoria": m}
+
+
+def c_coca_mitad_autoajuste_comp_largo(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_coca_mitad, c_sin_autoajuste_y_autoajuste_largo)   # revisor: combinación limpia
+
+
+CANDIDATOS["sin_autoajuste_y_autoajuste_largo"] = {
+    "f": c_sin_autoajuste_y_autoajuste_largo, "promocion": "luis", "origen": "Gemini 2026-11-12",
+    "nombre": "Sin autoajuste corto + autoajuste entero desde el día 2",
+    "hipotesis": "Quitar el autoajuste en los días 0–1 (como sin_autoajuste: 0,394 vs 0,409 m a 1 día) y aplicar el autoajuste "
+                 "medido entero desde el día 2 (como autoajuste_completo: 0,481/0,783 m a 5/7 días vs 0,671/1,387 del titular) "
+                 "mejora el corto y el mediano plazo. Revisor: esos datos de 5–7 días son del régimen con ratio < 1; desde el "
+                 "12 nov el ratio es > 1 (1,39) y el autoajuste entero empuja a más pesimismo; es una aproximación por caudal "
+                 "(~90 % del efecto); a 1–2 días es igual a sin_autoajuste; si se promueve, la memoria del robot pisaría la corrección."}
+CANDIDATOS["coca_mitad_autoajuste_comp_largo"] = {
+    "f": c_coca_mitad_autoajuste_comp_largo, "promocion": "luis", "origen": "Gemini 2026-11-12",
+    "nombre": "Coca a mitad + sin autoajuste corto + autoajuste entero desde el día 2",
+    "hipotesis": "coca_mitad (0,401/0,271/0,327 m a 1/2/3 días vs 0,409/0,277/0,333 del titular) + sin_autoajuste_y_autoajuste_largo. "
+                 "Revisor: se armó como combinación de las dos piezas (la versión de Gemini aplicaba además media corrección el "
+                 "día 1 sin justificarla); la mejora a 5–10 días depende del autoajuste, que hoy empuja al revés."}
