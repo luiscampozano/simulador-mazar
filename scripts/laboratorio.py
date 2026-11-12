@@ -2509,22 +2509,42 @@ def _factor_estacional(cual, E):
     return max(0.7, min(1.3, 1 - float(E.get("peso", 0.3)) * (x["bajo"] - x["sobre"])))
 
 
+def _estacional():
+    """Pronóstico de temporada por mes y cuenca: primero el de Copernicus C3S que publica DataLab Ec (robot mensual);
+    si no hay, laboratorio/estacional.json (lectura a mano del gráfico de la OMM)."""
+    try:
+        import requests
+        r = requests.get("https://datalabecuador.com/d/c/estacional.json", timeout=30)
+        E = r.json() if r.ok else {}
+        if E.get("meses"): return E
+    except Exception:
+        pass
+    return _leer(os.path.join(DIR, "estacional.json"), {})
+
+
 def c_temporada_amazonia_seca(P, ctx, mod):
-    """Pronóstico estacional (OMM): diciembre–febrero con lluvias bajo lo normal en la Amazonía y mixtas en los Andes.
-    Los días del pronóstico que caen en esos meses se multiplican por el factor de cada cuenca (Paute y Coca)."""
-    E = _leer(os.path.join(DIR, "estacional.json"), {})
-    meses = set(E.get("meses") or [])
-    fp, fc = _factor_estacional("paute", E), _factor_estacional("coca", E)
+    """Pronóstico de temporada: los días que caen en meses con lluvia bajo (o sobre) lo normal en las cuencas del Paute y
+    del Coca cambian su caudal esperado: factor = 1 − peso·(P bajo − P sobre). Con datos C3S, mes por mes."""
+    E = _estacional(); peso = float(E.get("peso", 0.3))
     sm, sc = ctx.get("serieMazar"), ctx.get("serieCoca")
-    if not meses or fp is None or fc is None or not sm: return None
+    if not sm: return None
     fut = _dias_futuros(max(len(sm), len(sc or [])))
-    dentro = [k for k, d in enumerate(fut) if int(d[5:7]) in meses]
-    if not dentro: return None   # todavía ningún día del pronóstico cae en la temporada: igual al titular
-    sm2 = [round(v * fp, 4) if k in dentro else v for k, v in enumerate(sm)]
-    ctx["serieMazar"] = sm2; out = {"serieMazar": sm2, "factor_paute": round(fp, 3), "dias_temporada": len(dentro)}
+    def fac(cual, dia):
+        if isinstance(E.get("meses"), dict):   # C3S: {"2026-12": {"paute": {"bajo", "sobre"}, ...}}
+            x = (E["meses"].get(dia[:7]) or {}).get(cual) or {}
+            if isinstance(x.get("bajo"), (int, float)) and isinstance(x.get("sobre"), (int, float)):
+                return max(0.7, min(1.3, 1 - peso * (x["bajo"] - x["sobre"])))
+            return None
+        if int(dia[5:7]) in set(E.get("meses") or []): return _factor_estacional(cual, E)
+        return None
+    fp = [fac("paute", d) for d in fut]; fc = [fac("coca", d) for d in fut]
+    if not any(f is not None for f in fp + fc): return None
+    sm2 = [round(v * fp[k], 4) if k < len(fp) and fp[k] is not None else v for k, v in enumerate(sm)]
+    ctx["serieMazar"] = sm2; out = {"serieMazar": sm2, "dias_temporada": sum(f is not None for f in fp),
+                                    "fuente": "C3S" if isinstance(E.get("meses"), dict) else "OMM (gráfico)"}
     if sc:
-        sc2 = [round(v * fc, 4) if k in dentro else v for k, v in enumerate(sc)]
-        ctx["serieCoca"] = sc2; out.update({"serieCoca": sc2, "factor_coca": round(fc, 3)})
+        sc2 = [round(v * fc[k], 4) if k < len(fc) and fc[k] is not None else v for k, v in enumerate(sc)]
+        ctx["serieCoca"] = sc2; out["serieCoca"] = sc2
     return P, ctx, out
 
 
