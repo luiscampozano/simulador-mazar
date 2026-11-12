@@ -31,9 +31,9 @@ jobs:
           while [ $(date +%s) -lt $fin ]; do
             t0=$(date +%s)
             if timeout 420 python scripts/satelite_ahora.py; then
-              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json /tmp/pub/ 2>/dev/null || true; }
+              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json salida/lluvia3d.json /tmp/pub/ 2>/dev/null || true; }
               ( cd /tmp/pub && git init -q && git checkout -q -b satelite \
-                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) \
+                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) $(test -f lluvia3d.json && echo lluvia3d.json) \
                 && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" commit -q -m "satélite $(date -u +%H:%M)" \
                 && git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" satelite ) \
                 || echo "no se pudo publicar esta vuelta"
