@@ -1,0 +1,77 @@
+{
+ "fecha": "2026-11-12",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 4.73,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_y_autoajuste_largo",
+    "nombre": "Sin autoajuste corto + autoajuste entero desde día 2",
+    "hipotesis": "Quitar el autoajuste en los días 0 y 1 (como sin_autoajuste, que mejora a 1 y 2 días: 0,373 m vs 0,386 m) y aplicar el autoajuste medido entero desde el día 2 mediante caudal en memoria (como autoajuste_completo, que reduce el error a 5 y 7 días de 0,68/1,40 m a 0,50/0,80 m) mejora tanto el corto como el mediano plazo.",
+    "promocion": "luis",
+    "por_que": "En el marcador actual (85 casos a 1 día), sin_autoajuste reduce el error a 1 día (0,373 vs 0,386 m del titular y sesgo +0,099 vs +0,145 m), pero empeora gravemente a 5 y 7 días (error 1,866 m vs 1,395 m). Por el contrario, autoajuste_completo empeora a 1 día (0,405 m) pero es excelente a 5 y 7 días (error 0,496 m y 0,802 m). Separar los regímenes por horizonte permite capturar ambas ventajas sin que colisionen.",
+    "codigo": "def c_sin_autoajuste_y_autoajuste_largo(P, ctx, mod):\n    r = (mod.get('ajuste_info') or {}).get('ratio_mediana')\n    if not isinstance(r, (int, float)) or r <= 0:\n        return None\n    r_comp = max(0.5, min(1.3, float(r)))\n    ctx['ajuste'] = 1.0\n    qt_list = mod.get('_tit_qt') or [60.0]\n    qin_list = mod.get('_tit_qin') or [float(P.get('qMazar') or 40.0)]\n    qt_avg = sum(qt_list) / len(qt_list)\n    qin0 = qin_list[0] if qin_list else 40.0\n    sm = ctx.get('serieMazar') or [1.0]\n    base = list(ctx.get('memoria') or [])\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            qin_d = qin0 * float(sm[min(d, len(sm) - 1)])\n            dq = qin_d - qt_avg\n            if dq < 0:\n                corr.append(max(-80.0, min(80.0, dq * (r_comp - 1.0))))\n            else:\n                corr.append(0.0)\n    n = max(len(base), len(corr))\n    nueva = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = nueva\n    return P, ctx, {'ajuste': 1.0, 'memoria': nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2124.18,
+     2118.24,
+     2116.24
+    ],
+    "candidato_1_7_14": [
+     2124.34,
+     2118.59,
+     2116.16
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_error_3_suave",
+    "nombre": "Corrección suave (25 %) del error reciente",
+    "hipotesis": "Aplicar solo el 25 % de la corrección de las 3 últimas verificaciones a 1 día (con tope de ±25 m³/s) evita la severa sobrecorrección de corrige_error_3 (que subió el error a 0,66 m) y ataca de forma amortiguada los errores persistentes como el de +1,05 m del 12 de noviembre.",
+    "promocion": "luis",
+    "por_que": "En recientes_1d del 11–12 de noviembre el titular acumula errores de +0,80 a +1,08 m por cambios bruscos de despacho. Sin embargo, corrige_error_3 aplica el 100 % del error reciente y en el marcador pierde fuerte (error medio 0,660 m vs 0,386 m del titular, dirección cae a 51,8 %) porque amplifica el ruido cuando el régimen se invierte. Amortiguar la ganancia a un cuarto (0,25) corrige la deriva sostenida sin desestabilizar la trayectoria.",
+    "codigo": "def c_corrige_error_3_suave(P, ctx, mod):\n    ac = mod.get('aciertos') or {}\n    rec = [x for x in (ac.get('recientes_1d') or []) if isinstance(x.get('err'), (int, float)) and x.get('obj_ts')]\n    if len(rec) < 3:\n        return None\n    rec = sorted(rec, key=lambda x: str(x['obj_ts']))[-3:]\n    e = sum(float(x['err']) for x in rec) / 3.0\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = float(c.get('a', 3.6595)) + float(c.get('b', 0.12497)) * max(0.0, float(ctx.get('cota', 2115.0)) - 2115.0)\n    q0 = -0.25 * e * dvdz / 0.0864\n    q0 = max(-25.0, min(25.0, q0))\n    corr = [q0 * math.exp(-d / 1.0) for d in range(60)]\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    nueva = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = nueva\n    return P, ctx, {'memoria': nueva}"
+   },
+   "estado": "rechazada por validación: no se permite Lambda"
+  },
+  {
+   "propuesta": {
+    "id": "coca_mitad_autoajuste_comp_largo",
+    "nombre": "Coca a mitad + sin autoajuste hoy + autoajuste entero largo",
+    "hipotesis": "Combinar el río Coca a medio camino (coca_mitad, mejor a 1–3 días que coca_rio_real) con la desactivación del autoajuste en el día 0 y el autoajuste medido entero desde el día 2 reduce el error de corto plazo y corrige el fuerte sesgo pesimista a 5–10 días.",
+    "promocion": "luis",
+    "por_que": "En el marcador, coca_mitad mejora al titular en los días 1, 2 y 3 (0,377, 0,248 y 0,321 m vs 0,386, 0,255 y 0,328 m), superando a coca_rio_real a 2 y 3 días. Al sumarle sin_autoajuste en el primer día (que baja el sesgo optimista de +0,145 m a +0,099 m) y autoajuste_completo desde el día 2 (que reduce el error a 7 días en 42 %), se cubren los defectos del titular en todos los horizontes.",
+    "codigo": "def c_coca_mitad_autoajuste_comp_largo(P, ctx, mod):\n    a, b = ctx.get('serieCoca'), mod.get('serieCocaRio')\n    r = (mod.get('ajuste_info') or {}).get('ratio_mediana')\n    if not a or not b or not isinstance(r, (int, float)) or r <= 0:\n        return None\n    s_coca = [round((float(x) + float(y)) / 2.0, 4) for x, y in zip(a, b)]\n    ctx['serieCoca'] = s_coca\n    r_comp = max(0.5, min(1.3, float(r)))\n    ctx['ajuste'] = 1.0\n    qt_list = mod.get('_tit_qt') or [60.0]\n    qin_list = mod.get('_tit_qin') or [float(P.get('qMazar') or 40.0)]\n    qt_avg = sum(qt_list) / len(qt_list)\n    qin0 = qin_list[0] if qin_list else 40.0\n    sm = ctx.get('serieMazar') or [1.0]\n    base = list(ctx.get('memoria') or [])\n    corr = []\n    for d in range(60):\n        if d < 1:\n            corr.append(0.0)\n        else:\n            w = 0.5 if d == 1 else 1.0\n            qin_d = qin0 * float(sm[min(d, len(sm) - 1)])\n            dq = qin_d - qt_avg\n            if dq < 0:\n                corr.append(max(-80.0, min(80.0, w * dq * (r_comp - 1.0))))\n            else:\n                corr.append(0.0)\n    n = max(len(base), len(corr))\n    nueva = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = nueva\n    return P, ctx, {'serieCoca': s_coca, 'ajuste': 1.0, 'memoria': nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2124.18,
+     2118.24,
+     2116.24
+    ],
+    "candidato_1_7_14": [
+     2124.33,
+     2117.82,
+     2115.0
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-12"
+}
