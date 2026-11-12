@@ -186,6 +186,23 @@ def movimiento(T0, T1, minutos, bloque=16, paso=8, busca=6, min_frio=8, min_corr
     return out
 
 
+def lluvia3d(t1, tb, n=9):
+    """Últimas n imágenes (~1 h 20 min) de la temperatura de la cima en la malla de 0,05°, para la vista "Nubes 3D" de
+    la página (Luis, 11 nov): las columnas de lluvia se dibujan donde la cima está a ≤ 245 K."""
+    F = "salida/lluvia3d.json"
+    try:
+        L = json.load(open(F)) if os.path.exists(F) else \
+            SES.get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/lluvia3d.json", timeout=30).json()
+        assert isinstance(L.get("cuadros"), list) and L.get("filas") == FILAS and L.get("cols") == COLS
+    except Exception:
+        L = {"cuadros": []}
+    cuadros = [c for c in L["cuadros"] if c.get("t") != t1.isoformat()] + [{"t": t1.isoformat(), "tb": b64(tb)}]
+    cuadros = sorted(cuadros, key=lambda c: c["t"])[-n:]
+    json.dump({"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "n": N, "s": S_, "o": O, "e": E, "paso": PASO,
+               "filas": FILAS, "cols": COLS, "campos": "tb = temperatura de la cima − 150 K (u8, 255 = sin dato)", "cuadros": cuadros},
+              open(F, "w"), separators=(",", ":"))
+
+
 def b64(a):
     return base64.b64encode(np.ascontiguousarray(a).tobytes()).decode()
 
@@ -220,6 +237,10 @@ def main():
     os.makedirs("salida", exist_ok=True)
     json.dump(out, open("salida/ahora.json", "w"), separators=(",", ":"))
     historia(t1, pun1, pun0, flashes)
+    try:
+        lluvia3d(t1, tb)
+    except Exception as e:
+        print("lluvia3d:", str(e)[:120])
     try:   # laboratorio de los avisos de tormenta: cada variante avisa y se califica sola con las imágenes siguientes (Luis, 11 nov)
         import avisos_lab
         avisos_lab.actualizar(T1, t1, (mov or {}).get("vectores") or [], N, O, PASO, SES)
