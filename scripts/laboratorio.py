@@ -672,6 +672,74 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_sin_autoajuste_y_autoajuste_largo(P, ctx, mod):
+    r = (mod.get('ajuste_info') or {}).get('ratio_mediana')
+    if not isinstance(r, (int, float)) or r <= 0:
+        return None
+    r_comp = max(0.5, min(1.3, float(r)))
+    ctx['ajuste'] = 1.0
+    qt_list = mod.get('_tit_qt') or [60.0]
+    qin_list = mod.get('_tit_qin') or [float(P.get('qMazar') or 40.0)]
+    qt_avg = sum(qt_list) / len(qt_list)
+    qin0 = qin_list[0] if qin_list else 40.0
+    sm = ctx.get('serieMazar') or [1.0]
+    base = list(ctx.get('memoria') or [])
+    corr = []
+    for d in range(60):
+        if d < 2:
+            corr.append(0.0)
+        else:
+            qin_d = qin0 * float(sm[min(d, len(sm) - 1)])
+            dq = qin_d - qt_avg
+            if dq < 0:
+                corr.append(max(-80.0, min(80.0, dq * (r_comp - 1.0))))
+            else:
+                corr.append(0.0)
+    n = max(len(base), len(corr))
+    nueva = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['memoria'] = nueva
+    return P, ctx, {'ajuste': 1.0, 'memoria': nueva}
+
+
+CANDIDATOS["sin_autoajuste_y_autoajuste_largo"] = {"f": c_sin_autoajuste_y_autoajuste_largo, "promocion": "luis", "origen": "Gemini 2026-11-12", "nombre": "Sin autoajuste corto + autoajuste entero desde día 2", "hipotesis": "Quitar el autoajuste en los días 0 y 1 (como sin_autoajuste, que mejora a 1 y 2 días: 0,373 m vs 0,386 m) y aplicar el autoajuste medido entero desde el día 2 mediante caudal en memoria (como autoajuste_completo, que reduce el error a 5 y 7 días de 0,68/1,40 m a 0,50/0,80 m) mejora tanto el corto como el mediano plazo."}
+
+
+def c_coca_mitad_autoajuste_comp_largo(P, ctx, mod):
+    a, b = ctx.get('serieCoca'), mod.get('serieCocaRio')
+    r = (mod.get('ajuste_info') or {}).get('ratio_mediana')
+    if not a or not b or not isinstance(r, (int, float)) or r <= 0:
+        return None
+    s_coca = [round((float(x) + float(y)) / 2.0, 4) for x, y in zip(a, b)]
+    ctx['serieCoca'] = s_coca
+    r_comp = max(0.5, min(1.3, float(r)))
+    ctx['ajuste'] = 1.0
+    qt_list = mod.get('_tit_qt') or [60.0]
+    qin_list = mod.get('_tit_qin') or [float(P.get('qMazar') or 40.0)]
+    qt_avg = sum(qt_list) / len(qt_list)
+    qin0 = qin_list[0] if qin_list else 40.0
+    sm = ctx.get('serieMazar') or [1.0]
+    base = list(ctx.get('memoria') or [])
+    corr = []
+    for d in range(60):
+        if d < 1:
+            corr.append(0.0)
+        else:
+            w = 0.5 if d == 1 else 1.0
+            qin_d = qin0 * float(sm[min(d, len(sm) - 1)])
+            dq = qin_d - qt_avg
+            if dq < 0:
+                corr.append(max(-80.0, min(80.0, w * dq * (r_comp - 1.0))))
+            else:
+                corr.append(0.0)
+    n = max(len(base), len(corr))
+    nueva = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['memoria'] = nueva
+    return P, ctx, {'serieCoca': s_coca, 'ajuste': 1.0, 'memoria': nueva}
+
+
+CANDIDATOS["coca_mitad_autoajuste_comp_largo"] = {"f": c_coca_mitad_autoajuste_comp_largo, "promocion": "luis", "origen": "Gemini 2026-11-12", "nombre": "Coca a mitad + sin autoajuste hoy + autoajuste entero largo", "hipotesis": "Combinar el río Coca a medio camino (coca_mitad, mejor a 1–3 días que coca_rio_real) con la desactivación del autoajuste en el día 0 y el autoajuste medido entero desde el día 2 reduce el error de corto plazo y corrige el fuerte sesgo pesimista a 5–10 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
