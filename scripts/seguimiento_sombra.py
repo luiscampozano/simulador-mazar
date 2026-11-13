@@ -11,7 +11,11 @@ para una tormenta que, seguida imagen a imagen, avanzaba a ~24 km/h. Aquí se pr
 Además (Luis, 13 nov), el NIVEL DE FUERZA de cada nube antes de llegar: tope, enfriamiento en 10 min y rayos (función
 nivel(), regla fija), para verificarlo con los mm por hora de las estaciones.
 Salida: salida/seguimiento_sombra.json (última) y salida/seguimiento_sombra_hist.json (48 h) para verificar después
-contra las imágenes siguientes y contra el aviso actual."""
+contra las imágenes siguientes y contra el aviso actual.
+Y (Luis, 13 nov, pestaña "Tormentas" de la página): salida/tormentas.json = TODAS las tormentas activas (tope ≤ 215 K) del
+mar y del país en la última imagen: dónde está (respecto a la ciudad pública más cercana), área, tope, nivel de fuerza,
+si crece, hacia dónde va y a qué velocidad, y las ciudades públicas que tendría en su camino en ≤ 2 h SI MANTIENE el
+rumbo (extrapolación, no pronóstico). Solo lo observado y su extrapolación; ninguna ubicación privada."""
 import base64, io, json, os, time
 from datetime import datetime, timedelta, timezone
 
@@ -85,6 +89,80 @@ def rayos_malla(t0):
         return None
 
 
+RUMBOS = ["norte", "noreste", "este", "sureste", "sur", "suroeste", "oeste", "noroeste"]
+CORTO = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
+
+
+def rumbo(de_este, de_norte, nombres=RUMBOS):
+    return nombres[int(((np.degrees(np.arctan2(de_este, de_norte)) + 360) % 360 + 22.5) // 45) % 8]
+
+
+def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev):
+    """salida/tormentas.json para la pestaña Tormentas (Luis, 13 nov). Una fila por nube con tope ≤ 215 K."""
+    ciudades = {c: (float(np.mean([p[1] for p in v])), float(np.mean([p[2] for p in v]))) for c, v in P.items()}
+    Tn = np.nan_to_num(T0, nan=999)
+    filas = [(c["k"], c) for c in celdas] + [(k, None) for k in sin_rumbo]
+    out = []
+    for k, c in filas:
+        obj = lab0 == k
+        tmin = float(np.nanmin(T0[obj]))
+        if tmin > TORMENTA: continue
+        nucleo = obj & (Tn <= TORMENTA)
+        i, j = np.nonzero(nucleo)
+        if len(i) < 2: continue
+        la, lo = float(LAT[i].mean()), float(LON[j].mean())
+        io_, jo = np.nonzero(obj)
+        area = int(round(float(np.sum(111.2 * PASO * 111.2 * PASO * np.cos(np.radians(LAT[io_])))) / 10) * 10)
+        dist = {n: float(np.hypot((lo - x[1]) * 111.2 * np.cos(np.radians(la)), (la - x[0]) * 111.2)) for n, x in ciudades.items()}
+        cerca = min(dist, key=dist.get); dk = dist[cerca]; cla, clo = ciudades[cerca]
+        donde = f"sobre {cerca}" if dk < 8 else f"a {round(dk)} km al {rumbo((lo - clo) * np.cos(np.radians(la)), la - cla, CORTO)} de {cerca}"
+        if c is None:
+            x = np.nanmean(T0[obj] - prev[10][1][obj]) if 10 in prev and np.isfinite(prev[10][1][obj]).any() else np.nan
+            enfria = float(x) if np.isfinite(x) else None
+        else:
+            enfria = c["enfria"]
+        tend = None if enfria is None else ("creciendo" if enfria < -2 else "debilitándose" if enfria > 2 else "estable")
+        f = {"la": round(la, 3), "lo": round(lo, 3), "donde": donde, "area_km2": area, "tope_C": round(tmin - 273.15),
+             "nivel": c["nivel"] if c else nivel(tmin, enfria, None), "tendencia": tend,
+             "enfria_K_10min": None if enfria is None else round(enfria, 1),
+             "rayos_15min": c["rayos"] if c else None, "nueva": c is None}
+        encima, camino = [], []
+        if c is not None and c["vel"] >= 5:
+            f.update({"vel_kmh": round(c["vel"]), "va_hacia": rumbo(c["u"], c["v"]),
+                      "vla": round(c["v"] / 111.2, 3), "vlo": round(c["u"] / (111.2 * np.cos(np.radians(la))), 3)})   # grados por hora
+        pi, pj = c["px"] if c is not None else (i, j)
+        for n, lista in P.items():
+            mejor, sobre = None, False
+            for _, pla, plo in lista:
+                dx = (LON[pj] - plo) * 111.2 * np.cos(np.radians(pla)); dy = (LAT[pi] - pla) * 111.2
+                d = np.hypot(dx, dy)
+                if d.min() < 6: sobre = True; break
+                if c is None or c["vel"] < 5 or d.min() > 150: continue
+                t = -(dx * c["u"] + dy * c["v"]) / (c["vel"] ** 2)
+                ok = (t > 0) & (t <= HORAS) & (np.hypot(dx + c["u"] * t, dy + c["v"] * t) <= KM)
+                if ok.any():
+                    m = max(0, round(float(t[ok].min() * 60 - edad)))
+                    mejor = m if mejor is None else min(mejor, m)
+            if sobre:
+                encima.append(n)
+            elif mejor is not None:
+                camino.append([n, mejor])
+        f["encima"] = encima
+        f["camino"] = sorted(camino, key=lambda x: x[1])
+        out.append(f)
+    orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
+    out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
+    for n, f in enumerate(out, 1): f["n"] = n
+    res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
+           "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
+                   "que la tormenta alcanzaría en ≤ 2 h si mantiene rumbo y velocidad (extrapolación, no pronóstico).",
+           "tormentas": out}
+    with open("salida/tormentas.json.tmp", "w") as fh:
+        json.dump(res, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    os.replace("salida/tormentas.json.tmp", "salida/tormentas.json")
+    print(f"tormentas.json: {len(out)} tormentas activas")
+
+
 def main():
     t_ini = time.time()
     C = cuadros()
@@ -98,11 +176,11 @@ def main():
     lab0, ids0 = objetos(T0)
     lab20, ids20 = objetos(prev[20][1])
     lab40, ids40 = objetos(prev[40][1]) if 40 in prev else (None, [])
-    celdas = []
+    celdas, sin_rumbo = [], []
     for k in ids0:
         la0, lo0, n0 = centro(lab0, k)
         k20 = pareja(lab0, k, lab20, ids20)
-        if k20 is None: continue                       # nació hace menos de 20 min: sin velocidad confiable
+        if k20 is None: sin_rumbo.append(k); continue  # nació hace menos de 20 min: sin velocidad confiable
         la20, lo20, n20 = centro(lab20, k20)
         pts = [(-20.0, la20, lo20), (0.0, la0, lo0)]
         if lab40 is not None:
@@ -114,7 +192,7 @@ def main():
         if not (0.5 <= n0 / max(n20, 1) <= 2) or np.hypot(uc, vc) > 100: uc = vc = 0.0   # se unió o partió: el centro salta
         frio20 = np.nan_to_num(prev[20][1], nan=999) <= FRIO
         di, dj = desplazamiento(lab0 == k, frio20)          # en 20 min (filas hacia el sur, columnas hacia el este)
-        if abs(di) == 6 or abs(dj) == 6: continue          # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
+        if abs(di) == 6 or abs(dj) == 6: sin_rumbo.append(k); continue   # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
         u = dj * PASO * 111.2 * np.cos(np.radians(la0)) * 3; v = -di * PASO * 111.2 * 3   # km/h
         if 40 in prev:                                       # confirmar con hace 40 min (promedio de los dos tramos)
             frio40 = np.nan_to_num(prev[40][1], nan=999) <= FRIO
@@ -166,6 +244,10 @@ def main():
            "campos_punto": ["nombre", "min_por_forma", "vel_forma_kmh", "min_por_centro", "vel_centro_kmh", "cambio_de_area_20min", "encima",
                             "nivel", "tope_K", "enfriamiento_K_10min", "rayos_15min"],
            "celdas_seguidas": len(celdas), "segundos": round(time.time() - t_ini, 1), "llegadas": llegadas}
+    try:
+        lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev)
+    except Exception as e:      # la lista de la página nunca tumba el seguimiento en sombra
+        print("tormentas.json falló:", repr(e)[:200])
     with open("salida/seguimiento_sombra.json.tmp", "w") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace("salida/seguimiento_sombra.json.tmp", "salida/seguimiento_sombra.json")
