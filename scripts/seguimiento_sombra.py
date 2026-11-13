@@ -97,13 +97,13 @@ def rumbo(de_este, de_norte, nombres=RUMBOS):
     return nombres[int(((np.degrees(np.arctan2(de_este, de_norte)) + 360) % 360 + 22.5) // 45) % 8]
 
 
-def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev):
+def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
     """salida/tormentas.json para la pestaña Tormentas (Luis, 13 nov). Una fila por nube con tope ≤ 215 K."""
     ciudades = {c: (float(np.mean([p[1] for p in v])), float(np.mean([p[2] for p in v]))) for c, v in P.items()}
     Tn = np.nan_to_num(T0, nan=999)
-    filas = [(c["k"], c) for c in celdas] + [(k, None) for k in sin_rumbo]
+    filas = [(c["k"], c, False) for c in celdas] + [(k, None, nueva) for k, nueva in sin_rumbo]
     out = []
-    for k, c in filas:
+    for k, c, es_nueva in filas:
         obj = lab0 == k
         tmin = float(np.nanmin(T0[obj]))
         if tmin > TORMENTA: continue
@@ -119,13 +119,14 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev):
         if c is None:
             x = np.nanmean(T0[obj] - prev[10][1][obj]) if 10 in prev and np.isfinite(prev[10][1][obj]).any() else np.nan
             enfria = float(x) if np.isfinite(x) else None
+            ry = int(RY[ndimage.binary_dilation(obj, iterations=1)].sum()) if RY is not None else None
         else:
             enfria = c["enfria"]
         tend = None if enfria is None else ("creciendo" if enfria < -2 else "debilitándose" if enfria > 2 else "estable")
         f = {"la": round(la, 3), "lo": round(lo, 3), "donde": donde, "area_km2": area, "tope_C": round(tmin - 273.15),
-             "nivel": c["nivel"] if c else nivel(tmin, enfria, None), "tendencia": tend,
+             "nivel": c["nivel"] if c else nivel(tmin, enfria, ry), "tendencia": tend,
              "enfria_K_10min": None if enfria is None else round(enfria, 1),
-             "rayos_15min": c["rayos"] if c else None, "nueva": c is None}
+             "rayos_15min": c["rayos"] if c else ry, "nueva": es_nueva}
         encima, camino = [], []
         if c is not None and c["vel"] >= 5:
             f.update({"vel_kmh": round(c["vel"]), "va_hacia": rumbo(c["u"], c["v"]),
@@ -181,7 +182,7 @@ def main():
     for k in ids0:
         la0, lo0, n0 = centro(lab0, k)
         k20 = pareja(lab0, k, lab20, ids20)
-        if k20 is None: sin_rumbo.append(k); continue  # nació hace menos de 20 min: sin velocidad confiable
+        if k20 is None: sin_rumbo.append((k, True)); continue  # nació hace menos de 20 min: sin velocidad confiable
         la20, lo20, n20 = centro(lab20, k20)
         pts = [(-20.0, la20, lo20), (0.0, la0, lo0)]
         if lab40 is not None:
@@ -193,7 +194,7 @@ def main():
         if not (0.5 <= n0 / max(n20, 1) <= 2) or np.hypot(uc, vc) > 100: uc = vc = 0.0   # se unió o partió: el centro salta
         frio20 = np.nan_to_num(prev[20][1], nan=999) <= FRIO
         di, dj = desplazamiento(lab0 == k, frio20)          # en 20 min (filas hacia el sur, columnas hacia el este)
-        if abs(di) == 6 or abs(dj) == 6: sin_rumbo.append(k); continue   # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
+        if abs(di) == 6 or abs(dj) == 6: sin_rumbo.append((k, False)); continue   # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
         u = dj * PASO * 111.2 * np.cos(np.radians(la0)) * 3; v = -di * PASO * 111.2 * 3   # km/h
         if 40 in prev:                                       # confirmar con hace 40 min (promedio de los dos tramos)
             frio40 = np.nan_to_num(prev[40][1], nan=999) <= FRIO
@@ -246,7 +247,7 @@ def main():
                             "nivel", "tope_K", "enfriamiento_K_10min", "rayos_15min"],
            "celdas_seguidas": len(celdas), "segundos": round(time.time() - t_ini, 1), "llegadas": llegadas}
     try:
-        lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev)
+        lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY)
     except Exception as e:      # la lista de la página nunca tumba el seguimiento en sombra
         print("tormentas.json falló:", repr(e)[:200])
     with open("salida/seguimiento_sombra.json.tmp", "w") as fh:
