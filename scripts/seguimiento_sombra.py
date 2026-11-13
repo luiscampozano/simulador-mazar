@@ -155,7 +155,7 @@ def balance_dia(t0, out):
         x["tope_min_C"] = min(x["tope_min_C"], f["tope_C"]); x["area_max_km2"] = max(x["area_max_km2"], f["area_km2"])
         if f.get("rayos_15min") is not None: x["rayos_max_15min"] = max(x["rayos_max_15min"] or 0, f["rayos_15min"])
         x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
-        if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2)])
+        if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2), hora])   # con la hora: la página anima el satélite con los números
     vistas = {f["n"] for f in out}
     for x in E["tormentas"]:      # sin pareja en esta imagen: se espera una imagen más (el tope puede rozar −58 °C) antes de darla por terminada
         if x["id"] not in vistas and x.get("activa") and not hecho:
