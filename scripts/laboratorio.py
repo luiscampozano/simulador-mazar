@@ -763,6 +763,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
     mod["_cota_obs"] = float(ctx["cota"])   # cota observada de la corrida (una pieza previa puede cambiar ctx["cota"], p. ej. embalse_combinado)
     mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
+    try: _registrar_desglose(ts, P, ctx, par, d_tit)   # cerebro 13 nov: qué supone el titular día por día (solo registro)
+    except Exception as e: log(f"Laboratorio: desglose_7d no se guardó: {e}")
     mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (tit_.get("promovidos") or []) or cid in retirados:
@@ -2352,7 +2354,8 @@ def escala_grande():
     try:
         prev = json.load(open(os.path.join(DIR, "escala_grande.json"), encoding="utf-8"))
         edad = (datetime.now() - datetime.fromisoformat(prev.get("generado", "2000-01-01T00:00"))).total_seconds() / 3600
-        if 0 <= edad < 6 and prev.get("zcit_sur") and prev.get("u850") and prev.get("agua_paute"):
+        if 0 <= edad < 6 and prev.get("zcit_sur") and prev.get("u850") and prev.get("agua_paute") \
+                and any("agua_kgm2" in (x or {}) for x in (prev.get("viento850_amazonia") or {}).values()):   # 13 nov: con el agua de la Amazonía
             _EG.update({k: v for k, v in prev.items() if k != "generado"})
             return _EG
     except Exception:
@@ -2402,8 +2405,8 @@ def escala_grande():
     # Registro (cerebro de Mazar 10 nov, idea agua_paute_con_viento): viento a 850 hPa pronosticado en la Amazonía
     # (-1,5°, -76,5°: el punto amazonia_ecuador de clima/convectivo.py), rapidez media (km/h) y dirección vectorial por día.
     # Solo se guarda; ningún candidato lo usa todavía.
-    v = _om("https://api.open-meteo.com/v1/forecast?latitude=-1.5&longitude=-76.5&hourly=wind_speed_850hPa,wind_direction_850hPa"
-            "&past_days=2&forecast_days=8&timezone=America%2FGuayaquil")
+    v = _om("https://api.open-meteo.com/v1/forecast?latitude=-1.5&longitude=-76.5&hourly=wind_speed_850hPa,wind_direction_850hPa,"
+            "total_column_integrated_water_vapour&past_days=2&forecast_days=8&timezone=America%2FGuayaquil")
     v850 = {}
     if v:
         loc = v[0] if isinstance(v, list) else v
@@ -2416,6 +2419,12 @@ def escala_grande():
             uu = sum(-a_ * math.sin(math.radians(b_)) for a_, b_ in xs) / len(xs); vv_ = sum(-a_ * math.cos(math.radians(b_)) for a_, b_ in xs) / len(xs)
             v850[dia] = {"rapidez_kmh": round(sum(a_ for a_, _ in xs) / len(xs), 1),
                          "desde_grados": round((math.degrees(math.atan2(-uu, -vv_)) + 360) % 360)}
+        # Auditor 13 nov (cerebro: agua_paute_con_viento): agua precipitable media del día en el mismo punto (kg/m² = mm).
+        ag = {}
+        for t, x in zip(h.get("time") or [], h.get("total_column_integrated_water_vapour") or []):
+            if isinstance(x, (int, float)): ag.setdefault(t[:10], []).append(x)
+        for dia, xs in ag.items():
+            if len(xs) >= 12 and dia in v850: v850[dia]["agua_kgm2"] = round(sum(xs) / len(xs), 1)
     a = _om("https://api.open-meteo.com/v1/forecast?latitude=-2.75,-2.55&longitude=-78.85,-78.60"
             "&hourly=total_column_integrated_water_vapour&past_days=30&forecast_days=8&timezone=America%2FGuayaquil")
     agua = {}
@@ -3328,3 +3337,104 @@ CANDIDATOS["coca_mitad_autoajuste_comp_largo"] = {
     "hipotesis": "coca_mitad (0,401/0,271/0,327 m a 1/2/3 días vs 0,409/0,277/0,333 del titular) + sin_autoajuste_y_autoajuste_largo. "
                  "Revisor: se armó como combinación de las dos piezas (la versión de Gemini aplicaba además media corrección el "
                  "día 1 sin justificarla); la mejora a 5–10 días depende del autoajuste, que hoy empuja al revés."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 13 nov (aprobación permanente de Luis, 7 nov)
+F_DESGLOSE = os.path.join(DIR, "desglose_7d.json")
+
+
+def _registrar_desglose(ts, P, ctx, par, d_tit):
+    """Registro 'desglose_7d' (cerebro 13 nov): de la primera corrida de 05:00–07:59 de cada día, lo que el titular supone
+    para los días 1–7: Paute (MW), Coca Codo (MW, aproximado con la serie diaria del río y el factor de paro), turbinado de
+    Mazar (m³/s y MWh aproximados con la caída Mazar–Amaluza), caudal de entrada (m³/s, sin memoria) y cota. Valores al
+    inicio de cada día de la simulación (paso de 6 h; dentro del día la demanda es la misma). Solo registro: no cambia nada."""
+    h = int(str(ts)[11:13])
+    if not 5 <= h <= 7:
+        return
+    reg = _leer(F_DESGLOSE, {}) or {}
+    dia = str(ts)[:10]
+    if dia in reg:
+        return
+    eta = float(par.get("eficiencia_mazar") or 0.9); amC = float(ctx.get("amaluzaCota") or 1980.0)
+    sc = list(ctx.get("serieCoca") or []); fac = list(ctx.get("ccsFactor") or [])
+    filas = []
+    for k in range(1, 8):
+        if k >= len(d_tit): break
+        x = d_tit[k]
+        qc = float(P.get("qCoca") or 0) * (float(sc[min(k, len(sc) - 1)]) if sc else 1.0)
+        f = float(fac[min(k, len(fac) - 1)]) if fac else 1.0
+        ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * f
+        mwh = float(x["qturb"]) * 0.00981 * eta * max(20.0, float(x["cota"]) - amC) * 24
+        filas.append({"dia": k, "cota": round(float(x["cota"]), 2), "paute_mw": round(float(x["paute"]), 1),
+                      "coca_mw_aprox": round(ccs, 1), "q_coca_m3s": round(qc, 1), "mazar_turb_m3s": round(float(x["qturb"]), 1),
+                      "mazar_mwh_aprox": round(mwh), "q_entrada_m3s": round(float(x["qin"]), 1)})
+    reg[dia] = {"ts": ts, "demanda_mw": P.get("demanda"), "otras_mw": P.get("other"), "termica_mw": P.get("therm"),
+                "importacion_mw": P.get("imp"), "dias": filas}
+    _escribir(F_DESGLOSE, dict(sorted(reg.items())[-60:]))
+
+
+def c_agua_paute_con_viento(P, ctx, mod):
+    """Idea 'agua_paute_con_viento' (cerebro de Mazar, pendiente desde el 10 nov; 13 nov). La lluvia pronosticada del Paute
+    solo llega entera cuando sopla el viento amazónico del noreste. Días 1–7 con viento a 850 hPa en la Amazonía (-1,5°,
+    -76,5°) ≥ 15 km/h, desde 0–45° y agua precipitable ≥ 54 mm → factor del ajuste del Paute 1,0 (toda la subida que promete
+    la lluvia); los demás días 1–7 → el observado (ajuste_paute.observado, hoy 0,32) en vez del 0,604 que aplica el titular.
+    Igual que el robot, solo donde la serie bruta sube (> 1); del día 8 en adelante, igual al titular. 31 oct–2 nov cumplió y
+    el caudal llegó a 82 m³/s; del 3 al 13 nov ningún día y llegó 32 %. Un solo evento: umbrales por confirmar. Sin el dato de
+    agua, no corre. Fechas desde la hora de la corrida (no la del servidor, que está en UTC)."""
+    eg = escala_grande(); v8 = eg.get("viento850_amazonia") or {}
+    bruta, info = mod.get("serieMazarBruta"), mod.get("ajuste_paute") or {}
+    obs = info.get("observado"); ts = mod.get("_ts")
+    if not bruta or not ts or not isinstance(obs, (int, float)):
+        return None
+    d0 = _ts_dt(ts).date()
+    fut = [(d0 + timedelta(days=k)).isoformat() for k in range(8)]
+    if not any(isinstance((v8.get(d) or {}).get("agua_kgm2"), (int, float)) for d in fut[1:]):
+        return None
+    actual = list(ctx.get("serieMazar") or bruta)
+    s = actual[:]; hum = []
+    for k in range(1, min(8, len(s), len(bruta))):
+        x = v8.get(fut[k]) or {}
+        dg = x.get("desde_grados")
+        viento = (x.get("rapidez_kmh") or 0) >= 15 and dg is not None and 0 <= dg <= 45 and (x.get("agua_kgm2") or 0) >= 54
+        if viento: hum.append(k)
+        f = 1.0 if viento else max(0.0, min(1.5, float(obs)))
+        if bruta[k] > 1:
+            s[k] = round(1 + (bruta[k] - 1) * f, 4)
+    ctx["serieMazar"] = s
+    return P, ctx, {"dias_viento_amazonico": hum, "serieMazar": s}
+
+
+def c_embalse_importacion(P, ctx, mod):
+    """Combinación 'embalse_importacion' (cerebro 13 nov): importación de las últimas 6 h (importacion_6h) + base de Paute
+    sin el hueco de los días importados (paute_repone_importacion; con importación ≥ 150 MW hoy no sube la base) + deuda de
+    Amaluza (embalse_combinado, al final porque cambia la cota; solo cuando corre). Lo demás, igual al titular."""
+    return _combinar(P, ctx, mod, c_importacion_6h, c_paute_repone_importacion, _opcional(c_embalse_combinado))
+
+
+_OR_C13 = "cerebro 2026-11-13"
+_cand_3nov("agua_paute_con_viento", c_agua_paute_con_viento, "Lluvia del Paute entera solo con viento amazónico del noreste",
+           "Cerebro de Mazar (pendiente desde el 10 nov, 13 nov): días 1–7 con viento a 850 hPa en la Amazonía ≥ 15 km/h desde "
+           "0–45° y agua precipitable ≥ 54 mm → factor del ajuste del Paute 1,0; los demás días 1–7 → el observado (0,32) en vez "
+           "de 0,604 (solo donde la serie sube, como el robot). 31 oct–2 nov cumplió (15,7–22,7 km/h, 22–27°, 54–57 mm) y el caudal llegó a "
+           "82 m³/s; del 3 al 13 nov ningún día y llegó el 32 % del caudal prometido. Un solo evento: umbrales por confirmar. "
+           "Revisor: con la serie bajo 1 queda igual al titular; desde el día 8, igual al titular.", origen=_OR_C13)
+_cand_3nov("embalse_importacion", c_embalse_importacion, "Amaluza + importación de 6 h + Paute repone la importación",
+           "Cerebro de Mazar 13 nov: une tres mecanismos distintos que ya corren por separado: déficit de Amaluza "
+           "(embalse_combinado, +29 % en 60 casos), importación del día (importacion_6h, +11 % en 32) y base de Paute sin el día "
+           "importado (paute_repone_importacion). embalse_combinado solo cuando corre; lo demás fijo.", origen=_OR_C13)
+
+
+# ---------------------------------------------------------------- Gemini 13 nov (segundo auditor; revisor Claude independiente: aprobado con cambios)
+def c_memoria_mitad_sin_autoajuste_sesgo50_dia3(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, c_memoria_mitad, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=2))
+
+
+CANDIDATOS["memoria_mitad_sin_autoajuste_sesgo50_dia3"] = {
+    "f": c_memoria_mitad_sin_autoajuste_sesgo50_dia3, "promocion": "luis", "origen": "Gemini 2026-11-13",
+    "nombre": "Media memoria + sin autoajuste + mitad de sesgo desde el día 3",
+    "hipotesis": "Media memoria y sin autoajuste atacan el sesgo optimista de 1–2 días (titular 0,451/0,490 m de error, sesgo "
+                 "+0,200/+0,282 m, marcador 13 nov) y quitar la mitad del sesgo por plazo desde el día 3 (desde=2) evita el pesimismo "
+                 "a 7–14 días (titular −1,41 m a 7, −3,37 a 10). Revisor: memoria_mitad sola no mejora a 1 día (0,452 vs 0,451) y "
+                 "memoria_mitad_y_sesgo50_largo empeora 42 % a 3 días (0,483 vs 0,341): ese es el riesgo frente a la regla. Hoy el "
+                 "autoajuste vale 1,28; el sesgo que corrige es el del titular. Armado con las piezas existentes. Si se promueve, el "
+                 "robot calcula la memoria después de aplicar_titular y pisaría la corrección: habría que tocar robot.py."}
