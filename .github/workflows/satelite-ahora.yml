@@ -27,23 +27,24 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -q numpy h5py requests
       # 13 nov (Luis): nowcast en SOMBRA con pysteps (no cambia avisos ni página). Si no instala, el robot sigue igual.
-      - name: pysteps para el nowcast en sombra
-        run: pip install -q pysteps opencv-python-headless || echo "pysteps no se instalo, sin nowcast en sombra"
+      - name: pysteps para el nowcast en sombra (entorno aparte, no toca el numpy del robot)
+        run: timeout 300 bash -c "python -m venv /tmp/ps && /tmp/ps/bin/pip install -q pysteps opencv-python-headless requests" || { rm -rf /tmp/ps; echo "pysteps no se instalo, sin nowcast en sombra"; }
       - name: Bucle cada 10 min (~5 h 40 min)
         run: |
           fin=$(( $(date +%s) + 340*60 ))
           while [ $(date +%s) -lt $fin ]; do
             t0=$(date +%s)
             if timeout 420 python scripts/satelite_ahora.py; then
-              timeout 90 python scripts/nowcast_sombra.py || echo "nowcast sombra: saltado"
-              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json salida/lluvia3d.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra.json salida/nowcast_sombra_hist.json /tmp/pub/ 2>/dev/null || true; }
+              rm -f salida/nowcast_sombra.json
+              [ -x /tmp/ps/bin/python ] && { timeout 90 /tmp/ps/bin/python scripts/nowcast_sombra.py || echo "nowcast sombra: saltado"; }
+              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json salida/lluvia3d.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra_hist.json /tmp/pub/ 2>/dev/null || true; }
               ( cd /tmp/pub && git init -q && git checkout -q -b satelite \
-                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) $(test -f lluvia3d.json && echo lluvia3d.json) $(test -f nowcast_sombra.json && echo nowcast_sombra.json nowcast_sombra_hist.json) \
+                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) $(test -f lluvia3d.json && echo lluvia3d.json) $(test -f nowcast_sombra.json && echo nowcast_sombra.json) $(test -f nowcast_sombra_hist.json && echo nowcast_sombra_hist.json) \
                 && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" commit -q -m "satélite $(date -u +%H:%M)" \
                 && git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" satelite ) \
                 || echo "no se pudo publicar esta vuelta"
             else
               echo "vuelta fallida $(date -u +%H:%M)"
             fi
-            espera=$(( 600 - ($(date +%s) - t0) )); [ $espera -gt 0 ] && sleep $espera
+            espera=$(( 600 - ($(date +%s) - t0) )); if [ $espera -gt 0 ]; then sleep $espera; fi
           done
