@@ -71,13 +71,15 @@ def nivel(tmin, enfria, rayos):
     """Nivel de fuerza ANTES de que llegue (Luis, 13 nov), regla fija a priori (no ajustada a datos):
     'tormenta fuerte' = tope ≤ 205 K (−68 °C) y (≥ 10 rayos en 15 min o enfriándose ≥ 4 K en 10 min);
     'aguacero' = tope ≤ 215 K; 'lluvia' = el resto. Se verifica después con los mm por hora de las estaciones."""
-    if tmin <= 205 and (rayos >= 10 or (enfria is not None and enfria <= -4)): return "tormenta fuerte"
+    if tmin <= 205 and ((rayos or 0) >= 10 or (enfria is not None and enfria <= -4)): return "tormenta fuerte"
     return "aguacero" if tmin <= 215 else "lluvia"
 
 
-def rayos_malla():
+def rayos_malla(t0):
     try:
         A = json.load(open("salida/ahora.json"))
+        if A.get("imagen") != t0.isoformat() or (A.get("filas"), A.get("cols"), A.get("norte"), A.get("oeste"), A.get("paso")) != (FILAS, COLS, N, O, PASO):
+            return None                                   # otra imagen u otra malla: sin rayos antes que rayos desalineados
         return np.frombuffer(base64.b64decode(A["rayos_u8"]), np.uint8).reshape(FILAS, COLS).astype(int)
     except Exception:
         return None
@@ -92,7 +94,7 @@ def main():
         print("seguimiento sombra: imagen vieja", t0.isoformat()); return
     prev = {round((t0 - c[0]).total_seconds() / 60 / 10) * 10: c for c in C[:-1]}
     if 20 not in prev: print("seguimiento sombra: falta la imagen de hace 20 min"); return
-    RY = rayos_malla()
+    RY = rayos_malla(t0)
     lab0, ids0 = objetos(T0)
     lab20, ids20 = objetos(prev[20][1])
     lab40, ids40 = objetos(prev[40][1]) if 40 in prev else (None, [])
@@ -121,8 +123,9 @@ def main():
                 u = (u + dj2 * PASO * 111.2 * np.cos(np.radians(la0)) * 1.5) / 2; v = (v - di2 * PASO * 111.2 * 1.5) / 2
         pix = np.nonzero((lab0 == k) & (np.nan_to_num(T0, nan=999) <= TORMENTA))   # una vez por nube
         obj = lab0 == k
-        enfria = float(np.nanmean(T0[obj] - prev[10][1][obj])) if 10 in prev else None   # K en 10 min (< 0 = crece)
-        ry = int(RY[ndimage.binary_dilation(obj, iterations=1)].sum()) if RY is not None else 0   # rayos en la nube y su borde
+        x = np.nanmean(T0[obj] - prev[10][1][obj]) if 10 in prev and np.isfinite(prev[10][1][obj]).any() else np.nan
+        enfria = float(x) if np.isfinite(x) else None        # K en 10 min (< 0 = crece); None si no hay dato
+        ry = int(RY[ndimage.binary_dilation(obj, iterations=1)].sum()) if RY is not None else None   # rayos en la nube y su borde
         tmin = float(np.nanmin(T0[obj]))
         celdas.append({"px": pix, "k": k, "u": float(u), "v": float(v), "vel": float(np.hypot(u, v)), "uc": float(uc), "vc": float(vc), "n": n0,
                        "crece": (n0 - n20) / max(n20, 1), "tmin": tmin, "puntos": len(pts),
@@ -164,7 +167,7 @@ def main():
                             "nivel", "tope_K", "enfriamiento_K_10min", "rayos_15min"],
            "celdas_seguidas": len(celdas), "segundos": round(time.time() - t_ini, 1), "llegadas": llegadas}
     with open("salida/seguimiento_sombra.json.tmp", "w") as fh:
-        json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
+        json.dump(out, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace("salida/seguimiento_sombra.json.tmp", "salida/seguimiento_sombra.json")
     F = "salida/seguimiento_sombra_hist.json"
     try:
@@ -179,7 +182,7 @@ def main():
     with open(F + ".tmp", "w") as fh:
         json.dump({"campos": ["imagen", "ciudad", "punto", "min_forma", "vel_forma", "min_centro", "vel_centro", "cambio_area", "encima",
                                          "nivel", "tope_K", "enfria_K_10min", "rayos_15min"], "imagenes_procesadas": imgs,
-                   "registros": reg}, fh, ensure_ascii=False, separators=(",", ":"))
+                   "registros": reg}, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace(F + ".tmp", F)
     print(f"seguimiento sombra {t0:%H:%M} UTC: {len(celdas)} nubes seguidas; {sum(len(v) for v in llegadas.values())} puntos con llegada; {out['segundos']} s")
 
