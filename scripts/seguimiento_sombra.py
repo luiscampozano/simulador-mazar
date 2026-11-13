@@ -100,7 +100,8 @@ def main():
             di2, dj2 = desplazamiento(lab0 == k, frio40, 10)
             if abs(di2) < 10 and abs(dj2) < 10:
                 u = (u + dj2 * PASO * 111.2 * np.cos(np.radians(la0)) * 1.5) / 2; v = (v - di2 * PASO * 111.2 * 1.5) / 2
-        celdas.append({"k": k, "u": float(u), "v": float(v), "vel": float(np.hypot(u, v)), "uc": float(uc), "vc": float(vc), "n": n0,
+        pix = np.nonzero((lab0 == k) & (np.nan_to_num(T0, nan=999) <= TORMENTA))   # una vez por nube
+        celdas.append({"px": pix, "k": k, "u": float(u), "v": float(v), "vel": float(np.hypot(u, v)), "uc": float(uc), "vc": float(vc), "n": n0,
                        "crece": (n0 - n20) / max(n20, 1), "tmin": float(np.nanmin(T0[lab0 == k])), "puntos": len(pts)})
     P = json.load(open(os.path.join(AQUI, "puntos_satelite.json")))
     edad = (datetime.now(timezone.utc) - t0).total_seconds() / 60
@@ -110,8 +111,8 @@ def main():
         for nombre, la, lo in lista:
             kmLon = 111.2 * np.cos(np.radians(la)); mejor = None
             for c in celdas:
-                if c["tmin"] > TORMENTA or c["vel"] < 5: continue
-                i, j = np.nonzero((lab0 == c["k"]) & (np.nan_to_num(T0, nan=999) <= TORMENTA))
+                if c["tmin"] > TORMENTA or max(c["vel"], float(np.hypot(c["uc"], c["vc"]))) < 5: continue
+                i, j = c["px"]
                 dx = (LON[j] - lo) * kmLon; dy = (LAT[i] - la) * 111.2
                 d = np.hypot(dx, dy)
                 if d.min() < 6: mejor = {"min": 0, "encima": True}; break
@@ -121,7 +122,7 @@ def main():
                     if vel < 5: return None
                     t = -(dx * u + dy * v) / (vel ** 2)
                     ok = (t > 0) & (t <= HORAS) & (np.hypot(dx + u * t, dy + v * t) <= KM)
-                    return round(float(t[ok].min() * 60 - edad)) if ok.any() else None
+                    return max(0, round(float(t[ok].min() * 60 - edad))) if ok.any() else None   # < 0 = llegando ya
                 mf, mc = eta(c["u"], c["v"]), eta(c["uc"], c["vc"])
                 m = min(x for x in (mf, mc, 9e9) if x is not None)
                 if m < 9e9 and (mejor is None or m < mejor["min"]):
@@ -141,7 +142,7 @@ def main():
     F = "salida/seguimiento_sombra_hist.json"
     try:
         H = json.load(open(F)) if os.path.exists(F) else json.load(io.StringIO(__import__("requests").get(
-            "https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/seguimiento_sombra_hist.json", timeout=30).text))
+            "https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/seguimiento_sombra_hist.json", timeout=8).text))
     except Exception:
         H = {"registros": []}
     lim = (t0 - timedelta(hours=48)).isoformat()
