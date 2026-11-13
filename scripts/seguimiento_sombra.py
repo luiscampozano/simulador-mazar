@@ -8,6 +8,8 @@ para una tormenta que, seguida imagen a imagen, avanzaba a ~24 km/h. Aquí se pr
   - dos velocidades a comparar: por el CENTRO (ajuste lineal de 2–3 posiciones) y por la FORMA (corrimiento de su forma que mejor calza con lo frío de hace 20 (y 40) min); tendencia = cambio de área,
   - para cada punto PÚBLICO fijo (scripts/puntos_satelite.json) se extrapola cada píxel de la tormenta (≤ 215 K) con la
     velocidad de SU tormenta y se mira si pasa a ≤ 7 km en ≤ 2 h (misma regla que el aviso, otra velocidad).
+Además (Luis, 13 nov), el NIVEL DE FUERZA de cada nube antes de llegar: tope, enfriamiento en 10 min y rayos (función
+nivel(), regla fija), para verificarlo con los mm por hora de las estaciones.
 Salida: salida/seguimiento_sombra.json (última) y salida/seguimiento_sombra_hist.json (48 h) para verificar después
 contra las imágenes siguientes y contra el aviso actual."""
 import base64, io, json, os, time
@@ -65,6 +67,22 @@ def desplazamiento(mask0, frio_antes, maxpx=6):
     return bd
 
 
+def nivel(tmin, enfria, rayos):
+    """Nivel de fuerza ANTES de que llegue (Luis, 13 nov), regla fija a priori (no ajustada a datos):
+    'tormenta fuerte' = tope ≤ 205 K (−68 °C) y (≥ 10 rayos en 15 min o enfriándose ≥ 4 K en 10 min);
+    'aguacero' = tope ≤ 215 K; 'lluvia' = el resto. Se verifica después con los mm por hora de las estaciones."""
+    if tmin <= 205 and (rayos >= 10 or (enfria is not None and enfria <= -4)): return "tormenta fuerte"
+    return "aguacero" if tmin <= 215 else "lluvia"
+
+
+def rayos_malla():
+    try:
+        A = json.load(open("salida/ahora.json"))
+        return np.frombuffer(base64.b64decode(A["rayos_u8"]), np.uint8).reshape(FILAS, COLS).astype(int)
+    except Exception:
+        return None
+
+
 def main():
     t_ini = time.time()
     C = cuadros()
@@ -74,6 +92,7 @@ def main():
         print("seguimiento sombra: imagen vieja", t0.isoformat()); return
     prev = {round((t0 - c[0]).total_seconds() / 60 / 10) * 10: c for c in C[:-1]}
     if 20 not in prev: print("seguimiento sombra: falta la imagen de hace 20 min"); return
+    RY = rayos_malla()
     lab0, ids0 = objetos(T0)
     lab20, ids20 = objetos(prev[20][1])
     lab40, ids40 = objetos(prev[40][1]) if 40 in prev else (None, [])
@@ -101,8 +120,13 @@ def main():
             if abs(di2) < 10 and abs(dj2) < 10:
                 u = (u + dj2 * PASO * 111.2 * np.cos(np.radians(la0)) * 1.5) / 2; v = (v - di2 * PASO * 111.2 * 1.5) / 2
         pix = np.nonzero((lab0 == k) & (np.nan_to_num(T0, nan=999) <= TORMENTA))   # una vez por nube
+        obj = lab0 == k
+        enfria = float(np.nanmean(T0[obj] - prev[10][1][obj])) if 10 in prev else None   # K en 10 min (< 0 = crece)
+        ry = int(RY[ndimage.binary_dilation(obj, iterations=1)].sum()) if RY is not None else 0   # rayos en la nube y su borde
+        tmin = float(np.nanmin(T0[obj]))
         celdas.append({"px": pix, "k": k, "u": float(u), "v": float(v), "vel": float(np.hypot(u, v)), "uc": float(uc), "vc": float(vc), "n": n0,
-                       "crece": (n0 - n20) / max(n20, 1), "tmin": float(np.nanmin(T0[lab0 == k])), "puntos": len(pts)})
+                       "crece": (n0 - n20) / max(n20, 1), "tmin": tmin, "puntos": len(pts),
+                       "enfria": None if enfria is None else round(enfria, 1), "rayos": ry, "nivel": nivel(tmin, enfria, ry)})
     P = json.load(open(os.path.join(AQUI, "puntos_satelite.json")))
     edad = (datetime.now(timezone.utc) - t0).total_seconds() / 60
     llegadas = {}
@@ -115,7 +139,7 @@ def main():
                 i, j = c["px"]
                 dx = (LON[j] - lo) * kmLon; dy = (LAT[i] - la) * 111.2
                 d = np.hypot(dx, dy)
-                if d.min() < 6: mejor = {"min": 0, "encima": True}; break
+                if d.min() < 6: mejor = {"min": 0, "encima": True, "nivel": c["nivel"], "tmin": round(c["tmin"]), "enfria": c["enfria"], "rayos": c["rayos"]}; break
                 if d.min() > 150: continue
                 def eta(u, v):
                     vel = np.hypot(u, v)
@@ -127,14 +151,17 @@ def main():
                 m = min(x for x in (mf, mc, 9e9) if x is not None)
                 if m < 9e9 and (mejor is None or m < mejor["min"]):
                     mejor = {"min": m, "min_forma": mf, "min_centro": mc, "vel": round(c["vel"]), "vel_centro": round(float(np.hypot(c["uc"], c["vc"]))),
-                             "crece": round(c["crece"], 2), "puntos": c["puntos"]}
+                             "crece": round(c["crece"], 2), "puntos": c["puntos"], "nivel": c["nivel"], "tmin": round(c["tmin"]),
+                             "enfria": c["enfria"], "rayos": c["rayos"]}
             if mejor: filas.append([nombre, mejor.get("min_forma"), mejor.get("vel"), mejor.get("min_centro"), mejor.get("vel_centro"),
-                                    mejor.get("crece"), bool(mejor.get("encima"))])
+                                    mejor.get("crece"), bool(mejor.get("encima")), mejor.get("nivel"), mejor.get("tmin"),
+                                    mejor.get("enfria"), mejor.get("rayos")])
         if filas: llegadas[ciudad] = filas
     out = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "metodo": "seguimiento de cada nube ≤225 K (superposición entre imágenes de hace 40, 20 y 0 min), extrapolación de sus píxeles ≤215 K",
            "estado": "SOMBRA: no se usa en avisos ni en la página",
-           "campos_punto": ["nombre", "min_por_forma", "vel_forma_kmh", "min_por_centro", "vel_centro_kmh", "cambio_de_area_20min", "encima"],
+           "campos_punto": ["nombre", "min_por_forma", "vel_forma_kmh", "min_por_centro", "vel_centro_kmh", "cambio_de_area_20min", "encima",
+                            "nivel", "tope_K", "enfriamiento_K_10min", "rayos_15min"],
            "celdas_seguidas": len(celdas), "segundos": round(time.time() - t_ini, 1), "llegadas": llegadas}
     with open("salida/seguimiento_sombra.json.tmp", "w") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
@@ -150,7 +177,8 @@ def main():
     reg += [[t0.isoformat(), c] + f for c, fs in llegadas.items() for f in fs]
     imgs = sorted({i for i in H.get("imagenes_procesadas", []) if i >= lim} | {t0.isoformat()})
     with open(F + ".tmp", "w") as fh:
-        json.dump({"campos": ["imagen", "ciudad", "punto", "min_forma", "vel_forma", "min_centro", "vel_centro", "cambio_area", "encima"], "imagenes_procesadas": imgs,
+        json.dump({"campos": ["imagen", "ciudad", "punto", "min_forma", "vel_forma", "min_centro", "vel_centro", "cambio_area", "encima",
+                                         "nivel", "tope_K", "enfria_K_10min", "rayos_15min"], "imagenes_procesadas": imgs,
                    "registros": reg}, fh, ensure_ascii=False, separators=(",", ":"))
     os.replace(F + ".tmp", F)
     print(f"seguimiento sombra {t0:%H:%M} UTC: {len(celdas)} nubes seguidas; {sum(len(v) for v in llegadas.values())} puntos con llegada; {out['segundos']} s")
