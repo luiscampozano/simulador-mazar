@@ -1,0 +1,76 @@
+{
+ "fecha": "2026-11-13",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 4.92,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia3",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 3",
+    "hipotesis": "Quitar el autoajuste mejora el pronóstico a 1 y 2 días (−5,2 % y −5,8 % de error en el marcador), y aplicar la mitad del sesgo por plazo únicamente desde el día 3 corrige el fuerte pesimismo a 5, 7 y 14 días sin empeorar el día 3 (que en sin_autoajuste_sesgo50_largo quedaba al borde del 5 % de tolerancia).",
+    "promocion": "luis",
+    "por_que": "En el marcador actual (99 casos, 8 días), sin_autoajuste baja el error medio a 1 día de 0,444 a 0,421 m y a 2 días de 0,467 a 0,440 m, pero se vuelve muy pesimista a 7 días (error 1,955 m vs 1,408 m del titular). La variante existente sin_autoajuste_sesgo50_largo empieza a corregir desde el día 2 y roza el límite de empeoramiento a 3 días; al retrasar la corrección de sesgo al día 3 (d >= 2), preservamos intacta la ganancia de corto plazo y abatimos el sesgo de −1,95 m a 7 días y −7,45 m a 14 días.",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia3(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.66,
+     2117.91,
+     2116.35
+    ],
+    "candidato_1_7_14": [
+     2123.82,
+     2120.34,
+     2119.84
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_mitad_sin_autoajuste_sesgo50_dia3",
+    "nombre": "Media memoria + sin autoajuste + sesgo desde día 3",
+    "hipotesis": "Combinar la reducción a la mitad de la memoria de 48 h con la eliminación del autoajuste reduce el error y el sesgo optimista a 1 y 2 días (+0,216 m y +0,250 m en el titular), mientras que quitar la mitad del sesgo por plazo desde el día 3 evita el pesimismo a 7 y 14 días.",
+    "promocion": "luis",
+    "por_que": "El titular tiene hoy un error medio a 1 día de 0,444 m (mediana 38,6 cm) con sesgo optimista (+0,216 m) por el rezago de la memoria y el autoajuste, mientras que a 7 y 10 días el sesgo es fuertemente pesimista (−1,41 m y −3,36 m). Al reducir a la mitad la memoria y fijar el ajuste en 1,0 atacamos las dos causas del error en las primeras 48 h, y la corrección de la mitad del sesgo desde el día 3 sostiene la precisión a 5, 7 y 14 días (donde sesgo_plazo_50 baja el error a 7 días de 1,408 a 0,506 m).",
+    "codigo": "def c_memoria_mitad_sin_autoajuste_sesgo50_dia3(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not mem:\n        return None\n    ctx[\"ajuste\"] = 1.0\n    base = [float(x) * 0.5 for x in mem]\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.66,
+     2117.91,
+     2116.35
+    ],
+    "candidato_1_7_14": [
+     2123.89,
+     2121.08,
+     2122.64
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_error_3_cuarto",
+    "nombre": "Un cuarto de corrección del error reciente (3)",
+    "hipotesis": "Aplicar solo un cuarto (25 %) del caudal que explica el error de las 3 últimas verificaciones a 1 día corrige los cambios bruscos de despacho (como los −33 cm de hoy a las 10:00) sin la sobrecorrección que hace perder a corrige_error_3 en el marcador.",
+    "promocion": "luis",
+    "por_que": "En las verificaciones recientes (datos.json), el error a 1 día pasó rápidamente de +0,14 m a −0,33 m en 7 horas debido a cambios de operación intradiarios. El candidato corrige_error_3 aplica el 100 % de ese error y sobrecorrige tanto que su error medio a 1 día sube a 0,714 m (frente a 0,444 m del titular). Reducir la ganancia a 0,25 (con tope de ±20 m³/s) amortigua la reacción ante oscilaciones de un día a otro pero captura la deriva real de las últimas horas sin tocar el largo plazo.",
+    "codigo": "def c_corrige_error_3_cuarto(P, ctx, mod):\n    ac = mod.get(\"aciertos\") or {}\n    rec = [x for x in (ac.get(\"recientes_1d\") or []) if isinstance(x.get(\"err\"), (int, float)) and x.get(\"obj_ts\")]\n    if len(rec) < 3:\n        return None\n    rec = sorted(rec, key=lambda x: x[\"obj_ts\"])[-3:]\n    e = sum(float(x[\"err\"]) for x in rec) / 3.0\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    q0 = -0.25 * e * dvdz / 0.0864\n    q0 = max(-20.0, min(20.0, q0))\n    corr = [q0 * math.exp(-d / 1.0) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "estado": "rechazada por validación: no se permite Lambda"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-13"
+}
