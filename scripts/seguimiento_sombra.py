@@ -97,6 +97,76 @@ def rumbo(de_este, de_norte, nombres=RUMBOS):
     return nombres[int(((np.degrees(np.arctan2(de_este, de_norte)) + 360) % 360 + 22.5) // 45) % 8]
 
 
+ESTADO = "salida/tormentas_estado.json"
+ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
+
+
+def balance_dia(t0, out, ciudades):
+    """Tormentas del DÍA DE TORMENTA (06:00 → 06:00 de Ecuador; Luis, 13 nov: "ver las tormentas del día y el estado de
+    ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
+    superpone en la imagen anterior (≤ 40 min antes); si no se superpone con ninguna, es nueva y recibe el siguiente
+    número. Se guarda el estado (con la máscara de cada tormenta activa) en salida/tormentas_estado.json, que el robot
+    publica para continuar en la siguiente corrida."""
+    loc = t0 - timedelta(hours=5)
+    dia = (loc - timedelta(hours=6)).date().isoformat()
+    try:
+        E = json.load(open(ESTADO)) if os.path.exists(ESTADO) else __import__("requests").get(
+            "https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/tormentas_estado.json", timeout=8).json()
+    except Exception:
+        E = {}
+    if E.get("dia") != dia:
+        E = {"dia": dia, "tormentas": []}
+    if E.get("imagen") == t0.isoformat():          # misma imagen ya procesada: no duplicar la pista
+        hecho = True
+    else:
+        hecho = False
+    previa = E.get("imagen")
+    seguido = previa is not None and 0 < (t0 - datetime.fromisoformat(previa)).total_seconds() <= 40 * 60
+    activas = [x for x in E["tormentas"] if x.get("activa") and x.get("_mask")]
+    pares = []
+    if seguido or hecho:
+        for a, f in enumerate(out):
+            fo = set(f["_obj"].tolist())
+            for x in activas:
+                ov = len(fo.intersection(x["_mask"]))
+                if ov: pares.append((ov, a, x["id"]))
+    pares.sort(reverse=True)
+    usado_f, usado_x, asig = set(), set(), {}
+    for ov, a, i in pares:                           # uno a uno, de mayor a menor superposición
+        if a in usado_f or i in usado_x: continue
+        asig[a] = i; usado_f.add(a); usado_x.add(i)
+    por_id = {x["id"]: x for x in E["tormentas"]}
+    hora = loc.strftime("%H:%M")
+    for a, f in enumerate(out):
+        if a in asig:
+            x = por_id[asig[a]]
+        else:
+            x = {"id": max([y["id"] for y in E["tormentas"]] or [0]) + 1, "nace": hora, "nace_donde": f["donde"],
+                 "ya_estaba": not (seguido or hecho),     # sin imagen anterior seguida: no sabemos cuándo nació
+                 "nivel_max": f["nivel"], "tope_min_C": f["tope_C"], "area_max_km2": 0, "rayos_max_15min": None,
+                 "encima": [], "pista": []}
+            E["tormentas"].append(x); por_id[x["id"]] = x
+        f["n"] = x["id"]
+        x.update({"activa": True, "ultima": hora, "donde": f["donde"], "_mask": f["_obj"].tolist(), "falta": 0})
+        if ORDEN_NIVEL.get(f["nivel"], 0) > ORDEN_NIVEL.get(x["nivel_max"], 0): x["nivel_max"] = f["nivel"]
+        x["tope_min_C"] = min(x["tope_min_C"], f["tope_C"]); x["area_max_km2"] = max(x["area_max_km2"], f["area_km2"])
+        if f.get("rayos_15min") is not None: x["rayos_max_15min"] = max(x["rayos_max_15min"] or 0, f["rayos_15min"])
+        x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
+        if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2)])
+    vistas = {f["n"] for f in out}
+    for x in E["tormentas"]:      # sin pareja en esta imagen: se espera una imagen más (el tope puede rozar −58 °C) antes de darla por terminada
+        if x["id"] not in vistas and x.get("activa") and not hecho:
+            x["falta"] = x.get("falta", 0) + 1
+            if x["falta"] >= 2 or not seguido:
+                x["activa"] = False; x.pop("_mask", None); x.pop("falta", None)
+    E["imagen"] = t0.isoformat()
+    with open(ESTADO + ".tmp", "w") as fh:
+        json.dump(E, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    os.replace(ESTADO + ".tmp", ESTADO)
+    pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta")} for x in E["tormentas"]]
+    return {"dia": dia, "desde": "06:00", "tormentas": pub}
+
+
 def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
     """salida/tormentas.json para la pestaña Tormentas (Luis, 13 nov). Una fila por nube con tope ≤ 215 K."""
     ciudades = {c: (float(np.mean([p[1] for p in v])), float(np.mean([p[2] for p in v]))) for c, v in P.items()}
@@ -149,16 +219,22 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
             elif mejor is not None:
                 camino.append([n, mejor])
         f["encima"] = encima
+        f["_obj"] = np.flatnonzero(obj)
         f["camino"] = sorted(camino, key=lambda x: x[1])
         out.append(f)
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
     out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
-    for n, f in enumerate(out, 1): f["n"] = n
+    try:
+        dia = balance_dia(t0, out, ciudades)
+    except Exception as e:      # el balance del día nunca deja sin la lista de ahora
+        print("balance del día falló:", repr(e)[:200]); dia = None
+        for n, f in enumerate(out, 1): f["n"] = n
+    for f in out: f.pop("_obj", None)
     res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
                    "que la tormenta alcanzaría en ≤ 2 h si mantiene rumbo y velocidad (extrapolación, no pronóstico).",
            "ciudades": {n: [round(x[0], 3), round(x[1], 3)] for n, x in ciudades.items()},   # centro de los puntos públicos
-           "tormentas": out}
+           "tormentas": out, "dia": dia}
     with open("salida/tormentas.json.tmp", "w") as fh:
         json.dump(res, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace("salida/tormentas.json.tmp", "salida/tormentas.json")
