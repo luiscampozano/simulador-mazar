@@ -57,7 +57,7 @@ def main():
     from pysteps import motion, nowcasts
     V = motion.get_method("LK")(np.stack(Is))
     t0 = C[-1][0]
-    if (datetime.now(timezone.utc) - t0).total_seconds() > 25 * 60:     # lluvia3d.json no se actualizó: no publicar algo viejo
+    if (datetime.now(timezone.utc) - t0).total_seconds() > 35 * 60:     # lluvia3d.json no se actualizó: no publicar algo viejo
         print("nowcast sombra: la última imagen es vieja", t0.isoformat()); return
     with contextlib.redirect_stdout(io.StringIO()):
         R = nowcasts.get_method("steps")(np.stack(Is), V, PASOS, n_ens_members=MIEMBROS, n_cascade_levels=6, precip_thr=1.0,
@@ -85,7 +85,8 @@ def main():
            "estado": "SOMBRA: no se usa en avisos ni en la página",
            "campos_punto": ["nombre", "probabilidad_llegada_2h", "minuto_mediano_de_llegada", "encima"],
            "segundos": round(time.time() - t_ini, 1), "puntos": puntos}
-    json.dump(out, open("salida/nowcast_sombra.json.tmp", "w"), ensure_ascii=False, separators=(",", ":"))
+    with open("salida/nowcast_sombra.json.tmp", "w") as fh:
+        json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     os.replace("salida/nowcast_sombra.json.tmp", "salida/nowcast_sombra.json")
     # historial de 48 h (solo puntos con algo) para verificar contra las imágenes siguientes
     F = "salida/nowcast_sombra_hist.json"
@@ -98,8 +99,9 @@ def main():
     reg = [r for r in H.get("registros", []) if r[0] >= lim and r[0] != t0.isoformat()]
     reg += [[t0.isoformat(), c, f[0], f[1], f[2], f[3]] for c, fs in puntos.items() for f in fs if f[1] or f[3]]
     imgs = sorted({i for i in H.get("imagenes_procesadas", []) if i >= lim} | {t0.isoformat()})   # distingue "P = 0" de "no corrió"
-    json.dump({"campos": ["imagen", "ciudad", "punto", "p", "min", "encima"], "imagenes_procesadas": imgs, "registros": reg},
-              open(F + ".tmp", "w"), ensure_ascii=False, separators=(",", ":"))
+    with open(F + ".tmp", "w") as fh:
+        json.dump({"campos": ["imagen", "ciudad", "punto", "p", "min", "encima"], "imagenes_procesadas": imgs, "registros": reg},
+                  fh, ensure_ascii=False, separators=(",", ":"))
     os.replace(F + ".tmp", F)        # escritura atómica: un timeout no deja el historial a medias
     print(f"nowcast sombra {t0:%H:%M} UTC: {sum(1 for fs in puntos.values() for f in fs if (f[1] or 0) >= 0.3)} puntos con P ≥ 0,3; "
           f"{out['segundos']} s")
