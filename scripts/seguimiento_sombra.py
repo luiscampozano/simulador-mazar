@@ -101,7 +101,7 @@ ESTADO = "salida/tormentas_estado.json"
 ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
 
 
-def balance_dia(t0, out, ciudades):
+def balance_dia(t0, out):
     """Tormentas del DÍA DE TORMENTA (06:00 → 06:00 de Ecuador; Luis, 13 nov: "ver las tormentas del día y el estado de
     ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
     superpone en la imagen anterior (≤ 40 min antes); si no se superpone con ninguna, es nueva y recibe el siguiente
@@ -109,11 +109,12 @@ def balance_dia(t0, out, ciudades):
     publica para continuar en la siguiente corrida."""
     loc = t0 - timedelta(hours=5)
     dia = (loc - timedelta(hours=6)).date().isoformat()
-    try:
-        E = json.load(open(ESTADO)) if os.path.exists(ESTADO) else __import__("requests").get(
-            "https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/tormentas_estado.json", timeout=8).json()
-    except Exception:
-        E = {}
+    if os.path.exists(ESTADO):
+        E = json.load(open(ESTADO))
+    else:   # bucle recién arrancado: se sigue con lo publicado; si no se puede leer (salvo que no exista), no se pisa
+        r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/tormentas_estado.json", timeout=15)
+        if r.status_code == 404: E = {}
+        else: r.raise_for_status(); E = r.json()
     if E.get("dia") != dia:
         E = {"dia": dia, "tormentas": []}
     if E.get("imagen") == t0.isoformat():          # misma imagen ya procesada: no duplicar la pista
@@ -121,6 +122,8 @@ def balance_dia(t0, out, ciudades):
     else:
         hecho = False
     previa = E.get("imagen")
+    if previa and t0 < datetime.fromisoformat(previa):
+        raise ValueError("imagen más antigua que la ya procesada")
     seguido = previa is not None and 0 < (t0 - datetime.fromisoformat(previa)).total_seconds() <= 40 * 60
     activas = [x for x in E["tormentas"] if x.get("activa") and x.get("_mask")]
     pares = []
@@ -225,7 +228,7 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
     out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
     try:
-        dia = balance_dia(t0, out, ciudades)
+        dia = balance_dia(t0, out)
     except Exception as e:      # el balance del día nunca deja sin la lista de ahora
         print("balance del día falló:", repr(e)[:200]); dia = None
         for n, f in enumerate(out, 1): f["n"] = n
