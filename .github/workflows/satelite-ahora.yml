@@ -22,6 +22,7 @@ jobs:
             scripts/avisos_lab.py
             scripts/puntos_satelite.json
             scripts/nowcast_sombra.py
+            scripts/seguimiento_sombra.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
@@ -35,11 +36,12 @@ jobs:
           while [ $(date +%s) -lt $fin ]; do
             t0=$(date +%s)
             if timeout 420 python scripts/satelite_ahora.py; then
-              rm -f salida/nowcast_sombra.json
+              rm -f salida/nowcast_sombra.json salida/seguimiento_sombra.json
               [ -x /tmp/ps/bin/python ] && { timeout 90 /tmp/ps/bin/python scripts/nowcast_sombra.py || echo "nowcast sombra: saltado"; }
-              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json salida/lluvia3d.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra_hist.json /tmp/pub/ 2>/dev/null || true; }
+              [ -x /tmp/ps/bin/python ] && { timeout 30 /tmp/ps/bin/python scripts/seguimiento_sombra.py || echo "seguimiento sombra: saltado"; }
+              rm -rf /tmp/pub && mkdir /tmp/pub && cp salida/ahora.json salida/historia.json /tmp/pub/ && { cp salida/avisos_lab.json salida/lluvia3d.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/nowcast_sombra_hist.json /tmp/pub/ 2>/dev/null || true; } && { cp salida/seguimiento_sombra.json salida/seguimiento_sombra_hist.json /tmp/pub/ 2>/dev/null || true; }
               ( cd /tmp/pub && git init -q && git checkout -q -b satelite \
-                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) $(test -f lluvia3d.json && echo lluvia3d.json) $(test -f nowcast_sombra.json && echo nowcast_sombra.json) $(test -f nowcast_sombra_hist.json && echo nowcast_sombra_hist.json) \
+                && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add ahora.json historia.json $(test -f avisos_lab.json && echo avisos_lab.json) $(test -f lluvia3d.json && echo lluvia3d.json) $(test -f nowcast_sombra.json && echo nowcast_sombra.json) $(test -f nowcast_sombra_hist.json && echo nowcast_sombra_hist.json) $(test -f seguimiento_sombra.json && echo seguimiento_sombra.json) $(test -f seguimiento_sombra_hist.json && echo seguimiento_sombra_hist.json) \
                 && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" commit -q -m "satélite $(date -u +%H:%M)" \
                 && git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" satelite ) \
                 || echo "no se pudo publicar esta vuelta"
