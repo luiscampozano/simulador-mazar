@@ -156,6 +156,7 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev):
     res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
                    "que la tormenta alcanzaría en ≤ 2 h si mantiene rumbo y velocidad (extrapolación, no pronóstico).",
+           "ciudades": {n: [round(x[0], 3), round(x[1], 3)] for n, x in ciudades.items()},   # centro de los puntos públicos
            "tormentas": out}
     with open("salida/tormentas.json.tmp", "w") as fh:
         json.dump(res, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
