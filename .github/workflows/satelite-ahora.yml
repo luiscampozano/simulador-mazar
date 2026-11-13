@@ -46,5 +46,8 @@ jobs:
             else
               echo "vuelta fallida $(date -u +%H:%M)"
             fi
-            espera=$(( 600 - ($(date +%s) - t0) )); if [ $espera -gt 0 ]; then sleep $espera; fi
+            # 13 nov (Luis): sincronizado con el GOES. La imagen que empieza a las :X0 termina ~:X9:30 y aparece en AWS ~:X0:30–:X1;
+            # la vuelta arranca a las :X2 (UTC) para tomarla apenas sale (antes podía llegar justo antes y publicar la anterior:
+            # retraso de 20–30 min; ahora ~12–15 min). Si una vuelta se alarga, espera al siguiente :X2.
+            espera=$(( (720 - $(date +%s) % 600) % 600 )); if [ $espera -lt 20 ]; then espera=$(( espera + 600 )); fi; if [ $(( $(date +%s) + espera )) -ge $fin ]; then break; fi; sleep $espera
           done
