@@ -130,7 +130,7 @@ ESTADO = "salida/tormentas_estado.json"
 ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
 
 
-def balance_dia(t0, out, ESTADO=ESTADO):
+def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
     """Tormentas del DÍA DE TORMENTA (06:00 → 06:00 de Ecuador; Luis, 13 nov: "ver las tormentas del día y el estado de
     ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
     superpone en la imagen anterior (≤ 40 min antes); si no se superpone con ninguna, es nueva y recibe el siguiente
@@ -141,7 +141,7 @@ def balance_dia(t0, out, ESTADO=ESTADO):
     if os.path.exists(ESTADO):
         E = json.load(open(ESTADO))
     else:   # bucle recién arrancado: se sigue con lo publicado; si no se puede leer (salvo que no exista), no se pisa
-        r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/" + os.path.basename(ESTADO), timeout=15)
+        r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/" + os.path.basename(ESTADO), timeout=espera)
         if r.status_code == 404: E = {}
         else: r.raise_for_status(); E = r.json()
     if E.get("dia") != dia:
@@ -280,7 +280,7 @@ def tormentas_galapagos(t0):
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
     out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
     try:   # mismo seguimiento del día que el continente, con su propio estado (Luis, 14 nov: "agregar eso de Galápagos que falta")
-        dia = balance_dia(t0, out, "salida/tormentas_galapagos_estado.json")
+        dia = balance_dia(t0, out, "salida/tormentas_galapagos_estado.json", 5)
         for x in dia["tormentas"]: x["id"] = f"G{x['id']}"
     except Exception as e:
         print("Galápagos, balance del día falló:", repr(e)[:160]); dia = None
