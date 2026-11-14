@@ -40,9 +40,13 @@ def inicio(k):
                                                                             minutes=int(m.group(4)), seconds=int(m.group(5)))
 
 
+_BYTES = {}     # la última imagen bajada se guarda para muestrear también Galápagos sin volver a bajarla (14 nov)
+
+
 def escena(clave):
     """Temperatura de brillo de cada celda de la malla (media de 3×3 píxeles de ~2 km alrededor del centro)."""
-    b = SES.get(f"{B}/{clave}", timeout=120).content
+    b = _BYTES.get(clave) or SES.get(f"{B}/{clave}", timeout=120).content
+    _BYTES.clear(); _BYTES[clave] = b
     h = h5py.File(io.BytesIO(b), "r"); v = h["CMI"]
     esc = lambda n: h[n][:] * float(np.ravel(h[n].attrs["scale_factor"])[0]) + float(np.ravel(h[n].attrs["add_offset"])[0])
     x, y = esc("x"), esc("y")
@@ -186,6 +190,39 @@ def movimiento(T0, T1, minutos, bloque=16, paso=8, busca=6, min_frio=8, min_corr
     return out
 
 
+GN, GO, GS, GE = 2.0, -93.0, -3.0, -86.5     # Galápagos (Luis, 14 nov: "qué pasa con Galápagos en la sección de tormentas")
+GFILAS, GCOLS = int(round((GN - GS) / PASO)), int(round((GE - GO) / PASO))
+
+
+def malla_galapagos(clave):
+    """Misma imagen (ya bajada) muestreada en una malla de 0,05° sobre Galápagos: temperatura de la cima (K)."""
+    global N, O, S_, E, FILAS, COLS
+    viejo = (N, O, S_, E, FILAS, COLS)
+    try:
+        N, O, S_, E, FILAS, COLS = GN, GO, GS, GE, GFILAS, GCOLS
+        T, t, _ = escena(clave)
+    finally:
+        N, O, S_, E, FILAS, COLS = viejo
+    return T, t
+
+
+def galapagos3d(T, t, n=9):
+    """Últimas n imágenes de Galápagos (como lluvia3d.json) para el seguimiento de tormentas: salida/galapagos3d.json."""
+    tb = np.where(np.isfinite(T), np.clip(np.rint(T) - 150, 0, 254), 255).astype(np.uint8)
+    F = "salida/galapagos3d.json"
+    try:
+        L = json.load(open(F)) if os.path.exists(F) else \
+            SES.get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/galapagos3d.json", timeout=30).json()
+        assert isinstance(L.get("cuadros"), list) and L.get("filas") == GFILAS and L.get("cols") == GCOLS
+    except Exception:
+        L = {"cuadros": []}
+    cuadros = [c for c in L["cuadros"] if c.get("t") != t.isoformat()] + [{"t": t.isoformat(), "tb": b64(tb)}]
+    cuadros = sorted(cuadros, key=lambda c: c["t"])[-n:]
+    json.dump({"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "n": GN, "s": GS, "o": GO, "e": GE, "paso": PASO,
+               "filas": GFILAS, "cols": GCOLS, "campos": "tb = temperatura de la cima − 150 K (u8, 255 = sin dato)", "cuadros": cuadros},
+              open(F, "w"), separators=(",", ":"))
+
+
 def lluvia3d(t1, tb, n=9):
     """Últimas n imágenes (~1 h 20 min) de la temperatura de la cima en la malla de 0,05°, para la vista "Nubes 3D" de
     la página (Luis, 11 nov): las columnas de lluvia se dibujan donde la cima está a ≤ 245 K."""
@@ -215,7 +252,10 @@ def main():
         except Exception as e: print("ABI listado:", str(e)[:80])
     ks = sorted(ks, key=inicio)
     if len(ks) < 2: sys.exit("sin imágenes GOES recientes")
-    T1, t1, pun1 = escena(ks[-1]); T0, t0, pun0 = escena(ks[-2])
+    T1, t1, pun1 = escena(ks[-1])
+    try: GAL = malla_galapagos(ks[-1])      # con la imagen recién bajada (sin bajarla otra vez)
+    except Exception as e: GAL = None; print("galápagos:", str(e)[:120])
+    T0, t0, pun0 = escena(ks[-2])
     rayos, nglm, flashes = glm(t1 - timedelta(minutes=10), t1 + timedelta(minutes=5))
     mov = None
     try:   # imagen de hace ~30 min (3 escenas antes) para el movimiento de las tormentas
@@ -241,6 +281,10 @@ def main():
         lluvia3d(t1, tb)
     except Exception as e:
         print("lluvia3d:", str(e)[:120])
+    try:
+        if GAL is not None: galapagos3d(*GAL)
+    except Exception as e:
+        print("galapagos3d:", str(e)[:120])
     try:   # laboratorio de los avisos de tormenta: cada variante avisa y se califica sola con las imágenes siguientes (Luis, 11 nov)
         import avisos_lab
         avisos_lab.actualizar(T1, t1, (mov or {}).get("vectores") or [], N, O, PASO, SES)

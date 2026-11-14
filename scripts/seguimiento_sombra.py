@@ -213,6 +213,70 @@ def balance_dia(t0, out):
     return {"dia": dia, "desde": "06:00", "tormentas": pub}
 
 
+ISLAS = {"Puerto Ayora": (-0.745, -90.313), "Puerto Baquerizo Moreno": (-0.902, -89.610), "Puerto Villamil": (-0.956, -90.966)}
+
+
+def tormentas_galapagos(t0):
+    """Tormentas sobre Galápagos (Luis, 14 nov): misma imagen en una malla aparte (salida/galapagos3d.json, 2° N–3° S,
+    93–86,5° O). Versión simple: tope, área, tendencia, núcleos y movimiento por el centro (20 min); números G1, G2…
+    por fuerza en cada imagen (sin el seguimiento del día)."""
+    L = json.load(open("salida/galapagos3d.json"))
+    F, K, n0, o0, paso = L["filas"], L["cols"], L["n"], L["o"], L["paso"]
+    la_ = n0 - (np.arange(F) + 0.5) * paso; lo_ = o0 + (np.arange(K) + 0.5) * paso
+    C = []
+    for c in sorted(L["cuadros"], key=lambda c: c["t"]):
+        a = np.frombuffer(base64.b64decode(c["tb"]), np.uint8).reshape(F, K)
+        C.append((datetime.fromisoformat(c["t"]), np.where(a == 255, np.nan, a.astype(np.float32) + 150)))
+    if not C or C[-1][0] != t0: return None          # solo si es la misma imagen que la del continente
+    T0 = C[-1][1]; Tn = np.nan_to_num(T0, nan=999)
+    prev = {round((t0 - c[0]).total_seconds() / 600) * 10: c[1] for c in C[:-1]}
+    lab0, ids0 = objetos(T0)
+    lab20, ids20 = objetos(prev[20]) if 20 in prev else (None, [])
+    def cen(lab, k, m=None):
+        i, j = np.nonzero(lab == k if m is None else m)
+        return float(la_[i].mean()), float(lo_[j].mean()), len(i)
+    def donde(la, lo):
+        d = {c: float(np.hypot((lo - v[1]) * 111.2 * np.cos(np.radians(la)), (la - v[0]) * 111.2)) for c, v in ISLAS.items()}
+        c = min(d, key=d.get); cla, clo = ISLAS[c]
+        return f"sobre {c}" if d[c] < 8 else f"a {round(d[c])} km al {rumbo((lo - clo) * np.cos(np.radians(la)), la - cla, CORTO)} de {c}"
+    out = []
+    for k in ids0:
+        obj = lab0 == k; tmin = float(np.nanmin(T0[obj]))
+        if tmin > TORMENTA: continue
+        nuc = obj & (Tn <= TORMENTA)
+        if nuc.sum() < 2: continue
+        la, lo, _ = cen(None, None, nuc)
+        x = np.nanmean(T0[obj] - prev[10][obj]) if 10 in prev and np.isfinite(prev[10][obj]).any() else np.nan
+        enf = float(x) if np.isfinite(x) else None
+        io_, _ = np.nonzero(obj)
+        f = {"la": round(la, 3), "lo": round(lo, 3), "donde": donde(la, lo), "tope_C": round(tmin - 273.15),
+             "area_km2": int(round(float(np.sum(111.2 * paso * 111.2 * paso * np.cos(np.radians(la_[io_])))) / 10) * 10),
+             "enfria_K_10min": None if enf is None else round(enf, 1),
+             "tendencia": None if enf is None else ("creciendo" if enf < -2 else "debilitándose" if enf > 2 else "estable"),
+             "nivel": nivel(tmin, enf, None)}
+        if lab20 is not None:
+            k20 = pareja(lab0, k, lab20, ids20)
+            if k20 is not None:
+                la1, lo1, n1 = cen(lab0, k); la2, lo2, n2 = cen(lab20, k20)
+                u = (lo1 - lo2) * 111.2 * np.cos(np.radians(la1)) * 3; v = (la1 - la2) * 111.2 * 3
+                if 0.5 <= n1 / max(n2, 1) <= 2 and 5 <= np.hypot(u, v) <= 100:
+                    f.update({"vel_kmh": round(float(np.hypot(u, v))), "va_hacia": rumbo(u, v)})
+        labn, nn = ndimage.label(obj & (Tn <= NUCLEO)); zs = []
+        for z in range(1, nn + 1):
+            m = labn == z
+            if m.sum() < 3: continue
+            zla, zlo, _ = cen(None, None, m)
+            zs.append({"la": round(zla, 3), "lo": round(zlo, 3), "tope_C": round(float(np.nanmin(T0[m])) - 273.15), "donde": donde(zla, zlo)})
+        zs.sort(key=lambda z: z["tope_C"])
+        for i, z in enumerate(zs): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[i % 26]
+        f["nucleos"] = zs
+        out.append(f)
+    out.sort(key=lambda f: f["tope_C"])
+    for i, f in enumerate(out, 1): f["n"] = f"G{i}"
+    return {"imagen": t0.isoformat(), "malla": [L["n"], L["s"], L["o"], L["e"]], "islas": {k: list(v) for k, v in ISLAS.items()},
+            "nota": "Galápagos: números G1, G2… por fuerza en cada imagen (sin seguimiento del día). Sin rayos.", "tormentas": out}
+
+
 def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
     """salida/tormentas.json para la pestaña Tormentas (Luis, 13 nov). Una fila por nube con tope ≤ 215 K."""
     ciudades = {c: (float(np.mean([p[1] for p in v])), float(np.mean([p[2] for p in v]))) for c, v in P.items()}
@@ -289,6 +353,10 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
                    "que la tormenta alcanzaría en ≤ 2 h si mantiene rumbo y velocidad (extrapolación, no pronóstico).",
            "ciudades": {n: [round(x[0], 3), round(x[1], 3)] for n, x in ciudades.items()},   # centro de los puntos públicos
            "tormentas": out, "dia": dia}
+    try:
+        res["galapagos"] = tormentas_galapagos(t0)
+    except Exception as e:      # Galápagos nunca deja sin la lista del continente
+        print("galápagos falló:", repr(e)[:160])
     with open("salida/tormentas.json.tmp", "w") as fh:
         json.dump(res, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace("salida/tormentas.json.tmp", "salida/tormentas.json")
