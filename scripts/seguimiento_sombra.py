@@ -89,6 +89,35 @@ def rayos_malla(t0):
         return None
 
 
+NUCLEO = 205.0    # K (≈ −68 °C): dentro de una tormenta, cada zona así de fría es un núcleo (Luis, 13 nov: "una sola con varios núcleos")
+
+
+def nucleos_de(obj, T0, Tn, prev, RY, ciudades):
+    """Núcleos de una tormenta: zonas conectadas con tope ≤ 205 K (≥ 3 píxeles ≈ 90 km²) dentro de la misma nube."""
+    lab, n = ndimage.label(obj & (Tn <= NUCLEO))
+    out = []
+    for k in range(1, n + 1):
+        m = lab == k
+        if m.sum() < 3: continue
+        i, j = np.nonzero(m)
+        la, lo = float(LAT[i].mean()), float(LON[j].mean())
+        tmin = float(np.nanmin(T0[m]))
+        x = np.nanmean(T0[m] - prev[10][1][m]) if 10 in prev and np.isfinite(prev[10][1][m]).any() else np.nan
+        enf = float(x) if np.isfinite(x) else None
+        ry = int(RY[ndimage.binary_dilation(m, iterations=1)].sum()) if RY is not None else None
+        dist = {c: float(np.hypot((lo - v[1]) * 111.2 * np.cos(np.radians(la)), (la - v[0]) * 111.2)) for c, v in ciudades.items()}
+        c = min(dist, key=dist.get); d = dist[c]; cla, clo = ciudades[c]
+        out.append({"la": round(la, 3), "lo": round(lo, 3), "tope_C": round(tmin - 273.15),
+                    "area_km2": int(round(float(np.sum(111.2 * PASO * 111.2 * PASO * np.cos(np.radians(LAT[i])))) / 10) * 10),
+                    "enfria_K_10min": None if enf is None else round(enf, 1),
+                    "tendencia": None if enf is None else ("creciendo" if enf < -2 else "debilitándose" if enf > 2 else "estable"),
+                    "rayos_15min": ry,
+                    "donde": f"sobre {c}" if d < 8 else f"a {round(d)} km al {rumbo((lo - clo) * np.cos(np.radians(la)), la - cla, CORTO)} de {c}",
+                    "_m": np.flatnonzero(m)})
+    out.sort(key=lambda z: z["tope_C"])
+    return out
+
+
 RUMBOS = ["norte", "noreste", "este", "sureste", "sur", "suroeste", "oeste", "noroeste"]
 CORTO = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"]
 
@@ -150,6 +179,20 @@ def balance_dia(t0, out):
                  "encima": [], "pista": []}
             E["tormentas"].append(x); por_id[x["id"]] = x
         f["n"] = x["id"]
+        # núcleos: cada uno hereda su letra del núcleo de la imagen anterior con el que más se superpone; si no, letra nueva
+        ant = x.get("_nuc", []) if (seguido or hecho) else []
+        par = sorted(((len(set(z["_m"].tolist()).intersection(a["m"])), zi, a["l"]) for zi, z in enumerate(f.get("nucleos", [])) for a in ant), reverse=True)
+        uz, ul, letra = set(), set(), {}
+        for ov, zi, l in par:
+            if ov and zi not in uz and l not in ul: letra[zi] = l; uz.add(zi); ul.add(l)
+        sig = x.get("letras", 0)
+        for zi, z in enumerate(f.get("nucleos", [])):
+            if zi not in letra:
+                letra[zi] = "abcdefghijklmnopqrstuvwxyz"[sig % 26] + ("" if sig < 26 else str(sig // 26)); sig += 1
+            z["letra"] = letra[zi]
+        x["letras"] = sig
+        x["_nuc"] = [{"l": z["letra"], "m": z["_m"].tolist()} for z in f.get("nucleos", [])]
+        x["nucleos_max"] = max(x.get("nucleos_max", 0), len(f.get("nucleos", [])))
         x.update({"activa": True, "ultima": hora, "donde": f["donde"], "_mask": f["_obj"].tolist(), "falta": 0})
         if ORDEN_NIVEL.get(f["nivel"], 0) > ORDEN_NIVEL.get(x["nivel_max"], 0): x["nivel_max"] = f["nivel"]
         x["tope_min_C"] = min(x["tope_min_C"], f["tope_C"]); x["area_max_km2"] = max(x["area_max_km2"], f["area_km2"])
@@ -161,12 +204,12 @@ def balance_dia(t0, out):
         if x["id"] not in vistas and x.get("activa") and not hecho:
             x["falta"] = x.get("falta", 0) + 1
             if x["falta"] >= 2 or not seguido:
-                x["activa"] = False; x.pop("_mask", None); x.pop("falta", None)
+                x["activa"] = False; x.pop("_mask", None); x.pop("falta", None); x.pop("_nuc", None)
     E["imagen"] = t0.isoformat()
     with open(ESTADO + ".tmp", "w") as fh:
         json.dump(E, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace(ESTADO + ".tmp", ESTADO)
-    pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta")} for x in E["tormentas"]]
+    pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")} for x in E["tormentas"]]
     return {"dia": dia, "desde": "06:00", "tormentas": pub}
 
 
@@ -223,6 +266,7 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
                 camino.append([n, mejor])
         f["encima"] = encima
         f["_obj"] = np.flatnonzero(obj)
+        f["nucleos"] = nucleos_de(obj, T0, Tn, prev, RY, ciudades)
         f["camino"] = sorted(camino, key=lambda x: x[1])
         out.append(f)
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
@@ -231,8 +275,12 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
         dia = balance_dia(t0, out)
     except Exception as e:      # el balance del día nunca deja sin la lista de ahora
         print("balance del día falló:", repr(e)[:200]); dia = None
-        for n, f in enumerate(out, 1): f["n"] = n
-    for f in out: f.pop("_obj", None)
+        for n, f in enumerate(out, 1):
+            f["n"] = n
+            for zi, z in enumerate(f.get("nucleos", [])): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[zi % 26]
+    for f in out:
+        f.pop("_obj", None)
+        for z in f.get("nucleos", []): z.pop("_m", None)
     res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
                    "que la tormenta alcanzaría en ≤ 2 h si mantiene rumbo y velocidad (extrapolación, no pronóstico).",
