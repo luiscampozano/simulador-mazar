@@ -286,7 +286,7 @@ def filas(curva):
 
 # ---------------------------------------------------------------- Open-Meteo
 def pronostico(ahora):
-    locs = json.loads(get(METEO))
+    locs = _json_url(METEO, timeout=40)   # 14 nov: con reintentos (4 intentos, esperas de 5, 10 y 15 s), como el caudal
     hoy = ahora.date().isoformat()
     gye = locs[0]["daily"]
     i_hoy = gye["time"].index(hoy)
