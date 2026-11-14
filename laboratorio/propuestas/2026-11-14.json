@@ -1,0 +1,94 @@
+{
+ "fecha": "2026-11-14",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 5.109,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo35_largo",
+    "nombre": "Sin autoajuste + 35 % de sesgo desde día 2",
+    "hipotesis": "Quitar el autoajuste (que mejora 12,5 % a 1 día) y restar 35 % del sesgo por plazo desde el día 2 corrige el pesimismo de 5 a 14 días sin empeorar más de 5 % a 3 días (donde quitar el 50 % queda al borde).",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy, sin_autoajuste mejora +12,5 % a 1 día (0,401 vs 0,458 m del titular) y +9 % a 3 días (0,438 vs 0,481 m), pero empeora a 7 días (−39,4 %). Su variante sin_autoajuste_sesgo50_largo lleva +13,0 % a 1 día y está esperando datos de 7 y 14 días, pero quitar el 50 % del sesgo a 3 días la deja al borde del límite de 5 % de tolerancia porque a 3 días sesgo_plazo_50 empeora de 0,481 a 0,615 m. Usar 35 % del sesgo desde el día 2 protege el plazo de 3 días y corrige igualmente más de 1,5 m de sesgo pesimista a 7 y 14 días.",
+    "codigo": "def c_sin_autoajuste_sesgo35_largo(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 1:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.35\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.57,
+     2119.32,
+     2121.5
+    ],
+    "candidato_1_7_14": [
+     2123.63,
+     2121.07,
+     2123.81
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_mitad",
+    "nombre": "Sin autoajuste + río Coca a la mitad",
+    "hipotesis": "Quitar el autoajuste y poner la serie del río Coca a medio camino entre el titular y el pronóstico real conserva la mejora de más de 10 % a 1 día con promoción automática y amortigua cuando GloFAS viene más seco a 5–7 días.",
+    "promocion": "auto",
+    "por_que": "Hoy sin_autoajuste_coca_real es uno de los dos únicos candidatos que superan el 10 % de mejora a 1 día con 7 días medidos (+10,1 %), pero depende por completo de coca_rio_real, que a 5 y 7 días hoy pierde levemente contra el titular (0,861 vs 0,784 m a 5 días y 1,573 vs 1,513 m a 7 días). Usar coca_mitad en lugar del río real entero reduce a la mitad la exposición a los errores de GloFAS en plazos medios, manteniendo promoción automática.",
+    "codigo": "def c_sin_autoajuste_coca_mitad(P, ctx, mod):\n    a = ctx.get(\"serieCoca\")\n    b = mod.get(\"serieCocaRio\")\n    if not a or not b:\n        return None\n    s = [round((float(x) + float(y)) / 2.0, 4) for x, y in zip(a, b)]\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieCoca\"] = s\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": s}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.57,
+     2119.32,
+     2121.5
+    ],
+    "candidato_1_7_14": [
+     2123.62,
+     2120.63,
+     2123.34
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_real_sesgo50_dia3",
+    "nombre": "Sin autoajuste + Coca real + mitad de sesgo desde día 3",
+    "hipotesis": "Sumar la corrección de la mitad del sesgo por plazo desde el día 3 a sin_autoajuste_coca_real mantiene intacta su mejora de +10,1 % a 1 día y su buen desempeño a 2–3 días, eliminando el pesimismo de −2,1 m a 7 días que arrastra quitar el autoajuste.",
+    "promocion": "luis",
+    "por_que": "El candidato sin_autoajuste_coca_real ya logró +10,1 % de mejora a 1 día y está esperando cumplir 5 días a 7 y 14 días, pero sin_autoajuste empeora 39,4 % a 7 días (error 2,110 m vs 1,513 m del titular) y coca_rio_real solo corrige a 10–14 días (a 7 días su error es 1,573 m), por lo que corre gran riesgo de reprobar la regla del 5 % a 7 días. Al activar la corrección de mitad de sesgo recién desde el día 3 (d >= 2), los plazos de 1 y 2 días quedan idénticos a sin_autoajuste_coca_real, el día 3 casi no se altera y a 5–14 días se corrige el sesgo estructural.",
+    "codigo": "def c_sin_autoajuste_coca_real_sesgo50_dia3(P, ctx, mod):\n    s = mod.get(\"serieCocaRio\")\n    if not s:\n        return None\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"serieCoca\"] = list(s)\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": list(s), \"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.57,
+     2119.32,
+     2121.5
+    ],
+    "candidato_1_7_14": [
+     2123.62,
+     2122.18,
+     2125.97
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-14"
+}
