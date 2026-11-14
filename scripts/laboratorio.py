@@ -963,6 +963,11 @@ def _retirar(marc, ts, log=print):
         _escribir(F_HIST, hist)
         log("Laboratorio: retirados por la regla de permanencia: " + ", ".join(nuevos))
     marc["retirados"] = sorted(ret)
+    # Auditor 14 nov (detector de Gemini): los retirados ya no corren, pero el marcador los sigue calificando con sus
+    # corridas viejas y salían como "empate" en el robot. Se marcan "retirado" (así tampoco puede promoverlos promover()).
+    for m in ret:
+        if m in (marc.get("veredicto") or {}):
+            marc["veredicto"][m]["estado"] = "retirado"
 
 
 def promover(marc, conf, log=print):
@@ -3345,7 +3350,7 @@ F_DESGLOSE = os.path.join(DIR, "desglose_7d.json")
 
 def _registrar_desglose(ts, P, ctx, par, d_tit):
     """Registro 'desglose_7d' (cerebro 13 nov): de la primera corrida de 05:00–07:59 de cada día, lo que el titular supone
-    para los días 1–7: Paute (MW), Coca Codo (MW, aproximado con la serie diaria del río y el factor de paro), turbinado de
+    para los días 0–7 (el 0 desde el 14 nov): Paute (MW), Coca Codo (MW, aproximado con la serie diaria del río y el factor de paro), turbinado de
     Mazar (m³/s y MWh aproximados con la caída Mazar–Amaluza), caudal de entrada (m³/s, sin memoria) y cota. Valores al
     inicio de cada día de la simulación (paso de 6 h; dentro del día la demanda es la misma). Solo registro: no cambia nada."""
     h = int(str(ts)[11:13])
@@ -3358,7 +3363,7 @@ def _registrar_desglose(ts, P, ctx, par, d_tit):
     eta = float(par.get("eficiencia_mazar") or 0.9); amC = float(ctx.get("amaluzaCota") or 1980.0)
     sc = list(ctx.get("serieCoca") or []); fac = list(ctx.get("ccsFactor") or [])
     filas = []
-    for k in range(1, 8):
+    for k in range(0, 8):   # cerebro 14 nov: también el día 0 (las primeras 24 h, el día que se verifica a 1 día)
         if k >= len(d_tit): break
         x = d_tit[k]
         qc = float(P.get("qCoca") or 0) * (float(sc[min(k, len(sc) - 1)]) if sc else 1.0)
@@ -3438,3 +3443,34 @@ CANDIDATOS["memoria_mitad_sin_autoajuste_sesgo50_dia3"] = {
                  "memoria_mitad_y_sesgo50_largo empeora 42 % a 3 días (0,483 vs 0,341): ese es el riesgo frente a la regla. Hoy el "
                  "autoajuste vale 1,28; el sesgo que corrige es el del titular. Armado con las piezas existentes. Si se promueve, el "
                  "robot calcula la memoria después de aplicar_titular y pisaría la corrección: habría que tocar robot.py."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 14 nov (aprobación permanente de Luis, 7 nov)
+def c_noche_y_domingo(P, ctx, mod):
+    """Combinación 'noche_y_domingo' (cerebro 14 nov): caudal medido de madrugada con Mazar apagado (entrada_noche_mazar0;
+    sin medida limpia no cambia nada) + domingo parado, ríos intermedios fijos y deuda de Amaluza
+    (combinado_domingo_intermedia, estricta: solo cuando corre). Lo demás, igual al titular."""
+    return _combinar(P, ctx, mod, c_entrada_noche_mazar0, c_combinado_domingo_intermedia)
+
+
+def c_lluvia_viento_calor(P, ctx, mod):
+    """Combinación 'lluvia_viento_calor' (cerebro 14 nov, encargo de Luis) ajustada por el reparo del retador (la lluvia
+    de Guayaquil enfría la demanda): lluvia del Paute entera solo con viento amazónico (agua_paute_con_viento, estricta)
+    + máxima de Guayaquil de cada día a 50 MW/°C (demanda_tmax_dia, estricta) + −100 MW los días con ≥ 30 mm en Guayaquil
+    (lluvia_gye30, opcional: si no hay aguaceros pronosticados, no cambia nada)."""
+    return _combinar(P, ctx, mod, c_agua_paute_con_viento, c_demanda_tmax_dia, _opcional(c_lluvia_gye30))
+
+
+_OR_C14 = "cerebro 2026-11-14"
+_cand_3nov("noche_y_domingo", c_noche_y_domingo, "Caudal de madrugada + domingo parado + ríos fijos + Amaluza",
+           "Cerebro de Mazar 14 nov: une dos piezas que corren por separado: caudal medido de madrugada con Mazar parado "
+           "(entrada_noche_mazar0; noche_mazar.json del 14 nov: 42,9 m³/s) y domingo parado + ríos fijos + deuda de Amaluza "
+           "(combinado_domingo_intermedia, +21 % a 1 día en 85 casos). Revisor: no filtra por día de la semana; corre todos "
+           "los días en que corre embalse_combinado (estricta).", origen=_OR_C14)
+_cand_3nov("lluvia_viento_calor", c_lluvia_viento_calor, "Lluvia del Paute con viento amazónico + calor y aguaceros de Guayaquil",
+           "Cerebro de Mazar 14 nov (encargo de Luis): la semana del 16 al 23 nov se mueven juntas y en contra más entrada si "
+           "llueve con viento del noreste (agua_paute_con_viento) y más demanda con 32–33 °C (demanda_tmax_dia; hoy, con referencia 29,0 °C, +110 a +185 MW). "
+           "Revisor: es casi demanda_tmax_lluvia30 + agua_paute_con_viento (esta con un solo día medido). "
+           "Reparo del retador aplicado: se suma lluvia_gye30 (−100 MW los días con ≥ 30 mm en Guayaquil) cuando hay aguaceros. "
+           "Otro reparo del retador: agua_paute_con_viento solo lleva el factor del Paute a 1,0 (≈ 41 m³/s), no explica crecidas de 60–80.",
+           origen=_OR_C14)
