@@ -206,8 +206,9 @@ def malla_galapagos(clave):
     return T, t
 
 
-def galapagos3d(T, t, n=9):
-    """Últimas n imágenes de Galápagos (como lluvia3d.json) para el seguimiento de tormentas: salida/galapagos3d.json."""
+def galapagos3d(T, t, flashes=None, n=9):
+    """Últimas n imágenes de Galápagos (como lluvia3d.json) para el seguimiento de tormentas: salida/galapagos3d.json.
+    La imagen más reciente lleva también los rayos (GLM, mismos 15 min que el continente) en su malla."""
     tb = np.where(np.isfinite(T), np.clip(np.rint(T) - 150, 0, 254), 255).astype(np.uint8)
     F = "salida/galapagos3d.json"
     try:
@@ -216,7 +217,16 @@ def galapagos3d(T, t, n=9):
         assert isinstance(L.get("cuadros"), list) and L.get("filas") == GFILAS and L.get("cols") == GCOLS
     except Exception:
         L = {"cuadros": []}
-    cuadros = [c for c in L["cuadros"] if c.get("t") != t.isoformat()] + [{"t": t.isoformat(), "tb": b64(tb)}]
+    nuevo = {"t": t.isoformat(), "tb": b64(tb)}
+    if flashes is not None and len(flashes):
+        R = np.zeros((GFILAS, GCOLS), np.int32)
+        i = np.floor((GN - flashes[:, 0]) / PASO).astype(int); j = np.floor((flashes[:, 1] - GO) / PASO).astype(int)
+        m = (i >= 0) & (i < GFILAS) & (j >= 0) & (j < GCOLS)
+        np.add.at(R, (i[m], j[m]), 1)
+        nuevo["rayos"] = b64(np.clip(R, 0, 255).astype(np.uint8))
+    elif flashes is not None:
+        nuevo["rayos"] = b64(np.zeros((GFILAS, GCOLS), np.uint8))
+    cuadros = [{k: v for k, v in c.items() if k != "rayos"} for c in L["cuadros"] if c.get("t") != t.isoformat()] + [nuevo]
     cuadros = sorted(cuadros, key=lambda c: c["t"])[-n:]
     json.dump({"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "n": GN, "s": GS, "o": GO, "e": GE, "paso": PASO,
                "filas": GFILAS, "cols": GCOLS, "campos": "tb = temperatura de la cima − 150 K (u8, 255 = sin dato)", "cuadros": cuadros},
@@ -282,7 +292,7 @@ def main():
     except Exception as e:
         print("lluvia3d:", str(e)[:120])
     try:
-        if GAL is not None: galapagos3d(*GAL)
+        if GAL is not None: galapagos3d(*GAL, flashes)
     except Exception as e:
         print("galapagos3d:", str(e)[:120])
     try:   # laboratorio de los avisos de tormenta: cada variante avisa y se califica sola con las imágenes siguientes (Luis, 11 nov)
