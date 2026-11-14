@@ -130,7 +130,7 @@ ESTADO = "salida/tormentas_estado.json"
 ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
 
 
-def balance_dia(t0, out):
+def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
     """Tormentas del DÍA DE TORMENTA (06:00 → 06:00 de Ecuador; Luis, 13 nov: "ver las tormentas del día y el estado de
     ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
     superpone en la imagen anterior (≤ 40 min antes); si no se superpone con ninguna, es nueva y recibe el siguiente
@@ -141,7 +141,7 @@ def balance_dia(t0, out):
     if os.path.exists(ESTADO):
         E = json.load(open(ESTADO))
     else:   # bucle recién arrancado: se sigue con lo publicado; si no se puede leer (salvo que no exista), no se pisa
-        r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/tormentas_estado.json", timeout=15)
+        r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/" + os.path.basename(ESTADO), timeout=espera)
         if r.status_code == 404: E = {}
         else: r.raise_for_status(); E = r.json()
     if E.get("dia") != dia:
@@ -228,6 +228,8 @@ def tormentas_galapagos(t0):
         a = np.frombuffer(base64.b64decode(c["tb"]), np.uint8).reshape(F, K)
         C.append((datetime.fromisoformat(c["t"]), np.where(a == 255, np.nan, a.astype(np.float32) + 150)))
     if not C or C[-1][0] != t0: return None          # solo si es la misma imagen que la del continente
+    ult = max(L["cuadros"], key=lambda c: c["t"])
+    RY = np.frombuffer(base64.b64decode(ult["rayos"]), np.uint8).reshape(F, K).astype(int) if ult.get("rayos") else None
     T0 = C[-1][1]; Tn = np.nan_to_num(T0, nan=999)
     prev = {round((t0 - c[0]).total_seconds() / 600) * 10: c[1] for c in C[:-1]}
     lab0, ids0 = objetos(T0)
@@ -248,12 +250,15 @@ def tormentas_galapagos(t0):
         la, lo, _ = cen(None, None, nuc)
         x = np.nanmean(T0[obj] - prev[10][obj]) if 10 in prev and np.isfinite(prev[10][obj]).any() else np.nan
         enf = float(x) if np.isfinite(x) else None
-        io_, _ = np.nonzero(obj)
+        ry = int(RY[ndimage.binary_dilation(obj, iterations=1)].sum()) if RY is not None else None
+        io_, jo_ = np.nonzero(obj)
+        encima = [c for c, (cla, clo) in ISLAS.items()
+                  if np.hypot((lo_[jo_] - clo) * 111.2 * np.cos(np.radians(cla)), (la_[io_] - cla) * 111.2).min() < 6]
         f = {"la": round(la, 3), "lo": round(lo, 3), "donde": donde(la, lo), "tope_C": round(tmin - 273.15),
              "area_km2": int(round(float(np.sum(111.2 * paso * 111.2 * paso * np.cos(np.radians(la_[io_])))) / 10) * 10),
              "enfria_K_10min": None if enf is None else round(enf, 1),
              "tendencia": None if enf is None else ("creciendo" if enf < -2 else "debilitándose" if enf > 2 else "estable"),
-             "nivel": nivel(tmin, enf, None)}
+             "nivel": nivel(tmin, enf, ry), "rayos_15min": ry, "encima": encima, "_obj": np.flatnonzero(obj)}
         if lab20 is not None:
             k20 = pareja(lab0, k, lab20, ids20)
             if k20 is not None:
@@ -266,15 +271,27 @@ def tormentas_galapagos(t0):
             m = labn == z
             if m.sum() < 3: continue
             zla, zlo, _ = cen(None, None, m)
-            zs.append({"la": round(zla, 3), "lo": round(zlo, 3), "tope_C": round(float(np.nanmin(T0[m])) - 273.15), "donde": donde(zla, zlo)})
+            zry = int(RY[ndimage.binary_dilation(m, iterations=1)].sum()) if RY is not None else None
+            zs.append({"la": round(zla, 3), "lo": round(zlo, 3), "tope_C": round(float(np.nanmin(T0[m])) - 273.15), "donde": donde(zla, zlo),
+                       "rayos_15min": zry, "_m": np.flatnonzero(m)})
         zs.sort(key=lambda z: z["tope_C"])
-        for i, z in enumerate(zs): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[i % 26]
         f["nucleos"] = zs
         out.append(f)
-    out.sort(key=lambda f: f["tope_C"])
-    for i, f in enumerate(out, 1): f["n"] = f"G{i}"
+    orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
+    out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
+    try:   # mismo seguimiento del día que el continente, con su propio estado (Luis, 14 nov: "agregar eso de Galápagos que falta")
+        dia = balance_dia(t0, out, "salida/tormentas_galapagos_estado.json", 5)
+        for x in dia["tormentas"]: x["id"] = f"G{x['id']}"
+    except Exception as e:
+        print("Galápagos, balance del día falló:", repr(e)[:160]); dia = None
+        for i, f in enumerate(out, 1):
+            f["n"] = i
+            for zi, z in enumerate(f["nucleos"]): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[zi % 26]
+    for f in out:
+        f["n"] = f"G{f['n']}"; f.pop("_obj", None)
+        for z in f["nucleos"]: z.pop("_m", None)
     return {"imagen": t0.isoformat(), "malla": [L["n"], L["s"], L["o"], L["e"]], "islas": {k: list(v) for k, v in ISLAS.items()},
-            "nota": "Galápagos: números G1, G2… por fuerza en cada imagen (sin seguimiento del día). Sin rayos.", "tormentas": out}
+            "nota": "Galápagos: G1, G2… con el mismo seguimiento del día (06→06) que el continente; rayos del GLM.", "tormentas": out, "dia": dia}
 
 
 def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
