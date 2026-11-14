@@ -266,7 +266,10 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
                 camino.append([n, mejor])
         f["encima"] = encima
         f["_obj"] = np.flatnonzero(obj)
-        f["nucleos"] = nucleos_de(obj, T0, Tn, prev, RY, ciudades)
+        try:
+            f["nucleos"] = nucleos_de(obj, T0, Tn, prev, RY, ciudades)
+        except Exception as e:      # los núcleos nunca dejan sin la lista
+            print("núcleos falló:", repr(e)[:120]); f["nucleos"] = []
         f["camino"] = sorted(camino, key=lambda x: x[1])
         out.append(f)
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
