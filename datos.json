@@ -182,20 +182,20 @@
   },
   "notas": {
     "mazar": "Promedio de las últimas 24 h: 37 m³/s (Celec Sur, automático). Promedio histórico de octubre: 66 m³/s.",
-    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 192 m³/s en promedio de 24 h; a las 09:00 iba en 211 m³/s. Con ese río Coca Codo puede generar ~898 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 887 MW de promedio hoy. En el modelo equivale a 178 m³/s (rendimiento aplicado 99.1 %).",
+    "coca": "Río Coca en Coca Codo Sinclair (Celec, cada hora): 193 m³/s en promedio de 24 h; a las 09:00 iba en 211 m³/s. Con ese río Coca Codo puede generar ~901 MW (tope continuo 1.200 MW desde ~250 m³/s); Cenace midió 902 MW de promedio hoy. En el modelo equivale a 178 m³/s (rendimiento aplicado 99.1 %).",
     "importacion": "Promedio de las últimas 24 h: 2 MW (Cenace, automático). Límite de la interconexión: 450 MW.",
     "calibracion": "Con los valores de \"Hoy\", Paute debe aportar ≈ 800 MW y para eso Mazar suelta ≈ 57 m³/s mientras le entran 37: hoy baja ≈ 0,36 m/día. Promedio real de los últimos 7 días: baja 0,37 m/día, cuando Amaluza todavía aportaba agua; hoy Amaluza está en 1971,5 m, casi en su nivel mínimo, y casi no puede ayudar.",
-    "termica": "Promedio de las últimas 24 h: 1197 MW térmicos + 37 MW renovables no convencionales (Cenace, automático).",
+    "termica": "Promedio de las últimas 24 h: 1196 MW térmicos + 36 MW renovables no convencionales (Cenace, automático).",
     "temperatura": "Máxima prevista en Guayaquil para el 2026-11-14: 29.1 °C (Open-Meteo, automático). El modelo suma 50 MW por cada °C sobre 32 °C.",
     "lluviaPaute": "Cuenca del Paute: 28 mm en los últimos 7 días y 71 mm previstos en los próximos 7 (Open-Meteo) → pulso de lluvia, automático.",
     "lluviaCoca": "Cuenca del Coca: 84 mm en los últimos 7 días y 71 mm previstos en los próximos 7 (Open-Meteo) → lluvia sostenida, automático.",
-    "demanda": "Equivale a los últimos días: Paute generó 949 MW en promedio ponderado del 2026-11-04 al 2026-11-13 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~13 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4399 MW (Cenace).",
+    "demanda": "Equivale a los últimos días: Paute generó 949 MW en promedio ponderado del 2026-11-04 al 2026-11-13 (Celec Sur; los días recientes pesan más, cada día vale la mitad cada 3 días), con ~13 MW medios de cortes a empresas. Demanda atendida en las últimas 24 h: 4392 MW (Cenace).",
     "otras": "Generación medida de las demás hidroeléctricas: 1285 MW (día completo 2026-11-12, Cenace, automático). El complejo Paute generó 1159 MW en ese mismo periodo.",
     "cortes": "12/11: CNEL pidió a industrias de Durán autogenerar 15–22 h hasta el 15/11 (La República, Ecuavisa). 10 MW/día estimados, aprobado por Luis: mantener hasta 15/11."
   },
   "robot": {
     "ultima_lectura": "2026-11-14T09:00:00-05:00",
-    "caudal_entrada_24h": 192,
+    "caudal_entrada_24h": 193,
     "variacion_cota_24h": -0.31,
     "fuente": "generacioncsr.celec.gob.ec (mrid 30031 cota, 30538 caudal)",
     "fuentes": {
@@ -205,14 +205,12 @@
       },
       "cenace": {
         "ok": true,
-        "ultimo_dato": "2026-11-14T09:30",
+        "ultimo_dato": "2026-11-14T10:00",
         "medias_horas_propias": 47,
         "completadas_con_dia": "2026-11-12"
       },
       "openmeteo": {
-        "ok": false,
-        "error": "<urlopen error _ssl.c:1063: The handshake operation timed out>",
-        "intento": "2026-11-14T09:49-05:00"
+        "ok": true
       },
       "celec_energia": {
         "ok": true
@@ -224,7 +222,7 @@
         "ok": true
       }
     },
-    "ultima_ejecucion": "2026-11-14T09:49-05:00",
+    "ultima_ejecucion": "2026-11-14T10:05-05:00",
     "registro": [
       "Cortes conocidos: 25 corridas de las últimas 48 h corregidas con el plan de cortes de hoy",
       "Memoria: 48 corridas de las últimas 48 h; sin memoria la zona crítica sería en 24.5 días",
@@ -412,7 +410,7 @@
         "peso": 1.0
       }
     ],
-    "actualizado": "2026-11-14T09:49-05:00"
+    "actualizado": "2026-11-14T10:05-05:00"
   },
   "modelo": {
     "curva_mazar": {
@@ -1156,10 +1154,10 @@
     "serie_fecha": "2026-11-14",
     "ccs_paro": {
       "dia": "2026-11-14",
-      "horas": 10.0,
-      "real_mw": 887,
+      "horas": 10.5,
+      "real_mw": 902,
       "posible_mw": 890,
-      "fraccion": 0.996,
+      "fraccion": 1.014,
       "paro": false
     },
     "ccs_crecida": {
