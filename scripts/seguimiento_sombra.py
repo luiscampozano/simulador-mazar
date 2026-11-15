@@ -17,7 +17,7 @@ mar y del país en la última imagen: dónde está (respecto a la ciudad públic
 si crece, hacia dónde va y a qué velocidad, y las ciudades públicas que tendría en su camino en ≤ 2 h SI MANTIENE el
 rumbo (extrapolación, no pronóstico). Solo lo observado y su extrapolación; ninguna ubicación privada."""
 import base64, io, json, os, time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 from scipy import ndimage
@@ -144,8 +144,21 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         r = __import__("requests").get("https://raw.githubusercontent.com/luiscampozano/simulador-mazar/satelite/" + os.path.basename(ESTADO), timeout=espera)
         if r.status_code == 404: E = {}
         else: r.raise_for_status(); E = r.json()
-    if E.get("dia") != dia:
-        E = {"dia": dia, "tormentas": []}
+    if E.get("dia") != dia:   # día nuevo: el anterior se guarda cerrado como "ayer" (Luis, 15 nov: pestaña "Ayer")
+        ayer = None
+        if E.get("dia") and E.get("tormentas"):
+            ayer = {"dia": E["dia"], "desde": "06:00", "hasta_imagen": E.get("imagen"),
+                    "tormentas": [{**{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")},
+                                   "activa": False, "al_cierre": bool(x.get("activa"))} for x in E["tormentas"]]}
+        E = {"dia": dia, "tormentas": [], "ayer": ayer}
+    if not E.get("ayer"):    # semilla única del 14 nov (el día ya se había cerrado sin guardar "ayer")
+        try:
+            sem = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "tormentas_ayer_semilla.json")))
+            sem = sem["galapagos" if "galapagos" in os.path.basename(ESTADO) else "continente"]
+            if sem and sem.get("dia") == (date.fromisoformat(dia) - timedelta(days=1)).isoformat():
+                E["ayer"] = sem
+        except Exception:
+            pass
     if E.get("imagen") == t0.isoformat():          # misma imagen ya procesada: no duplicar la pista
         hecho = True
     else:
@@ -210,7 +223,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         json.dump(E, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace(ESTADO + ".tmp", ESTADO)
     pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")} for x in E["tormentas"]]
-    return {"dia": dia, "desde": "06:00", "tormentas": pub}
+    return {"dia": dia, "desde": "06:00", "tormentas": pub, "ayer": E.get("ayer")}
 
 
 ISLAS = {"Puerto Ayora": (-0.745, -90.313), "Puerto Baquerizo Moreno": (-0.902, -89.610), "Puerto Villamil": (-0.956, -90.966)}
@@ -281,7 +294,8 @@ def tormentas_galapagos(t0):
     out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
     try:   # mismo seguimiento del día que el continente, con su propio estado (Luis, 14 nov: "agregar eso de Galápagos que falta")
         dia = balance_dia(t0, out, "salida/tormentas_galapagos_estado.json", 5)
-        for x in dia["tormentas"]: x["id"] = f"G{x['id']}"
+        for x in dia["tormentas"] + ((dia.get("ayer") or {}).get("tormentas") or []):
+            if isinstance(x["id"], int): x["id"] = f"G{x['id']}"
     except Exception as e:
         print("Galápagos, balance del día falló:", repr(e)[:160]); dia = None
         for i, f in enumerate(out, 1):

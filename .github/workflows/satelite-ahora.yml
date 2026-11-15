@@ -23,6 +23,7 @@ jobs:
             scripts/puntos_satelite.json
             scripts/nowcast_sombra.py
             scripts/seguimiento_sombra.py
+            scripts/tormentas_ayer_semilla.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
