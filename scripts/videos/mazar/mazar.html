@@ -11,7 +11,7 @@ html,body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,"Segoe
 h1{margin:6px 0 0;font:800 34px/1.05 Inter,sans-serif}
 .sub{margin-top:6px;font:500 16px/1.35 Inter,sans-serif;color:var(--mut)}
 #cota{position:fixed;left:26px;top:170px;font:800 54px/1 "JetBrains Mono",ui-monospace,monospace;text-shadow:0 2px 12px #000}
-#cota small{display:block;font:600 15px Inter,sans-serif;color:var(--mut);margin-top:6px;text-shadow:none}
+#cota small{display:block;max-width:330px;font:600 15px Inter,sans-serif;color:var(--mut);margin-top:6px;text-shadow:none}
 #fecha{position:fixed;left:26px;top:150px;font:700 15px Inter,sans-serif;color:var(--fg)}
 /* regla de nivel */
 #regla{position:fixed;right:22px;top:170px;width:58px;height:330px;border-radius:10px;background:rgba(8,20,30,.78);border:1px solid #23394a}
@@ -97,7 +97,7 @@ function armarDatos(DT,SC,HC){   // todo sale de los archivos del simulador: his
   const P=((DT.modelo||{}).prediccion||{}).numero||{};
   return {hist, cota:hist[n-1][1], hoy:hist[n-1][0], ayer:ayer[0], ante:ante[0], delta:ayer[1]-ante[1],
     semana:(ayer[1]-hist[Math.max(0,n-9)][1])/Math.min(7,n-2),
-    q:qDia?qDia.q:(DT.hoy||{}).qMazar, qEsDia:!!qDia, qHist:qs.length>=100?qs.reduce((a,b)=>a+b,0)/qs.length:null, mesHist:MESN[+mes-1], nHist:qs.length,
+    q:qDia?qDia.q:(DT.hoy||{}).qMazar, qEsDia:!!qDia, qHist:qs.length>=100?qs.reduce((a,b)=>a+b,0)/qs.length:null, mesHist:MESN[+mes-1], nHist:qs.length, anioHist:Object.keys(HC).sort().pop().slice(0,4),
     mwAyer:mw(ayer[0]), mwAnte:mw(ante[0]), critica:P.critica||{}, parada:P.parada||{}};
 }
 function muro(F,C){   // la cortina en su lugar real: de través al cauce del río en la presa, de ladera a ladera (hasta 2.166 m)
@@ -185,7 +185,7 @@ function tarjeta(){
   return `<h2>¿Qué pasó el ${fechaTxt(D.ayer)}?</h2>`+
     fila('Cambio del nivel',`${d>=0?'+':'−'}${nf(Math.abs(d))} m`,'color:'+col)+
     fila(D.qEsDia?'Agua que entró (promedio del día)':'Agua que entró (24 h hasta el último dato)',D.q!=null?Math.round(D.q)+' m³/s':null)+
-    fila('Promedio de '+D.mesHist+' (2010–2026)',D.q!=null&&D.qHist!=null?Math.round(D.qHist)+' m³/s':null)+
+    fila('Promedio de '+D.mesHist+' (2010–'+D.anioHist+')',D.q!=null&&D.qHist!=null?Math.round(D.qHist)+' m³/s':null)+
     fila('Complejo Paute generó',D.mwAyer!=null?nf(D.mwAyer,0)+' MW':null)+
     `<div class="porque">${por}</div>`+
     (D.cota<2116?`<div id="dias"><div><b>${nf(2116-D.cota)} m</b><span>bajo 2.116 m<br>zona crítica</span></div><div><b>${D.cota<2115?nf(2115-D.cota)+' m':nf(D.cota-2115)+' m'}</b><span>${D.cota<2115?'bajo':'sobre'} 2.115 m<br>parada</span></div></div>`

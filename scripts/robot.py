@@ -30,7 +30,6 @@ MESES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "
                "septiembre", "octubre", "noviembre", "diciembre"]
 
 CELEC = "https://generacioncsr.celec.gob.ec:8443/ords/csr/sardomcsr/pointValues"
-MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 MRID_COTA, MRID_CAUDAL = 30031, 30538
 CENACE = "https://www.cenace.gob.ec/info-operativa/InformacionOperativa.htm"
 # Puntos de pronóstico: Guayaquil; cuenca alta del Paute (2); cuenca del Coca (2)
@@ -2026,7 +2025,7 @@ def main():
             mm_ = f"-{ahora.month:02d}-"
             qs_ = [v["q"] for d_, v in HQ.items() if mm_ in d_[4:8] and isinstance(v, dict) and isinstance(v.get("q"), (int, float))]
             if len(qs_) >= 100:
-                notas["mazar"] += f" Promedio histórico de {MESES_LARGOS[ahora.month - 1]}: {sum(qs_) / len(qs_):.0f} m³/s (2010–{ahora.year})."
+                notas["mazar"] += f" Promedio histórico de {MESES_LARGO[ahora.month - 1]}: {sum(qs_) / len(qs_):.0f} m³/s (2010–{ahora.year})."
         except Exception as e:
             log(f"Promedio histórico del mes: {str(e)[:80]}")
 
