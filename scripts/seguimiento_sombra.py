@@ -212,9 +212,9 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         x["tope_min_C"] = min(x["tope_min_C"], f["tope_C"]); x["area_max_km2"] = max(x["area_max_km2"], f["area_km2"])
         if f.get("rayos_15min") is not None: x["rayos_max_15min"] = max(x["rayos_max_15min"] or 0, f["rayos_15min"])
         if not hecho:   # SOMBRA "tormenta que viene" (Luis, 15 nov): 1.ª vez que la extrapolación la puso en camino de cada
-            av, ll = x.setdefault("avisos", {}), x.setdefault("llegadas", {})   # ciudad [hora, minutos] y 1.ª vez encima
-            for n, m in f.get("camino", []):
-                if n not in av and n not in x["encima"] and n not in f["encima"]: av[n] = [hora, m]
+            av, ll = x.setdefault("avisos", {}), x.setdefault("llegadas", {})   # ciudad [hora de la imagen, minutos DESDE
+            for n, m in f.get("camino", []):                                     # la imagen] y 1.ª vez encima
+                if n not in av and n not in x["encima"] and n not in f["encima"]: av[n] = [hora, m + f.get("_edad", 0)]
             for n in f["encima"]: ll.setdefault(n, hora)
         x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
         if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2), hora])   # con la hora: la página anima el satélite con los números
@@ -366,6 +366,7 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
             elif mejor is not None:
                 camino.append([n, mejor])
         f["encima"] = encima
+        f["_edad"] = int(round(edad))   # "camino" descuenta el retraso de la corrida; la sombra lo devuelve (minutos desde la imagen)
         f["_obj"] = np.flatnonzero(obj)
         try:
             f["nucleos"] = nucleos_de(obj, T0, Tn, prev, RY, ciudades)
@@ -383,7 +384,7 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
             f["n"] = n
             for zi, z in enumerate(f.get("nucleos", [])): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[zi % 26]
     for f in out:
-        f.pop("_obj", None)
+        f.pop("_obj", None); f.pop("_edad", None)
         for z in f.get("nucleos", []): z.pop("_m", None)
     res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
