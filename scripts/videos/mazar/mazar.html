@@ -142,7 +142,7 @@ window.fijar=function(fase,dia,giro){
   document.getElementById('etpresa').classList.toggle('oculto',fase==='ayer');
   document.getElementById('fecha').textContent=fechaTxt(h[i][0]);
   const hoyEc=new Date(Date.now()-5*3600e3).toISOString().slice(0,10), rotulo=h[h.length-1][0]===hoyEc?'nivel de hoy':'último dato';
-  document.getElementById('cota').innerHTML=`${nf(L)} m<small>${fase==='inicio'?rotulo+' · '+(L>=2116?'a '+nf(L-2116)+' m de la zona crítica':nf(2116-L)+' m bajo la zona crítica'+(L<2115?' y la cota de parada':'')):'nivel del embalse'}</small>`;
+  document.getElementById('cota').innerHTML=`${nf(L)} m<small>${fase==='inicio'?rotulo+' · '+(L>=2116?'a '+nf(L-2116)+' m de la zona crítica':nf(2116-L)+' m bajo la zona crítica'+(L<2115?' ('+nf(2115-L)+' m bajo la parada)':'')):'nivel del embalse'}</small>`;
   document.getElementById('titulo').textContent=fase==='ayer'?'¿Por qué se movió?':'¿Cuánta agua le queda a Mazar?';
   document.getElementById('subt').textContent=fase==='historia'?'Así se movió el nivel día a día':'La línea roja es la zona crítica: 2.116 m';
   document.getElementById('tl').classList.toggle('oculto',fase==='ayer'); document.getElementById('regla').classList.toggle('oculto',fase==='ayer');
