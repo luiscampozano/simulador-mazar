@@ -672,6 +672,35 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_autoajuste_mitad(P, ctx, mod):
+    aj = float(ctx.get("ajuste") or 1.0)
+    if abs(aj - 1.0) < 1e-4:
+        return None
+    nuevo = round(1.0 + 0.5 * (aj - 1.0), 3)
+    ctx["ajuste"] = nuevo
+    return P, ctx, {"ajuste": nuevo}
+
+
+CANDIDATOS["autoajuste_mitad"] = {"f": c_autoajuste_mitad, "promocion": "auto", "origen": "Gemini 2026-11-15", "nombre": "Autoajuste a mitad de camino", "hipotesis": "Usar la mitad de la fuerza del factor de autoajuste (0,5 × ajuste + 0,5) conserva al menos la mitad de la ganancia a 1–3 días de sin_autoajuste sin empeorar más de 5 % a 7 y 14 días."}
+
+
+def c_sin_autoajuste_cortes_7d(P, ctx, mod):
+    plan = list(ctx.get("cutPlan") or [])
+    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) and not isinstance(plan[0], bool) else None
+    if not hoy:
+        return None
+    plan = plan + [None] * max(0, 8 - len(plan))
+    for d in range(1, 8):
+        if plan[d] is None:
+            plan[d] = hoy
+    ctx["ajuste"] = 1.0
+    ctx["cutPlan"] = plan
+    return P, ctx, {"ajuste": 1.0, "cutPlan": plan}
+
+
+CANDIDATOS["sin_autoajuste_cortes_7d"] = {"f": c_sin_autoajuste_cortes_7d, "promocion": "luis", "origen": "Gemini 2026-11-15", "nombre": "Sin autoajuste + cortes siguen 7 días", "hipotesis": "Combinar la desactivación del autoajuste con la continuidad de los cortes actuales por 7 días mantiene el +15,3 % de mejora a 1 día y reduce el pesimismo de sin_autoajuste a 7 y 14 días con un mecanismo físico."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})

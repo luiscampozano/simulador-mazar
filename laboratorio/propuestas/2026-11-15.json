@@ -1,0 +1,75 @@
+{
+ "fecha": "2026-11-15",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 5.293,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "autoajuste_mitad",
+    "nombre": "Autoajuste a mitad de camino",
+    "hipotesis": "Usar la mitad de la fuerza del factor de autoajuste (0,5 × ajuste + 0,5) conserva al menos la mitad de la ganancia a 1–3 días de sin_autoajuste sin empeorar más de 5 % a 7 y 14 días.",
+    "promocion": "auto",
+    "por_que": "En el marcador (126 casos, 8 días), sin_autoajuste reduce el error medio a 1 día un 15,3 % (0,359 m vs 0,424 m del titular) y la mediana a 28,3 cm (vs 38,0 cm), pero está bloqueado porque empeora un 32,8 % a 7 días (2,145 m vs 1,615 m) y a 14 días (8,135 m vs 6,115 m). Como el efecto del autoajuste en la cota es aproximadamente lineal, llevar el factor a la mitad hacia 1,0 permite explorar el compromiso óptimo con promoción automática sin requerir correcciones de sesgo en la memoria.",
+    "codigo": "def c_autoajuste_mitad(P, ctx, mod):\n    aj = float(ctx.get(\"ajuste\") or 1.0)\n    if abs(aj - 1.0) < 1e-4:\n        return None\n    nuevo = round(1.0 + 0.5 * (aj - 1.0), 3)\n    ctx[\"ajuste\"] = nuevo\n    return P, ctx, {\"ajuste\": nuevo}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.45,
+     2120.55,
+     2124.45
+    ],
+    "candidato_1_7_14": [
+     2123.44,
+     2120.53,
+     2124.44
+    ],
+    "cambios_mod": [
+     "ajuste"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia3",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 3",
+    "hipotesis": "Quitar el autoajuste y restar el 50 % del sesgo por plazo únicamente desde el día 3 conserva intacta la mejora de sin_autoajuste a 1, 2 y 3 días (+15,3 %, +17,5 % y +17,1 %) mientras corrige el pesimismo de 5 a 14 días.",
+    "promocion": "luis",
+    "por_que": "sin_autoajuste_sesgo50_largo es líder entre los que esperan 7 y 14 días (+15,2 % a 1 día y +59 % a 7 días), pero empieza a inyectar el sesgo en el día 2 (desde=1), lo que degrada el acierto natural de sin_autoajuste a 2 y 3 días (donde sin_autoajuste solo ya gana por +17,1 % con 0,445 m vs 0,537 m del titular). Empezar la corrección en d=2 (día 3 en adelante) deja los primeros 3 días exactamente iguales a sin_autoajuste puro, asegurando el margen a 3 días y corrigiendo el largo plazo.",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia3(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = [0.0 if d < 2 else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_cortes_7d",
+    "nombre": "Sin autoajuste + cortes siguen 7 días",
+    "hipotesis": "Combinar la desactivación del autoajuste con la continuidad de los cortes actuales por 7 días mantiene el +15,3 % de mejora a 1 día y reduce el pesimismo de sin_autoajuste a 7 y 14 días con un mecanismo físico.",
+    "promocion": "luis",
+    "por_que": "A 1 día, sin_autoajuste gana por +15,3 % (0,359 m vs 0,424 m), pero a 7 y 14 días su sesgo pesimista llega a -2,15 m y -8,14 m. Por otro lado, suponer que el esquema de cortes de hoy continúa durante 7 días (como en cortes_siguen_7d) no altera en absoluto el día 1 (conservando el 0,359 m intacto), pero reduce la demanda de Paute en los días 2 al 7, ahorrando agua en Mazar y compensando físicamente la caída excesiva de cota a mediano y largo plazo.",
+    "codigo": "def c_sin_autoajuste_cortes_7d(P, ctx, mod):\n    plan = list(ctx.get(\"cutPlan\") or [])\n    hoy = plan[0] if plan and isinstance(plan[0], (int, float)) and not isinstance(plan[0], bool) else None\n    if not hoy:\n        return None\n    plan = plan + [None] * max(0, 8 - len(plan))\n    for d in range(1, 8):\n        if plan[d] is None:\n            plan[d] = hoy\n    ctx[\"ajuste\"] = 1.0\n    ctx[\"cutPlan\"] = plan\n    return P, ctx, {\"ajuste\": 1.0, \"cutPlan\": plan}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2123.45,
+     2120.55,
+     2124.45
+    ],
+    "candidato_1_7_14": [
+     2123.44,
+     2120.62,
+     2124.52
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "cutPlan"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-15"
+}
