@@ -4,6 +4,7 @@
 const { chromium } = require(process.env.PLAYWRIGHT || "playwright");
 const { execFileSync } = require("child_process"); const fs = require("fs"); const path = require("path");
 const OUT = process.argv[2] || "salida_videos", URL = process.argv[3] || "https://datalabecuador.com/3d/acumulada/#video";
+const GIRO_A = +Number(process.env.GIRO_A || 40), GIRO_B = +Number(process.env.GIRO_B || -10);
 const FPS = 24, suave = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 (async () => {
   fs.mkdirSync(OUT, { recursive: true }); const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "v3d-"));
@@ -21,9 +22,10 @@ const FPS = 24, suave = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) /
   if (process.env.DIA && dia !== process.env.DIA) throw new Error(`la lluvia del día publicada es del ${dia}, no del ${process.env.DIA}`);
   const plan = [];
   for (let i = 0; i < FPS * 1; i++) plan.push([0, 0, 1]);                                            // inicio
-  for (let i = 0; i < FPS * 12; i++) { const t = i / (FPS * 12); plan.push([24 * t, -50 * suave(t), 1]); }   // el día crece
-  for (let i = 0; i < FPS * 5; i++) { const t = suave(i / (FPS * 5)); plan.push([24, -50 + 90 * t, 1 - 0.2 * t]); }   // gira alrededor
-  for (let i = 0; i < FPS * 1.5; i++) plan.push([24, 40, 0.8]);                                      // final
+  // Luis (15 nov): primero hacia la izquierda (se ve crecer Guayaquil) y luego a la derecha, revelando dónde estuvo el pico
+  for (let i = 0; i < FPS * 12; i++) { const t = i / (FPS * 12); plan.push([24 * t, GIRO_A * suave(t), 1]); }   // el día crece
+  for (let i = 0; i < FPS * 5; i++) { const t = suave(i / (FPS * 5)); plan.push([24, GIRO_A + (GIRO_B - GIRO_A) * t, 1 - 0.2 * t]); }   // gira y revela
+  for (let i = 0; i < FPS * 1.5; i++) plan.push([24, GIRO_B, 0.8]);                                  // final
   let n = 0;
   for (const [h, g, a] of plan) {
     await p.evaluate(([h, g, a]) => window.__video.fijar(h, g, a), [h, g, a]);
