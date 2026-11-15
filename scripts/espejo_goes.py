@@ -94,7 +94,10 @@ def assets(rel):
 
 def main():
     ahora = datetime.now(timezone.utc)
-    rel = version(); A = assets(rel); hay = {a["name"] for a in A}
+    rel = version(); A = assets(rel)
+    for a in [x for x in A if x.get("state") != "uploaded"]:   # subida cortada a medias: se borra y se vuelve a subir
+        GH.delete(f"{API}/releases/assets/{a['id']}", timeout=30); A.remove(a)
+    hay = {a["name"] for a in A}
     subidos = borrados = fallas = 0
     for prod, var in PRODUCTOS.items():
         ks = []
