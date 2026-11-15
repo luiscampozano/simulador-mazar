@@ -211,6 +211,11 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         if ORDEN_NIVEL.get(f["nivel"], 0) > ORDEN_NIVEL.get(x["nivel_max"], 0): x["nivel_max"] = f["nivel"]
         x["tope_min_C"] = min(x["tope_min_C"], f["tope_C"]); x["area_max_km2"] = max(x["area_max_km2"], f["area_km2"])
         if f.get("rayos_15min") is not None: x["rayos_max_15min"] = max(x["rayos_max_15min"] or 0, f["rayos_15min"])
+        if not hecho:   # SOMBRA "tormenta que viene" (Luis, 15 nov): 1.ª vez que la extrapolación la puso en camino de cada
+            av, ll = x.setdefault("avisos", {}), x.setdefault("llegadas", {})   # ciudad [hora, minutos] y 1.ª vez encima
+            for n, m in f.get("camino", []):
+                if n not in av and n not in x["encima"] and n not in f["encima"]: av[n] = [hora, m]
+            for n in f["encima"]: ll.setdefault(n, hora)
         x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
         if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2), hora])   # con la hora: la página anima el satélite con los números
     vistas = {f["n"] for f in out}
