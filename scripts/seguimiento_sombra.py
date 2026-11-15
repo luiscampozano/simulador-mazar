@@ -131,13 +131,14 @@ ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
 
 
 def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
-    """Tormentas del DÍA DE TORMENTA (06:00 → 06:00 de Ecuador; Luis, 13 nov: "ver las tormentas del día y el estado de
+    """Tormentas del DÍA CALENDARIO (00:00 → 24:00 de Ecuador; Luis, 15 nov: "día a día podamos contabilizar mejor";
+    antes era 06:00 → 06:00; Luis, 13 nov: "ver las tormentas del día y el estado de
     ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
     superpone en la imagen anterior (≤ 40 min antes); si no se superpone con ninguna, es nueva y recibe el siguiente
     número. Se guarda el estado (con la máscara de cada tormenta activa) en salida/tormentas_estado.json, que el robot
     publica para continuar en la siguiente corrida."""
     loc = t0 - timedelta(hours=5)
-    dia = (loc - timedelta(hours=6)).date().isoformat()
+    dia = loc.date().isoformat()
     if os.path.exists(ESTADO):
         E = json.load(open(ESTADO))
     else:   # bucle recién arrancado: se sigue con lo publicado; si no se puede leer (salvo que no exista), no se pisa
@@ -147,11 +148,11 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
     if E.get("dia") != dia:   # día nuevo: el anterior se guarda cerrado como "ayer" (Luis, 15 nov: pestaña "Ayer")
         ayer = None
         if E.get("dia") and E.get("tormentas") and E["dia"] == (date.fromisoformat(dia) - timedelta(days=1)).isoformat():
-            ayer = {"dia": E["dia"], "desde": "06:00", "hasta_imagen": E.get("imagen"),
+            ayer = {"dia": E["dia"], "desde": E.get("desde", "06:00"), "calendario": True, "hasta_imagen": E.get("imagen"),
                     "tormentas": [{**{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")},
                                    "activa": False, "al_cierre": bool(x.get("activa"))} for x in E["tormentas"]]}
-        E = {"dia": dia, "tormentas": [], "ayer": ayer}
-    if not E.get("ayer"):    # semilla única del 14 nov (el día ya se había cerrado sin guardar "ayer")
+        E = {"dia": dia, "desde": "00:00", "tormentas": [], "ayer": ayer}
+    if not E.get("ayer") or not E["ayer"].get("calendario"):   # semilla única del 14 nov (solo 00:00–24:00 de ese día)
         try:
             sem = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "tormentas_ayer_semilla.json")))
             sem = sem["galapagos" if "galapagos" in os.path.basename(ESTADO) else "continente"]
@@ -223,7 +224,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         json.dump(E, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace(ESTADO + ".tmp", ESTADO)
     pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")} for x in E["tormentas"]]
-    return {"dia": dia, "desde": "06:00", "tormentas": pub, "ayer": E.get("ayer")}
+    return {"dia": dia, "desde": E.get("desde", "06:00"), "tormentas": pub, "ayer": E.get("ayer")}
 
 
 ISLAS = {"Puerto Ayora": (-0.745, -90.313), "Puerto Baquerizo Moreno": (-0.902, -89.610), "Puerto Villamil": (-0.956, -90.966)}
@@ -305,7 +306,7 @@ def tormentas_galapagos(t0):
         f["n"] = f"G{f['n']}"; f.pop("_obj", None)
         for z in f["nucleos"]: z.pop("_m", None)
     return {"imagen": t0.isoformat(), "malla": [L["n"], L["s"], L["o"], L["e"]], "islas": {k: list(v) for k, v in ISLAS.items()},
-            "nota": "Galápagos: G1, G2… con el mismo seguimiento del día (06→06) que el continente; rayos del GLM.", "tormentas": out, "dia": dia}
+            "nota": "Galápagos: G1, G2… con el mismo seguimiento del día (00→24, día calendario) que el continente; rayos del GLM.", "tormentas": out, "dia": dia}
 
 
 def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
