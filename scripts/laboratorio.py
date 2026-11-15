@@ -3363,14 +3363,15 @@ def _registrar_desglose(ts, P, ctx, par, d_tit):
     eta = float(par.get("eficiencia_mazar") or 0.9); amC = float(ctx.get("amaluzaCota") or 1980.0)
     sc = list(ctx.get("serieCoca") or []); fac = list(ctx.get("ccsFactor") or [])
     filas = []
-    for k in range(0, 8):   # cerebro 14 nov: también el día 0 (las primeras 24 h, el día que se verifica a 1 día)
+    d0 = datetime.fromisoformat(dia).date()
+    for k in list(range(0, 8)) + [10, 14, 20, 27]:   # cerebro 14 nov: también el día 0; cerebro 15 nov: y los días 10, 14, 20 y 27
         if k >= len(d_tit): break
         x = d_tit[k]
         qc = float(P.get("qCoca") or 0) * (float(sc[min(k, len(sc) - 1)]) if sc else 1.0)
         f = float(fac[min(k, len(fac) - 1)]) if fac else 1.0
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * f
         mwh = float(x["qturb"]) * 0.00981 * eta * max(20.0, float(x["cota"]) - amC) * 24
-        filas.append({"dia": k, "cota": round(float(x["cota"]), 2), "paute_mw": round(float(x["paute"]), 1),
+        filas.append({"dia": k, "fecha": (d0 + timedelta(days=k)).isoformat(), "cota": round(float(x["cota"]), 2), "paute_mw": round(float(x["paute"]), 1),
                       "coca_mw_aprox": round(ccs, 1), "q_coca_m3s": round(qc, 1), "mazar_turb_m3s": round(float(x["qturb"]), 1),
                       "mazar_mwh_aprox": round(mwh), "q_entrada_m3s": round(float(x["qin"]), 1)})
     reg[dia] = {"ts": ts, "demanda_mw": P.get("demanda"), "otras_mw": P.get("other"), "termica_mw": P.get("therm"),
@@ -3474,3 +3475,92 @@ _cand_3nov("lluvia_viento_calor", c_lluvia_viento_calor, "Lluvia del Paute con v
            "Reparo del retador aplicado: se suma lluvia_gye30 (−100 MW los días con ≥ 30 mm en Guayaquil) cuando hay aguaceros. "
            "Otro reparo del retador: agua_paute_con_viento solo lleva el factor del Paute a 1,0 (≈ 41 m³/s), no explica crecidas de 60–80.",
            origen=_OR_C14)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 15 nov (aprobación permanente de Luis, 7 nov)
+def _dia_especial(d, manual):
+    """Sábado, domingo o feriado (lista fija + manual.feriados)."""
+    try:
+        return datetime.fromisoformat(d).weekday() >= 5 or _es_feriado_pasado(d, manual)
+    except Exception:
+        return True
+
+
+def c_semana_mazar(P, ctx, mod):
+    """Idea 'semana_mazar' (cerebro 15 nov) ajustada por el reparo del retador. El cerebro pedía 'nunca las dos el mismo
+    día': mazar_media_2d en laborales y combinado_domingo_intermedia en domingo, feriado y primer laboral. El retador: apagar
+    combinado_domingo_intermedia de martes a sábado quita Amaluza, los ríos fijos y los domingos/feriados futuros a 7–14 días,
+    y el martes mazar_media_2d arrastra el lunes de reposición. Aquí: combinado_domingo_intermedia SIEMPRE (estricta, como
+    noche_y_domingo) y, encima, mazar_media_2d (días 0–1) solo si hoy y ayer son laborales y ninguno de los 2 días base del
+    Celec es un día de reposición (el laboral que sigue a un domingo o feriado). Orden: primero mazar_media_2d (usa la caída
+    con la cota observada), después el embalse combinado (cambia la cota). Revisor 15 nov: la corrección de mazar_media_2d se
+    calcula contra el turbinado del titular; los ríos fijos y Amaluza de la otra pieza mueven un poco el turbinado final
+    (≈ media + (combinado − titular)): no se descuenta, queda anotado. Con la media apagada es igual a combinado_domingo_intermedia."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    hoy = _ts_dt(ts).date()
+    ant = lambda x: (datetime.fromisoformat(x).date() - timedelta(days=1)).isoformat()
+    media = not any(_dia_especial(x, manual) for x in (hoy.isoformat(), ant(hoy.isoformat())))
+    if media:   # revisor 15 nov: la base de mazar_media_2d (2 últimos laborales del Celec) tampoco puede tener un día de reposición
+        base = [d_ for d_, _ in _laborales_previos(hoy.isoformat(), manual, 2)]
+        media = len(base) == 2 and not any(_dia_especial(ant(d_), manual) for d_ in base)
+    piezas = ([_opcional(c_mazar_media_2d)] if media else []) + [c_combinado_domingo_intermedia]
+    r = _combinar(P, ctx, mod, *piezas)
+    if r:
+        r[2]["media_2d_activa"] = media
+    return r
+
+
+def c_semana_mazar_sin_autoajuste(P, ctx, mod):
+    """Idea 'semana_mazar_sin_autoajuste' (cerebro 15 nov): semana_mazar + sin autoajuste los días 0–1 y autoajuste entero
+    desde el día 2 (sin_autoajuste_y_autoajuste_largo, estricta). Una pieza cambia el turbinado y la otra el caudal."""
+    return _combinar(P, ctx, mod, c_sin_autoajuste_y_autoajuste_largo, c_semana_mazar)
+
+
+_OR_C15 = "cerebro 2026-11-15"
+_cand_3nov("semana_mazar", c_semana_mazar, "Media de 2 laborales entre semana + domingo parado, ríos fijos y Amaluza",
+           "Cerebro de Mazar 15 nov: los dos líderes con más casos corrigen días distintos (mazar_media_2d +24,3 % en 63 casos, "
+           "combinado_domingo_intermedia +20,2 % en 98, marcador del 15 nov). Reparo del retador aplicado: combinado_domingo_intermedia "
+           "corre siempre (lleva Amaluza, ríos fijos y los domingos futuros a 7–14 días) y mazar_media_2d solo si hoy y ayer son "
+           "laborales y su base (2 últimos laborales del Celec) no tiene un día de reposición, para no pisar ni arrastrar la reposición. "
+           "Revisor: con la media apagada es igual a combinado_domingo_intermedia (la diferencia sale solo de los días con "
+           "media_2d_activa); el turbinado final de los días 0–1 es ≈ media + (combinado − titular), no se descuenta.", origen=_OR_C15)
+_cand_3nov("semana_mazar_sin_autoajuste", c_semana_mazar_sin_autoajuste, "semana_mazar + sin autoajuste corto y autoajuste largo",
+           "Cerebro de Mazar 15 nov: semana_mazar (turbinado) + sin_autoajuste_y_autoajuste_largo (caudal: +46,3 % a 1 día, pero "
+           "solo 39 casos). Reparo del retador: esa pieza lleva ~2,5 días en un régimen alto y su ratio (tope 1,3) puede agravar "
+           "el pesimismo a 7–14 días; se mide igual, con la misma regla de reemplazo.", origen=_OR_C15)
+
+
+
+# ---------------------------------------------------------------- Gemini 14 nov (segundo auditor; revisor Claude independiente 15 nov: aprobados con cambios)
+# Revisor: armados con las piezas existentes (mismo resultado que el código de Gemini, que copiaba _sesgo_plazo a mano); cifras al 15 nov.
+def c_sin_autoajuste_sesgo35_largo(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.35, desde=1))
+
+
+def c_sin_autoajuste_coca_mitad(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, c_coca_mitad)
+
+
+def c_sin_autoajuste_coca_real_sesgo50_dia3(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, c_coca_rio_real, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=2))
+
+
+_OR_G14 = "Gemini 2026-11-14"
+CANDIDATOS["sin_autoajuste_sesgo35_largo"] = {
+    "f": c_sin_autoajuste_sesgo35_largo, "promocion": "luis", "origen": _OR_G14, "nombre": "Sin autoajuste + 35 % de sesgo desde día 2",
+    "hipotesis": "Variante de fuerza de sin_autoajuste_sesgo50_largo (35 % en vez de 50 % del sesgo por plazo desde el día 2): conserva la "
+                 "mejora a 1 día de quitar el autoajuste (sin_autoajuste +15,2 % en 125 casos, marcador 15 nov) con menos riesgo a 3 días. "
+                 "Revisor: hoy el 50 % ya le gana al titular a 3 días (0,510 vs 0,528 m); este queda de respaldo por si el 50 % se pasa."}
+CANDIDATOS["sin_autoajuste_coca_mitad"] = {
+    "f": c_sin_autoajuste_coca_mitad, "promocion": "auto", "origen": _OR_G14, "nombre": "Sin autoajuste + río Coca a la mitad",
+    "hipotesis": "Sin autoajuste + río Coca a medio camino entre el titular y el pronóstico del río real: ≥ 10 % mejor a 1 día y a 5 y 7 días "
+                 "no peor que el titular en más de 5 % y mejor que sin_autoajuste a 7 días. Revisor: sin_autoajuste empeora 33 % a 7 y 14 "
+                 "días y coca_mitad no ayuda a 7 (−2,9 %): es probable que quede igual."}
+CANDIDATOS["sin_autoajuste_coca_real_sesgo50_dia3"] = {
+    "f": c_sin_autoajuste_coca_real_sesgo50_dia3, "promocion": "luis", "origen": _OR_G14,
+    "nombre": "Sin autoajuste + Coca real + mitad de sesgo desde día 3",
+    "hipotesis": "Sumar la mitad del sesgo por plazo desde el día 3 a sin_autoajuste_coca_real (+11,9 % a 1 día en 120 casos, marcador 15 nov; "
+                 "sesgo −1,98 m a 7 días con 2 días medidos, aunque ya gana 19 % a 7) conserva el 1 día y baja el pesimismo de 7 a 14 días."}
