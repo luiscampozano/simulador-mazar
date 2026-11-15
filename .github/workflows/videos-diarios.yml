@@ -16,7 +16,7 @@ concurrency: { group: videos-diarios, cancel-in-progress: false }
 jobs:
   videos:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 100   # 15 nov: 3 videos (25 + 40 + 25 min en el peor caso)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,7 +63,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 25
         run: |
-          cd scripts/videos && { [ -d node_modules/playwright ] || { npm install --no-audit --no-fund --loglevel=error --no-save playwright@1.48.2 && npx playwright install --with-deps chromium; }; }
+          cd scripts/videos && { [ -d node_modules/playwright ] || npm install --no-audit --no-fund --loglevel=error --no-save playwright@1.48.2; } && npx playwright install --with-deps chromium
           RAIZ="$GITHUB_WORKSPACE" node video_mazar.js "$GITHUB_WORKSPACE/salida_videos"
       - name: Guardar en la rama "videos"
         run: |
