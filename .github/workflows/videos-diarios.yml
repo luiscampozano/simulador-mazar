@@ -1,4 +1,4 @@
-# DataLab Ec · 2 videos diarios (Luis, 15 nov): "las tormentas del día" (satélite cada 10 min con los números de las
+# DataLab Ec · 3 videos diarios (15 nov: + "Mazar en 3D": el nivel día a día y por qué se movió) (Luis, 15 nov): "las tormentas del día" (satélite cada 10 min con los números de las
 # tormentas, Remotion) y "lluvia del día 3D" (la vista pública /3d/acumulada/ hora a hora con la cámara girando).
 # Del día calendario de AYER. Quedan en la rama "videos" (un solo commit que se reemplaza): NO se publican en redes.
 name: Videos diarios
@@ -23,6 +23,8 @@ jobs:
           sparse-checkout: |
             scripts/satelite_ahora.py
             scripts/videos
+            datos.json
+            serie_cenace.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
@@ -57,6 +59,12 @@ jobs:
             echo "reintento $i en 5 min"; sleep 300
           done
           exit 1
+      - name: Video 3 · Mazar en 3D
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          cd scripts/videos && { [ -d node_modules/playwright ] || { npm install --no-audit --no-fund --loglevel=error --no-save playwright@1.48.2 && npx playwright install --with-deps chromium; }; }
+          RAIZ="$GITHUB_WORKSPACE" node video_mazar.js "$GITHUB_WORKSPACE/salida_videos"
       - name: Guardar en la rama "videos"
         run: |
           ls -l salida_videos || true

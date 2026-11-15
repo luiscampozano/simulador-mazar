@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Mazar 3D</title>
+<style>
+:root{--bg:#07121b;--fg:#f1f6f9;--mut:#9fb3c2;--azul:#3aa0ff;--rojo:#ff4d4f;--ambar:#ffb020;--verde:#3fd28b}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#esc{position:fixed;inset:0;width:540px;height:960px}
+#sombra{position:fixed;inset:0;pointer-events:none;background:linear-gradient(#07121bee 0,#07121b99 26%,transparent 40%,transparent 62%,#07121bcc 78%,#07121bf2 100%)}
+.cap{position:fixed;left:0;right:0;padding:0 26px;pointer-events:none}
+#cab{top:26px}
+.marca{font:700 13px Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--azul)}
+h1{margin:6px 0 0;font:800 34px/1.05 Inter,sans-serif}
+.sub{margin-top:6px;font:500 16px/1.35 Inter,sans-serif;color:var(--mut)}
+#cota{position:fixed;left:26px;top:170px;font:800 54px/1 "JetBrains Mono",ui-monospace,monospace;text-shadow:0 2px 12px #000}
+#cota small{display:block;font:600 15px Inter,sans-serif;color:var(--mut);margin-top:6px;text-shadow:none}
+#fecha{position:fixed;left:26px;top:150px;font:700 15px Inter,sans-serif;color:var(--fg)}
+/* regla de nivel */
+#regla{position:fixed;right:22px;top:170px;width:58px;height:330px;border-radius:10px;background:rgba(8,20,30,.78);border:1px solid #23394a}
+#regla .agua{position:absolute;left:6px;right:6px;bottom:6px;background:linear-gradient(#5ab8ff,#1d6fd1);border-radius:6px}
+#regla .lin{position:absolute;left:-4px;right:-4px;height:2px}
+#regla .et{position:absolute;right:64px;font:700 11px Inter,sans-serif;white-space:nowrap;transform:translateY(-50%)}
+/* línea de tiempo */
+#tl{position:fixed;left:22px;right:22px;bottom:118px;height:150px;border-radius:14px;background:rgba(8,20,30,.82);border:1px solid #23394a;padding:10px 12px;box-sizing:border-box}
+#tl .t{font:700 13px Inter,sans-serif;color:var(--mut)}
+#tl svg{width:100%;height:112px;display:block}
+/* tarjeta ayer */
+#ayer{position:fixed;left:22px;right:22px;bottom:118px;border-radius:16px;background:rgba(8,20,30,.92);border:1px solid #23394a;padding:16px 18px;box-sizing:border-box}
+#ayer h2{margin:0 0 10px;font:800 21px Inter,sans-serif}
+.fila{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #1d3242;font:500 15px Inter,sans-serif}
+.fila b{font:700 16px "JetBrains Mono",ui-monospace,monospace;white-space:nowrap}
+.porque{margin-top:10px;font:500 15px/1.4 Inter,sans-serif;color:var(--fg)}
+.porque em{color:var(--ambar);font-style:normal;font-weight:700}
+#dias{display:flex;gap:10px;margin-top:12px}
+#dias div{flex:1;border-radius:12px;padding:10px;background:#0e2232;text-align:center}
+#dias b{display:block;font:800 30px "JetBrains Mono",monospace}
+#dias span{font:600 12px Inter,sans-serif;color:var(--mut)}
+#pie{bottom:30px;font:600 13px Inter,sans-serif;color:var(--mut);text-align:center}
+.oculto{display:none}
+#etpresa{position:fixed;font:800 13px Inter,sans-serif;color:#fff;background:rgba(8,20,30,.85);border:1px solid #d9dde2;border-radius:8px;padding:3px 8px;transform:translate(-50%,-140%);white-space:nowrap}
+</style></head><body>
+<canvas id="esc"></canvas><div id="sombra"></div>
+<div class="cap" id="cab"><div class="marca">DataLab Ec · Embalse Mazar</div><h1 id="titulo">¿Cuánta agua le queda a Mazar?</h1><div class="sub" id="subt"></div></div>
+<div id="fecha"></div>
+<div id="cota"></div>
+<div id="regla"><div class="agua"></div></div>
+<div id="tl"><div class="t">Nivel de Mazar · últimos 30 días (m s. n. m.)</div><svg id="graf" viewBox="0 0 470 112" preserveAspectRatio="none"></svg></div>
+<div id="ayer" class="oculto"></div>
+<div id="etpresa">Presa Mazar</div>
+<div class="cap" id="pie">Datos: Celec Sur, Cenace, Open-Meteo · Ing. Luis Campozano, MBA e Ing. Alfredo Campozano · @DataLabEc</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const SEM=['dom','lun','mar','mié','jue','vie','sáb'],MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const nf=(v,d=2)=>v.toFixed(d).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const fechaTxt=s=>{const f=new Date(s+'T12:00:00');return `${SEM[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]}`};
+let D,M,R,cam,scn,ren,agua,aguaGeo,centro;
+const EX=2.2, ESC=1/500;   // exageración vertical y escala (1 unidad = 500 m)
+async function ini(){
+  const [DT,SC,RL]=await Promise.all(['datos.json','serie_cenace.json','relieve.json'].map(async f=>(await fetch(f,{cache:'no-store'})).json()));
+  M=RL; const hb=Uint8Array.from(atob(RL.h_b64),c=>c.charCodeAt(0)), bb=Uint8Array.from(atob(RL.bar_b64),c=>c.charCodeAt(0));
+  const h16=new Uint16Array(hb.buffer); M.h=Array.from(h16,v=>v+2000); M.bar=bb;
+  D=armarDatos(DT,SC);
+  ren=new THREE.WebGLRenderer({canvas:document.getElementById('esc'),antialias:true,preserveDrawingBuffer:true});
+  ren.setPixelRatio(2); ren.setSize(540,960,false); ren.setClearColor(0x07121b);
+  scn=new THREE.Scene(); scn.fog=new THREE.Fog(0x07121b,40,110);
+  cam=new THREE.PerspectiveCamera(38,540/960,0.1,500);
+  scn.add(new THREE.HemisphereLight(0xdfefff,0x253020,0.75));
+  const sol=new THREE.DirectionalLight(0xffffff,0.85); sol.position.set(-30,40,20); scn.add(sol);
+  // terreno
+  const F=M.filas,C=M.cols,p=M.paso_m*ESC;
+  const g=new THREE.PlaneGeometry((C-1)*p,(F-1)*p,C-1,F-1); g.rotateX(-Math.PI/2);
+  const pos=g.attributes.position, col=new Float32Array(pos.count*3);
+  for(let k=0;k<pos.count;k++){const h=M.h[k]; pos.setY(k,(h-2000)*ESC*EX);
+    const t=Math.min(1,(h-2000)/1500); const c=new THREE.Color().setHSL(0.27-0.17*t,0.38-0.15*t,0.20+0.22*t); col.set([c.r,c.g,c.b],k*3);}
+  g.setAttribute('color',new THREE.BufferAttribute(col,3)); g.computeVertexNormals();
+  scn.add(new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true})));
+  R={F,C,p,x0:-(C-1)*p/2,z0:-(F-1)*p/2};
+  // presa
+  const pr=M.presa; R.presa=new THREE.Vector3(R.x0+pr[1]*p,(2166-2000)*ESC*EX,R.z0+pr[0]*p); const pres=new THREE.Mesh(new THREE.BoxGeometry(0.12,(2166-2000)*ESC*EX,0.9),new THREE.MeshLambertMaterial({color:0xd9dde2}));
+  pres.position.set(R.x0+pr[1]*p,(2166-2000)*ESC*EX/2,R.z0+pr[0]*p); pres.rotation.y=0.6; scn.add(pres);
+  // anillos 2116 y 2115 (borde del agua a esas cotas)
+  for(const [L,c] of [[2116,0xff4d4f],[2115,0x9b1c1c]]){const m=llenar(L), pts=[];
+    for(let i=1;i<F-1;i++)for(let j=1;j<C-1;j++){const k=i*C+j; if(m[k]&&(!m[k-1]||!m[k+1]||!m[k-C]||!m[k+C])) pts.push(R.x0+j*p,(L-2000)*ESC*EX+0.03,R.z0+i*p);}
+    const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+    scn.add(new THREE.Points(pg,new THREE.PointsMaterial({color:c,size:0.14})));}
+  // centro del embalse (para la cámara)
+  const m0=llenar(2153); let si=0,sj=0,n=0; for(let k=0;k<m0.length;k++) if(m0[k]){si+=Math.floor(k/C);sj+=k%C;n++;}
+  centro=new THREE.Vector3(R.x0+sj/n*p,(2120-2000)*ESC*EX,R.z0+si/n*p);
+  regla(); grafico();
+}
+function armarDatos(DT,SC){   // todo lo del video sale de los archivos del simulador (robot de Celec/Cenace)
+  const hist=DT.historico.slice(-30), n=hist.length, ayer=hist[n-2], ante=hist[n-3];
+  const pl=(SC.plantas||{}), mw=d=>{const x=pl[d]; if(!x||!(x.horas>=20)) return null; return ((x.Paute||0)+(x.Sopladora||0)+(x.Mazar||0))/x.horas;};
+  const m=/Promedio histórico de (\S+): (\d+)/.exec((DT.notas||{}).mazar||'');
+  const P=((DT.modelo||{}).prediccion||{}).numero||{};
+  return {hist, cota:hist[n-1][1], hoy:hist[n-1][0], ayer:ayer[0], ante:ante[0], delta:ayer[1]-ante[1],
+    semana:(ayer[1]-hist[Math.max(0,n-9)][1])/Math.min(7,n-2), q:(DT.hoy||{}).qMazar, qHist:m?+m[2]:null, mesHist:m?m[1]:null,
+    mwAyer:mw(ayer[0]), mwAnte:mw(ante[0]), critica:P.critica||{}, parada:P.parada||{}};
+}
+function llenar(L){   // agua conectada a la presa por debajo de la cota L (BFS desde el fondo del embalse)
+  const {F,C}=R, m=new Uint8Array(F*C), q=[M.semilla[0]*C+M.semilla[1]]; m[q[0]]=1;
+  while(q.length){const k=q.pop(), i=Math.floor(k/C), j=k%C;
+    for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){const ii=i+a,jj=j+b; if(ii<0||jj<0||ii>=F||jj>=C) continue; const kk=ii*C+jj;
+      if(!m[kk]&&!M.bar[kk]&&M.h[kk]<L){m[kk]=1;q.push(kk);}}}
+  return m;
+}
+function ponerAgua(L){
+  if(agua){scn.remove(agua);aguaGeo.dispose();}
+  const {F,C,p}=R, m=llenar(L), v=[], y=(L-2000)*ESC*EX;
+  for(let i=0;i<F;i++)for(let j=0;j<C;j++) if(m[i*C+j]){const x=R.x0+j*p,z=R.z0+i*p,h=p/2+0.01;
+    v.push(x-h,y,z-h, x-h,y,z+h, x+h,y,z+h, x-h,y,z-h, x+h,y,z+h, x+h,y,z-h);}
+  aguaGeo=new THREE.BufferGeometry(); aguaGeo.setAttribute('position',new THREE.Float32BufferAttribute(v,3)); aguaGeo.computeVertexNormals();
+  agua=new THREE.Mesh(aguaGeo,new THREE.MeshPhongMaterial({color:0x2f8fe8,transparent:true,opacity:0.72,depthWrite:false,shininess:80,specular:0x99ccff}));
+  scn.add(agua);
+}
+const RMIN=2112, RMAX=2130;
+function regla(){const r=document.getElementById('regla'), H=318;
+  for(const [L,c,t] of [[2116,'var(--rojo)','2.116 zona crítica'],[2115,'#9b1c1c','2.115 parada'],[2130,'#3a5468','2.130']]){
+    const y=6+(L-RMIN)/(RMAX-RMIN)*H;
+    r.insertAdjacentHTML('beforeend',`<div class="lin" style="bottom:${y}px;background:${c}"></div><div class="et" style="bottom:${y}px;color:${c};transform:translateY(50%)">${t}</div>`);}
+}
+function nivelRegla(L){document.querySelector('#regla .agua').style.height=(Math.max(0,(L-RMIN)/(RMAX-RMIN))*318)+'px';}
+function grafico(){const h=D.hist, W=470, Hh=112, a=2114, b=2129, X=i=>8+i/(h.length-1)*(W-16), Y=v=>Hh-6-(v-a)/(b-a)*(Hh-14);
+  let s=`<line x1="0" x2="${W}" y1="${Y(2116)}" y2="${Y(2116)}" stroke="#ff4d4f" stroke-dasharray="5 4"/>`+
+        `<text x="${W-4}" y="${Y(2116)-4}" fill="#ff4d4f" font-size="11" text-anchor="end" font-family="Inter">2.116</text>`;
+  s+=`<polyline fill="none" stroke="#5ab8ff" stroke-width="3" points="${h.map((x,i)=>X(i)+','+Y(x[1])).join(' ')}"/>`;
+  s+=`<circle id="pt" r="6" fill="#fff" stroke="#5ab8ff" stroke-width="3"/>`;
+  s+=`<text x="8" y="${Hh-2}" fill="#9fb3c2" font-size="11" font-family="Inter">${fechaTxt(h[0][0])}</text><text x="${W-8}" y="${Hh-2}" fill="#9fb3c2" font-size="11" text-anchor="end" font-family="Inter">${fechaTxt(h[h.length-1][0])}</text>`;
+  document.getElementById('graf').innerHTML=s; R.X=X; R.Y=Y;}
+function camara(giro){   // giro: 0..1 → ~23° alrededor del embalse, mirando entre el embalse y la presa (que se vea la presa)
+  const ang=-0.35+giro*0.3, rad=24, alt=40, o=centro.clone().lerp(R.presa,0.72);
+  cam.position.set(o.x+Math.sin(ang)*rad,o.y+alt,o.z+Math.cos(ang)*rad); cam.lookAt(o.x,o.y-2,o.z);
+  cam.updateMatrixWorld(); const v=R.presa.clone().project(cam), e=document.getElementById('etpresa');
+  e.style.left=((v.x+1)/2*540)+'px'; e.style.top=((1-v.y)/2*960)+'px';
+}
+// escena: fase "inicio" | "historia" (dia = índice 0..29) | "ayer"
+window.fijar=function(fase,dia,giro){
+  const h=D.hist, x=fase==='historia'?Math.min(dia,h.length-1):h.length-1, i=Math.round(x), a=Math.floor(x), b=Math.min(h.length-1,a+1),
+        L=h[a][1]+(h[b][1]-h[a][1])*(x-a);
+  ponerAgua(L); nivelRegla(L); camara(giro);
+  const pt=document.getElementById('pt'); pt.setAttribute('cx',R.X(x)); pt.setAttribute('cy',R.Y(L));
+  document.getElementById('etpresa').classList.toggle('oculto',fase==='ayer');
+  document.getElementById('fecha').textContent=fechaTxt(h[i][0]);
+  document.getElementById('cota').innerHTML=`${nf(L)} m<small>${fase==='inicio'?'nivel de hoy · a '+nf(L-2116)+' m de la zona crítica':'nivel del embalse'}</small>`;
+  document.getElementById('titulo').textContent=fase==='ayer'?'¿Por qué se movió?':'¿Cuánta agua le queda a Mazar?';
+  document.getElementById('subt').textContent=fase==='historia'?'Así se movió el nivel día a día':'La línea roja es la zona crítica: 2.116 m';
+  document.getElementById('tl').classList.toggle('oculto',fase==='ayer'); document.getElementById('regla').classList.toggle('oculto',fase==='ayer');
+  const A=document.getElementById('ayer'); A.classList.toggle('oculto',fase!=='ayer');
+  if(fase==='ayer') A.innerHTML=tarjeta();
+  ren.render(scn,cam); return true;
+};
+function tarjeta(){
+  const d=D.delta, sg=d>0.02?'subió':d<-0.02?'bajó':'se mantuvo', col=d>0.02?'var(--verde)':d<-0.02?'var(--rojo)':'var(--fg)';
+  const dn=s=>{const t=fechaTxt(s); return t.charAt(0).toUpperCase()+t.slice(1)};
+  const fila=(a,b,c='')=>b==null?'':`<div class="fila"><span>${a}</span><b style="${c}">${b}</b></div>`;
+  let por=`El ${fechaTxt(D.ayer)} el nivel <em>${sg}${sg==='se mantuvo'?'':' '+nf(Math.abs(d))+' m'}</em>.`;
+  if(D.q!=null) por+=` En las últimas 24 h entraron ${Math.round(D.q)} m³/s`+(D.qHist?`, el ${Math.round(100*D.q/D.qHist)} % del promedio histórico de ${D.mesHist}`:'')+'.';
+  if(D.mwAyer!=null) por+=` El complejo Paute generó ${nf(D.mwAyer,0)} MW en promedio`+(D.mwAnte!=null?(Math.abs(D.mwAyer-D.mwAnte)>=30?`, ${D.mwAyer<D.mwAnte?'menos':'más'} que el día anterior (${nf(D.mwAnte,0)} MW)`:', casi igual que el día anterior'):'')+'.';
+  por+=` En la última semana: ${D.semana>=0?'+':'−'}${nf(Math.abs(D.semana))} m por día.`;
+  const dc=D.critica.dias, dp=D.parada.dias;
+  return `<h2>¿Qué pasó el ${fechaTxt(D.ayer)}?</h2>`+
+    fila('Cambio del nivel',`${d>=0?'+':'−'}${nf(Math.abs(d))} m`,'color:'+col)+
+    fila('Agua que entró (últimas 24 h)',D.q!=null?Math.round(D.q)+' m³/s':null)+
+    fila('Promedio histórico de '+(D.mesHist||'este mes'),D.qHist!=null?D.qHist+' m³/s':null)+
+    fila('Complejo Paute generó',D.mwAyer!=null?nf(D.mwAyer,0)+' MW':null)+
+    `<div class="porque">${por}</div>`+
+    (dc!=null&&dp!=null?`<div id="dias"><div><b>${nf(dc,1)}</b><span>días a 2.116 m<br>zona crítica</span></div><div><b>${nf(dp,1)}</b><span>días a 2.115 m<br>parada</span></div></div>`:'');
+}
+window.listo=ini();
+</script></body></html>
