@@ -25,6 +25,8 @@ jobs:
             scripts/videos
             datos.json
             serie_cenace.json
+            historial/celec_diario.json
+            historial/celec_2010_2022.json
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }

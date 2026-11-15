@@ -30,6 +30,7 @@ MESES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "
                "septiembre", "octubre", "noviembre", "diciembre"]
 
 CELEC = "https://generacioncsr.celec.gob.ec:8443/ords/csr/sardomcsr/pointValues"
+MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 MRID_COTA, MRID_CAUDAL = 30031, 30538
 CENACE = "https://www.cenace.gob.ec/info-operativa/InformacionOperativa.htm"
 # Puntos de pronóstico: Guayaquil; cuenca alta del Paute (2); cuenca del Coca (2)
@@ -2017,8 +2018,17 @@ def main():
         cambios += 1
     if q24 is not None:
         hoy["qMazar"] = int(clamp(round(q24), 5, 120))
-        notas["mazar"] = (f"Promedio de las últimas 24 h: {q24:.0f} m³/s (Celec Sur, automático). "
-                          "Promedio histórico de octubre: 66 m³/s.")
+        notas["mazar"] = f"Promedio de las últimas 24 h: {q24:.0f} m³/s (Celec Sur, automático)."
+        try:   # 15 nov (Luis): el promedio histórico del MES EN CURSO (antes decía fijo "octubre: 66"), del historial diario de Celec Sur
+            HQ = {}
+            for f_ in ("celec_2010_2022.json", "celec_diario.json"):
+                HQ.update(json.load(open(os.path.join("historial", f_), encoding="utf-8")))
+            mm_ = f"-{ahora.month:02d}-"
+            qs_ = [v["q"] for d_, v in HQ.items() if mm_ in d_[4:8] and isinstance(v, dict) and isinstance(v.get("q"), (int, float))]
+            if len(qs_) >= 100:
+                notas["mazar"] += f" Promedio histórico de {MESES_LARGOS[ahora.month - 1]}: {sum(qs_) / len(qs_):.0f} m³/s (2010–{ahora.year})."
+        except Exception as e:
+            log(f"Promedio histórico del mes: {str(e)[:80]}")
 
     # --- Cenace: térmica, importación, demanda, Coca Codo
     D = None

@@ -7,14 +7,15 @@ const RAIZ = process.env.RAIZ || path.resolve(__dirname, "../.."), DIR = path.jo
 const OUT = process.argv[2] || "salida_videos", CUADROS = process.argv.includes("--cuadros");
 const FPS = 24, suave = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 const ARCH = { "mazar.html": path.join(DIR, "mazar.html"), "relieve.json": path.join(DIR, "relieve.json"),
-               "datos.json": path.join(RAIZ, "datos.json"), "serie_cenace.json": path.join(RAIZ, "serie_cenace.json") };
+               "datos.json": path.join(RAIZ, "datos.json"), "serie_cenace.json": path.join(RAIZ, "serie_cenace.json"),
+               "celec_2010_2022.json": path.join(RAIZ, "historial", "celec_2010_2022.json"), "celec_diario.json": path.join(RAIZ, "historial", "celec_diario.json") };
 (async () => {
   fs.mkdirSync(OUT, { recursive: true }); const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "vmz-"));
   const b = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const p = await (await b.newContext({ viewport: { width: 540, height: 960 }, deviceScaleFactor: 2 })).newPage();
   p.on("pageerror", e => console.error("página:", e.message));
   await p.route("http://mazar.local/**", r => { const f = ARCH[new URL(r.request().url()).pathname.slice(1)];
-    return f ? r.fulfill({ body: fs.readFileSync(f), contentType: f.endsWith(".html") ? "text/html" : "application/json" }) : r.fulfill({ status: 404 }); });
+    return f && fs.existsSync(f) ? r.fulfill({ body: fs.readFileSync(f), contentType: f.endsWith(".html") ? "text/html" : "application/json" }) : r.fulfill({ status: 404 }); });
   await p.goto("http://mazar.local/mazar.html", { timeout: 120000 });
   await p.evaluate(() => window.listo);
   const hoy = await p.evaluate(() => D.hoy), n30 = await p.evaluate(() => D.hist.length - 1);
