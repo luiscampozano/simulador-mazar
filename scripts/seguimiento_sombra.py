@@ -146,7 +146,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         else: r.raise_for_status(); E = r.json()
     if E.get("dia") != dia:   # día nuevo: el anterior se guarda cerrado como "ayer" (Luis, 15 nov: pestaña "Ayer")
         ayer = None
-        if E.get("dia") and E.get("tormentas"):
+        if E.get("dia") and E.get("tormentas") and E["dia"] == (date.fromisoformat(dia) - timedelta(days=1)).isoformat():
             ayer = {"dia": E["dia"], "desde": "06:00", "hasta_imagen": E.get("imagen"),
                     "tormentas": [{**{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")},
                                    "activa": False, "al_cierre": bool(x.get("activa"))} for x in E["tormentas"]]}
