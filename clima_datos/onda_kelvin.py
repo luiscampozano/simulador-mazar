@@ -15,7 +15,9 @@ Método (CONGELADO el 16 nov, sin ajustar a nada):
     teórica de una onda Kelvin (2,4 m/s ≈ 207 km/día) como referencia;
   · también se guarda el cambio de 30 días en el extremo este (90–82° O): si sube, todavía llega agua caliente a la costa.
 Verificación: cuando el nivel del mar en 90–82° O baje ≥ 4 cm en 30 días, se anota la fecha real y se compara con la
-llegada que se estimó cada día antes. Es una medida indirecta (no mide temperatura bajo el agua); las boyas TAO están
+llegada que se estimó cada día antes (3 días seguidos bajo el umbral). Ojo: la "sla" incluye el ciclo de las estaciones del
+año, así que una bajada de 4 cm puede ser estacional; y cuando el frente está quieto la velocidad medida no es fiable (la
+teórica sirve de referencia). Es una medida indirecta (no mide temperatura bajo el agua); las boyas TAO están
 caídas a ratos. Salida: registro/onda_kelvin.json"""
 import json, math, os, time
 from datetime import date, datetime, timedelta, timezone
@@ -36,19 +38,20 @@ def bajar(desde, hasta):
     a = desde
     while a <= hasta:
         b = min(hasta, (a.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1))
-        q = (f"?sla%5B({a.isoformat()}T00:00:00Z):1:({b.isoformat()}T00:00:00Z)%5D%5B(-0.125):1:(0.125)%5D"
+        fin = "last" if b == hasta else f"{b.isoformat()}T00:00:00Z"   # el último tramo hasta el último día publicado
+        q = (f"?sla%5B({a.isoformat()}T00:00:00Z):1:({fin})%5D%5B(-0.125):1:(0.125)%5D"
              f"%5B(-179.875):8:(-80.125)%5D")
         for i in range(3):
             try:
-                r = requests.get(URL + q, timeout=120)
-                if r.status_code == 404 and b == hasta:   # el último día aún no está publicado
-                    b = b - timedelta(days=1); q = q.replace(f"({hasta.isoformat()}T", f"({b.isoformat()}T"); hasta = b; continue
+                r = requests.get(URL + q, timeout=90)
                 r.raise_for_status(); break
             except Exception:
                 if i == 2: raise
                 time.sleep(10)
         for ln in r.text.splitlines()[2:]:
-            t, la, lo, v = ln.split(",")
+            p = ln.split(",")
+            if len(p) != 4: continue
+            t, la, lo, v = p
             if v and v != "NaN":
                 S.setdefault(t[:10], {}).setdefault(round(float(lo)), []).append(float(v) * 100)
         a = b + timedelta(days=1)
@@ -60,16 +63,18 @@ def main():
     M = bajar(hoy - timedelta(days=DIAS_CAMBIO + DIAS_VEL + 10), hoy - timedelta(days=1))
     dias = sorted(M)
     lons = sorted({l for d in M for l in M[d]})
+    D = lambda d: date.fromisoformat(d)
 
-    def sm(i, l):
-        xs = [M[dias[k]].get(l) for k in range(max(0, i - 3), min(len(dias), i + 4))]
+    def sm(d, l):   # suavizado de 7 días del calendario, SOLO hacia atrás (d−6 … d): lo que se sabía ese día
+        xs = [M.get((D(d) - timedelta(days=k)).isoformat(), {}).get(l) for k in range(7)]
         xs = [x for x in xs if x is not None]
-        return sum(xs) / len(xs) if xs else None
+        return sum(xs) / len(xs) if len(xs) >= 4 else None
 
-    def frente(i):
+    def frente(d):
         ch = {}
+        d0 = (D(d) - timedelta(days=DIAS_CAMBIO)).isoformat()
         for l in lons:
-            a, b = sm(i, l), sm(i - DIAS_CAMBIO, l)
+            a, b = sm(d, l), sm(d0, l)
             if a is not None and b is not None: ch[l] = round(a - b, 1)
         f, hueco = None, 0
         for l in lons:                       # de oeste a este
@@ -84,9 +89,10 @@ def main():
         return f, ch
 
     hist = []
-    for i in range(DIAS_CAMBIO, len(dias)):
-        f, ch = frente(i)
-        hist.append((dias[i], f, ch))
+    for d in dias:
+        if D(d) - D(dias[0]) < timedelta(days=DIAS_CAMBIO + 6): continue
+        f, ch = frente(d)
+        hist.append((d, f, ch))
     d_hoy, f_hoy, ch_hoy = hist[-1] if hist else (None, None, {})
     pts = [(date.fromisoformat(d), f) for d, f, _ in hist[-DIAS_VEL:] if f is not None]
     vel = None
@@ -100,17 +106,23 @@ def main():
     if f_hoy is not None:
         for k, lon in METAS.items():
             km = (lon - f_hoy) * KM_GRADO
+            if km <= 0:
+                llegadas[k] = {"km": 0, "ya_paso": True}; continue
             llegadas[k] = {"km": round(km),
                            "con_velocidad_medida": (date.fromisoformat(d_hoy) + timedelta(days=round(km / vel))).isoformat() if vel and vel > 20 else None,
                            "con_velocidad_teorica": (date.fromisoformat(d_hoy) + timedelta(days=round(km / KELVIN_KM_DIA))).isoformat()}
     este = [v for l, v in ch_hoy.items() if -90 <= l <= -82]
     R = json.load(open(SAL)) if os.path.exists(SAL) else {"diario": {}}
     if d_hoy:
-        R["diario"][d_hoy] = {"frente_lon": f_hoy, "velocidad_km_dia": None if vel is None else round(vel),
-                              "llegadas": llegadas, "cambio_30d_este_cm": round(sum(este) / len(este), 1) if este else None}
+        R["diario"].setdefault(d_hoy, {"frente_lon": f_hoy, "velocidad_km_dia": None if vel is None else round(vel),
+                              "llegadas": llegadas, "cambio_30d_este_cm": round(sum(este) / len(este), 1) if este else None,
+                              "cambio_30d_90O_cm": ch_hoy.get(-90)})   # la PRIMERA estimación de cada día queda congelada
+        # llegada real: 3 días seguidos con el nivel bajando ≥ 4 cm en 30 días (90° O = Galápagos; promedio 90–82° O = costa)
         llego = R.get("llegada_real") or {}
-        if este and sum(este) / len(este) <= -CAIDA_CM and "costa_82O" not in llego:
-            llego["costa_82O"] = d_hoy
+        ult = [R["diario"][x] for x in sorted(R["diario"])[-3:]]
+        for k, campo in (("galapagos_90O", "cambio_30d_90O_cm"), ("costa_82O", "cambio_30d_este_cm")):
+            if k not in llego and len(ult) == 3 and all((u.get(campo) is not None and u[campo] <= -CAIDA_CM) for u in ult):
+                llego[k] = sorted(R["diario"])[-3]
         R["llegada_real"] = llego
     R.update({"actualizado": datetime.now(timezone(timedelta(hours=-5))).isoformat(timespec="minutes"),
               "nota": __doc__.split("\n\n")[1][:1200] + "\n" + __doc__.split("\n\n")[2][:1400],
