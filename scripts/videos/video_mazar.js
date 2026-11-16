@@ -33,7 +33,8 @@ const ARCH = { "mazar.html": path.join(DIR, "mazar.html"), "relieve.json": path.
   }
   await b.close();
   if (CUADROS) return console.log("cuadros:", n);
-  const f = path.join(OUT, `mazar_${process.env.DIA || hoy}.mp4`)   // con el mismo DÍA (ayer) que los otros 2 videos, parcial = f.replace(/\.mp4$/, ".tmp.mp4");
+  // con el mismo DÍA (ayer) que los otros 2 videos, para que la corrida de respaldo lo reconozca
+  const f = path.join(OUT, `mazar_${process.env.DIA || hoy}.mp4`), parcial = f.replace(/\.mp4$/, ".tmp.mp4");
   execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", String(FPS), "-i", path.join(tmp, "c%04d.jpg"), "-vf", "scale=1080:1920:flags=lanczos,format=yuv420p",
     "-c:v", "libx264", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", parcial]);
   fs.renameSync(parcial, f); fs.rmSync(tmp, { recursive: true, force: true });
