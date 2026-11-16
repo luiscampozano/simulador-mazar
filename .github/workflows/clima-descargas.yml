@@ -34,6 +34,11 @@ jobs:
         if: steps.q.outputs.enso == '1'
         continue-on-error: true
         run: pip install -q requests && python3 clima_datos/enso_profundo.py
+      - name: Onda Kelvin fría (sombra, Luis 16 nov)
+        if: steps.q.outputs.enso == '1'
+        continue-on-error: true
+        timeout-minutes: 8
+        run: pip install -q requests && python3 clima_datos/onda_kelvin.py
       - name: Guardar en datos-clima
         run: |
           git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
