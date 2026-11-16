@@ -130,7 +130,47 @@ ESTADO = "salida/tormentas_estado.json"
 ORDEN_NIVEL = {"lluvia": 0, "aguacero": 1, "tormenta fuerte": 2}
 
 
-def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
+KM_RAYO, MIN_RAYOS = 12, 5   # sombra "núcleo de rayos" (Luis, 16 nov): radio del aviso y rayos mínimos para ubicar el núcleo
+
+
+def sombra_rayos(x, f, t0, hora, seguido, ciudades):
+    """SOMBRA "dónde llueve fuerte" (Luis, 16 nov: "arma en sombra lo de los rayos para ver dónde está lloviendo y el otro").
+    Los rayos se concentran en los núcleos que descargan; la nube entera no. Por cada tormenta:
+      · núcleo de rayos = centro de los rayos de los últimos 15 min dentro de la nube (≥ MIN_RAYOS rayos);
+      · DESVÍO medido: su velocidad sale de cómo se movió ESE núcleo entre imágenes (≤ 40 min), no la masa de nube
+        (las tormentas crecen hacia un lado y se "corren"; el movimiento de la nube no lo ve);
+      · avisos_rayos {ciudad: [hora, minutos desde la imagen]}: 1.ª vez que el núcleo, siguiendo SU movimiento, pasaría a
+        ≤ KM_RAYO km de la ciudad en ≤ 2 h; llegadas_rayos {ciudad: hora}: 1.ª vez que el núcleo está a ≤ KM_RAYO km.
+    No cambia la página. Se verifica después contra la lluvia por hora de las estaciones (Inamhi) de cada ciudad."""
+    ry = f.get("_ry")
+    if not ry or not ciudades:
+        return
+    prev = x.get("_ryp")
+    x["_ryp"] = [t0.isoformat(), ry[0], ry[1]]
+    x["rayos_nucleo_max"] = max(x.get("rayos_nucleo_max") or 0, ry[2])
+    km = lambda la, lo, cla, clo: float(np.hypot((lo - clo) * 111.2 * np.cos(np.radians(cla)), (la - cla) * 111.2))
+    ll = x.setdefault("llegadas_rayos", {})
+    for n, (cla, clo) in ciudades.items():
+        if km(ry[0], ry[1], cla, clo) <= KM_RAYO: ll.setdefault(n, hora)
+    if not (prev and seguido):
+        return
+    dt = (t0 - datetime.fromisoformat(prev[0])).total_seconds() / 3600
+    if not (0.1 <= dt <= 0.7):
+        return
+    u = (ry[1] - prev[2]) * 111.2 * np.cos(np.radians(ry[0])) / dt; v = (ry[0] - prev[1]) * 111.2 / dt   # km/h (este, norte)
+    vel = float(np.hypot(u, v)); x["rayos_vel_kmh"] = round(vel)
+    if not (5 <= vel <= 90):      # quieto (lo cubre "llegadas") o un salto de núcleo a núcleo, no un movimiento
+        return
+    av = x.setdefault("avisos_rayos", {})
+    for n, (cla, clo) in ciudades.items():
+        if n in av or n in ll: continue
+        dx = (ry[1] - clo) * 111.2 * np.cos(np.radians(cla)); dy = (ry[0] - cla) * 111.2
+        t = -(dx * u + dy * v) / (vel ** 2)
+        if 0 < t <= HORAS and np.hypot(dx + u * t, dy + v * t) <= KM_RAYO:
+            av[n] = [hora, round(float(t * 60))]
+
+
+def balance_dia(t0, out, ESTADO=ESTADO, espera=15, ciudades=None):
     """Tormentas del DÍA CALENDARIO (00:00 → 24:00 de Ecuador; Luis, 15 nov: "día a día podamos contabilizar mejor";
     antes era 06:00 → 06:00; Luis, 13 nov: "ver las tormentas del día y el estado de
     ellas y luego se van borrando día a día"). Cada tormenta de ahora hereda el número de la del día con la que más se
@@ -149,7 +189,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
         ayer = None
         if E.get("dia") and E.get("tormentas") and E["dia"] == (date.fromisoformat(dia) - timedelta(days=1)).isoformat():
             ayer = {"dia": E["dia"], "desde": E.get("desde", "06:00"), "calendario": True, "hasta_imagen": E.get("imagen"),
-                    "tormentas": [{**{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")},
+                    "tormentas": [{**{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras", "_ryp")},
                                    "activa": False, "al_cierre": bool(x.get("activa"))} for x in E["tormentas"]]}
         E = {"dia": dia, "desde": "00:00", "tormentas": [], "ayer": ayer}
     if not E.get("ayer") or not E["ayer"].get("calendario"):   # semilla única del 14 nov (solo 00:00–24:00 de ese día)
@@ -216,6 +256,10 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
             for n, m in f.get("camino", []):                                     # la imagen] y 1.ª vez encima
                 if n not in av and n not in x["encima"] and n not in f["encima"]: av[n] = [hora, m + f.get("_edad", 0)]
             for n in f["encima"]: ll.setdefault(n, hora)
+            try:
+                sombra_rayos(x, f, t0, hora, seguido or hecho, ciudades)
+            except Exception as e:   # la sombra nunca tumba el balance
+                print("sombra rayos falló:", repr(e)[:120])
         x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
         if not hecho: x["pista"].append([round(f["la"], 2), round(f["lo"], 2), hora])   # con la hora: la página anima el satélite con los números
     vistas = {f["n"] for f in out}
@@ -228,7 +272,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15):
     with open(ESTADO + ".tmp", "w") as fh:
         json.dump(E, fh, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     os.replace(ESTADO + ".tmp", ESTADO)
-    pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras")} for x in E["tormentas"]]
+    pub = [{k: v for k, v in x.items() if k not in ("_mask", "falta", "_nuc", "letras", "_ryp")} for x in E["tormentas"]]
     return {"dia": dia, "desde": E.get("desde", "06:00"), "tormentas": pub, "ayer": E.get("ayer")}
 
 
@@ -368,6 +412,11 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
         f["encima"] = encima
         f["_edad"] = int(round(edad))   # "camino" descuenta el retraso de la corrida; la sombra lo devuelve (minutos desde la imagen)
         f["_obj"] = np.flatnonzero(obj)
+        if RY is not None:   # sombra "núcleo de rayos": centro de los rayos de la nube y su borde (15 min)
+            W = RY * ndimage.binary_dilation(obj, iterations=1); nr = int(W.sum())
+            if nr >= MIN_RAYOS:
+                wi, wj = np.nonzero(W)
+                f["_ry"] = [float(np.average(LAT[wi], weights=W[wi, wj])), float(np.average(LON[wj], weights=W[wi, wj])), nr]
         try:
             f["nucleos"] = nucleos_de(obj, T0, Tn, prev, RY, ciudades)
         except Exception as e:      # los núcleos nunca dejan sin la lista
@@ -377,14 +426,14 @@ def lista_tormentas(t0, T0, lab0, celdas, sin_rumbo, P, edad, prev, RY):
     orden = {"tormenta fuerte": 0, "aguacero": 1, "lluvia": 2}
     out.sort(key=lambda f: (orden.get(f["nivel"], 3), f["tope_C"]))
     try:
-        dia = balance_dia(t0, out)
+        dia = balance_dia(t0, out, ciudades=ciudades)
     except Exception as e:      # el balance del día nunca deja sin la lista de ahora
         print("balance del día falló:", repr(e)[:200]); dia = None
         for n, f in enumerate(out, 1):
             f["n"] = n
             for zi, z in enumerate(f.get("nucleos", [])): z["letra"] = "abcdefghijklmnopqrstuvwxyz"[zi % 26]
     for f in out:
-        f.pop("_obj", None); f.pop("_edad", None)
+        f.pop("_obj", None); f.pop("_edad", None); f.pop("_ry", None)
         for z in f.get("nucleos", []): z.pop("_m", None)
     res = {"generado": datetime.now(timezone.utc).isoformat(timespec="seconds"), "imagen": t0.isoformat(),
            "nota": "Tormentas activas (tope de nube ≤ 215 K = −58 °C) en la última imagen del GOES-19. 'camino': ciudades públicas "
