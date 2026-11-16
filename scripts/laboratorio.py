@@ -765,6 +765,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
     try: _registrar_desglose(ts, P, ctx, par, d_tit)   # cerebro 13 nov: qué supone el titular día por día (solo registro)
     except Exception as e: log(f"Laboratorio: desglose_7d no se guardó: {e}")
+    try: _registrar_domingos(ts)   # cerebro 16 nov: domingos y feriados de Mazar (solo registro)
+    except Exception as e: log(f"Laboratorio: domingo_mazar no se guardó: {e}")
     mod["_par"] = par; mod["_fisica"] = datos.get("fisica") or {}   # reparto_reciente: parámetros y balance real de Celec   # cota a 1 día del titular de ESTA corrida (la usan entrada_por_pendiente*)
     for cid, c in CANDIDATOS.items():
         if cid in (tit_.get("promovidos") or []) or cid in retirados:
@@ -3564,3 +3566,155 @@ CANDIDATOS["sin_autoajuste_coca_real_sesgo50_dia3"] = {
     "nombre": "Sin autoajuste + Coca real + mitad de sesgo desde día 3",
     "hipotesis": "Sumar la mitad del sesgo por plazo desde el día 3 a sin_autoajuste_coca_real (+11,9 % a 1 día en 120 casos, marcador 15 nov; "
                  "sesgo −1,98 m a 7 días con 2 días medidos, aunque ya gana 19 % a 7) conserva el 1 día y baja el pesimismo de 7 a 14 días."}
+
+
+# ---------------------------------------------------------------- Gemini 15 nov (segundo auditor; revisor Claude independiente 16 nov: aprobados con cambios)
+def c_autoajuste_mitad(P, ctx, mod):
+    """Mitad de la fuerza del autoajuste: 1 + 0,5 × (ajuste − 1). Revisor: con ajuste = 1 corre igual (devuelve 1,0, como
+    sin_autoajuste) para no perder corridas en la comparación pareada."""
+    aj = float(ctx.get("ajuste") or 1.0)
+    nuevo = round(1.0 + 0.5 * (aj - 1.0), 3)
+    ctx["ajuste"] = nuevo
+    return P, ctx, {"ajuste": nuevo}
+
+
+def c_sin_autoajuste_cortes_7d(P, ctx, mod):
+    """sin_autoajuste + cortes_siguen_7d (armado con las piezas existentes, revisor 16 nov). Solo corre con corte hoy."""
+    return _combinar(P, ctx, mod, c_sin_autoajuste, c_cortes_siguen_7d)
+
+
+_OR_G15 = "Gemini 2026-11-15"
+CANDIDATOS["autoajuste_mitad"] = {
+    "f": c_autoajuste_mitad, "promocion": "auto", "origen": _OR_G15, "nombre": "Autoajuste a mitad de camino",
+    "hipotesis": "Usar la mitad de la fuerza del autoajuste (1 + 0,5 × (ajuste − 1); hoy 0,905 → 0,953) conserva parte de la ganancia a "
+                 "1–3 días de sin_autoajuste (+15,2 % a 1 día en 141 casos, marcador 16 nov) sin su pesimismo a 7 y 14 días (−32 % y −36 %). "
+                 "Revisor: si conserva la mitad (~7–8 %), no llega al 10 % de la regla de reemplazo; se mide igual."}
+CANDIDATOS["sin_autoajuste_cortes_7d"] = {
+    "f": c_sin_autoajuste_cortes_7d, "promocion": "luis", "origen": _OR_G15, "nombre": "Sin autoajuste + cortes siguen 7 días",
+    "hipotesis": "En días con corte anunciado: a 1 día igual a sin_autoajuste (los cortes no cambian el día 1) y a 7 y 14 días algo mejor que "
+                 "sin_autoajuste, porque la demanda baja también los días 2–7. Revisor: los cortes suben la cota solo ~6–10 cm en los días "
+                 "5–7, frente a ~53 cm de pesimismo extra de sin_autoajuste a 7 días: corrige una parte pequeña. Solo corre con corte hoy."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 16 nov (aprobación permanente de Luis, 7 nov)
+F_COCA_PRED_LAB = os.path.join("registro", "coca_predicciones.json")
+F_COCA_OBS_LAB = os.path.join("registro", "coca_observado.json")
+
+
+def _coca_f_medido(ts, dias=30, plazos=(5, 6, 7), umbral=0.10):
+    """Fracción de la subida prometida del río Coca que de verdad llegó (cerebro 16 nov). Corridas ya verificadas (hora de la
+    corrida + plazo ≤ ahora) de los últimos `dias`, con subida prometida ≥ 10 % a 5–7 días. Llegada = media del caudal
+    observado (registro/coca_observado.json, el mismo q0 de la predicción) en ±12 h alrededor de la hora objetivo, solo con
+    observaciones anteriores a esta corrida. Promedio por fecha de emisión y luego suma de lo llegado ÷ suma de lo prometido
+    entre fechas (m³/s); f entre 0,1 y 1; con menos de 3 fechas, 0,5. Devuelve (f, n_fechas). Ojo (revisor 16 nov):
+    coca_observado no es el río sino qCoca, el caudal equivalente de Coca Codo (Cenace ÷ 5, con tope y paros), y la serieCoca
+    del titular ya pasa por el tope de la central: parte de la saturación se cuenta dos veces."""
+    ahora = _ts_dt(ts)
+    pr = _leer(F_COCA_PRED_LAB, []) or []
+    ob = _leer(F_COCA_OBS_LAB, []) or []
+    obs = []
+    for x in ob:
+        try:
+            t = _ts_dt(x["ts"])
+            if t <= ahora and isinstance(x.get("q"), (int, float)): obs.append((t, float(x["q"])))
+        except Exception:
+            continue
+    lim = ahora - timedelta(days=dias)
+    por_fecha = {}
+    for x in pr:
+        try:
+            t0 = _ts_dt(x["ts"]); q0 = float(x["q0"]); s = x["serie"]
+        except Exception:
+            continue
+        if t0 < lim or q0 <= 0:
+            continue
+        for d in plazos:
+            if d >= len(s) or not isinstance(s[d], (int, float)) or s[d] - 1 < umbral:
+                continue
+            obj = t0 + timedelta(days=d)
+            if obj + timedelta(hours=12) > ahora:
+                continue
+            v = [q for t, q in obs if abs((t - obj).total_seconds()) <= 12 * 3600]
+            if len(v) < 3:
+                continue
+            a = por_fecha.setdefault(t0.date().isoformat(), [0.0, 0.0, 0])
+            a[0] += q0 * (s[d] - 1); a[1] += sum(v) / len(v) - q0; a[2] += 1
+    if len(por_fecha) < 3:
+        return 0.5, len(por_fecha)
+    # revisor 16 nov: cada fecha pesa una vez (promedio por fecha y luego suma entre fechas)
+    prom = sum(a[0] / a[2] for a in por_fecha.values()); lleg = sum(a[1] / a[2] for a in por_fecha.values())
+    return round(max(0.1, min(1.0, lleg / prom if prom > 0 else 0.5)), 3), len(por_fecha)
+
+
+def c_coca_subida_medida(P, ctx, mod):
+    """Idea 'coca_subida_medida' (cerebro 16 nov): en los días 1–14 en que la serie del río Coca del titular sube (> 1), usar
+    1 + f × (serie − 1), con f = lo que llegó ÷ lo prometido en corridas ya verificadas (ver _coca_f_medido). Las bajadas y
+    los días 0 y 15+ quedan intactos. Es el ajuste del Paute aplicado al Coca. Reparo del retador (usa un archivo fuera del
+    expediente): el laboratorio ya lee registro/coca_predicciones.json (coca_crecida_historia); se filtra por la hora de la corrida."""
+    ts = mod.get("_ts"); s = ctx.get("serieCoca")
+    if not ts or not s:
+        return None
+    f, n = _coca_f_medido(ts)
+    nueva = [round(1 + f * (x - 1), 4) if 1 <= d <= 14 and x > 1 else x for d, x in enumerate(s)]
+    ctx["serieCoca"] = nueva
+    return P, ctx, {"serieCoca": nueva, "coca_f_subida": f, "coca_fechas_verificadas": n}
+
+
+def c_semana_mazar_coca_medida(P, ctx, mod):
+    """Combinación 'semana_mazar_coca_medida' (cerebro 16 nov): semana_mazar (turbinado de los días 0–2, Amaluza, ríos fijos y
+    domingos) + coca_subida_medida (río Coca días 1–14). Estricta. La pieza del Coca va primero (no depende de la cota)."""
+    return _combinar(P, ctx, mod, c_coca_subida_medida, c_semana_mazar)
+
+
+F_DOMINGOS = os.path.join(DIR, "domingo_mazar.json")
+
+
+def _registrar_domingos(ts):
+    """Registro 'domingo_mazar' (cerebro 16 nov; no es modelo): cada domingo y feriado de los últimos 45 días del Celec diario,
+    Mazar (MWh), el día anterior (MWh) y su razón, cambio de Amaluza (m), turbinado medio por unidad de Coca Codo (m³/s, horas de
+    registro/ccs_turbinado.json; null con < 18 h) y la demanda media del balance de Cenace (MW) de ese día y del anterior.
+    Solo días ya cerrados (anteriores a la corrida). Solo registro: no cambia nada."""
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    ccs = _leer(os.path.join("registro", "ccs_turbinado.json"), {}) or {}
+    bal = _leer(os.path.join("registro", "balance_diario.json"), {}) or {}
+    hoy = str(ts)[:10]
+    lim = (datetime.fromisoformat(hoy) - timedelta(days=45)).date().isoformat()
+    reg = _leer(F_DOMINGOS, {}) or {}
+    cambio = False
+    for d in sorted(cel):
+        if d < lim or d >= hoy:
+            continue
+        try:
+            wd = datetime.fromisoformat(d).weekday()
+        except Exception:
+            continue
+        fer = _es_feriado_pasado(d, manual)
+        if wd != 6 and not fer:
+            continue
+        x = cel.get(d) or {}
+        a = (datetime.fromisoformat(d) - timedelta(days=1)).date().isoformat()
+        y = cel.get(a) or {}
+        hh = [v for k, v in ccs.items() if str(k)[:10] == d and isinstance(v, (int, float))]
+        num = lambda v: isinstance(v, (int, float))
+        fila = {"tipo": "feriado" if fer else "domingo", "mazar_mwh": x.get("maz"), "anterior": a, "mazar_mwh_anterior": y.get("maz"),
+                "razon": round(x["maz"] / y["maz"], 3) if num(x.get("maz")) and num(y.get("maz")) and y["maz"] > 0 else None,
+                "amaluza_cambio_m": round(x["am"] - y["am"], 3) if num(x.get("am")) and num(y.get("am")) else None,
+                "coca_turb_por_unidad_m3s": round(sum(hh) / len(hh), 2) if len(hh) >= 18 else None, "coca_horas": len(hh),
+                "demanda_mw": (bal.get(d) or {}).get("total"), "demanda_mw_anterior": (bal.get(a) or {}).get("total")}
+        if reg.get(d) != fila:
+            reg[d] = fila; cambio = True
+    if cambio:
+        _escribir(F_DOMINGOS, dict(sorted(reg.items())[-120:]))
+
+
+_OR_C16 = "cerebro 2026-11-16"
+_cand_3nov("coca_subida_medida", c_coca_subida_medida, "Río Coca: solo la parte de la subida que de verdad llega",
+           "Cerebro de Mazar 16 nov: el titular usa casi entero el pronóstico GloFAS del río Coca (día 7: ×1,396) y de eso vive la "
+           "subida a 14 días. Con el cálculo del candidato (corridas verificadas a 5–7 días con subida prometida ≥ 10 %, 30 días) "
+           "el 16 nov f queda en el piso de 0,1 con 7 fechas (lo llegado fue negativo): hoy casi elimina las subidas del Coca. "
+           "Aplicar solo la fracción medida (f, 30 días, corridas ya verificadas a 5–7 días, entre 0,1 y 1) a las subidas de los "
+           "días 1–14 baja el error a 7 y 14 días sin tocar el día 1.", origen=_OR_C16)
+_cand_3nov("semana_mazar_coca_medida", c_semana_mazar_coca_medida, "semana_mazar + río Coca con la subida medida",
+           "Cerebro de Mazar 16 nov: semana_mazar corrige el turbinado de los días 0–2 (calendario y embalse) y coca_subida_medida "
+           "el río Coca de los días 1–14; no se pisan. Calendario, embalse y Coca juntos.", origen=_OR_C16)
