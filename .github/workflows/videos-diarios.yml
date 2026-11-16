@@ -45,7 +45,7 @@ jobs:
           R="https://raw.githubusercontent.com/${{ github.repository }}/videos"
           n=0
           for v in tormentas:T lluvia3d:L mazar:M; do
-            if curl -sfI -m 20 --retry 2 "$R/${v%%:*}_$D.mp4" >/dev/null; then echo "HAY_${v##*:}=1" >> "$GITHUB_ENV"; n=$((n+1)); echo "ya está ${v%%:*}_$D.mp4"; fi
+            if curl -sfI -m 20 --retry 2 --retry-connrefused "$R/${v%%:*}_$D.mp4" >/dev/null; then echo "HAY_${v##*:}=1" >> "$GITHUB_ENV"; n=$((n+1)); echo "ya está ${v%%:*}_$D.mp4"; fi
           done
           [ "$n" = 3 ] && { echo "HECHO=1" >> "$GITHUB_ENV"; echo "los 3 videos de $D ya están: no se repite"; } || true
       - name: Herramientas
@@ -91,8 +91,8 @@ jobs:
           R="https://raw.githubusercontent.com/${{ github.repository }}/videos"
           for v in tormentas lluvia3d mazar; do
             f="${v}_$DIA.mp4"
-            if [ ! -f "/tmp/v/$f" ] && curl -sfI -m 20 --retry 2 "$R/$f" >/dev/null; then
-              curl -sfL -m 300 --retry 3 -o "/tmp/v/$f" "$R/$f" || { echo "no se pudo conservar $f: no se toca la rama"; exit 1; }
+            if [ ! -f "/tmp/v/$f" ] && curl -sfI -m 20 --retry 2 --retry-connrefused "$R/$f" >/dev/null; then
+              curl -sfL -m 300 --retry 3 --retry-connrefused -o "/tmp/v/$f" "$R/$f" || { echo "no se pudo conservar $f: no se toca la rama"; exit 1; }
             fi
           done
           ls -l /tmp/v
