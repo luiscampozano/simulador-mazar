@@ -5,6 +5,8 @@ name: Videos diarios
 on:
   schedule:
     - cron: "50 11 * * *"   # 06:50 en Ecuador (después de la bitácora de las 06:25 que publica la lluvia del día 3D)
+    - cron: "30 12 * * *"   # 07:30 · respaldos (Luis 16 nov): GitHub atrasa a veces el de las 06:50; si los 3 videos
+    - cron: "30 13 * * *"   # 08:30   del día ya están en la rama "videos", la corrida termina sin hacer nada
   workflow_dispatch:
     inputs:
       dia:
@@ -32,17 +34,27 @@ jobs:
         with: { python-version: "3.12" }
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - name: Herramientas
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q fonts-inter fonts-noto-color-emoji ffmpeg > /dev/null
-          pip install -q numpy h5py requests pillow
       - name: Día
         env: { ENTRADA: "${{ github.event.inputs.dia }}" }
         run: |
           D="${ENTRADA:-$(TZ=America/Guayaquil date -d yesterday +%F)}"
           [[ "$D" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "día inválido: $D"; exit 1; }
           echo "DIA=$D" >> "$GITHUB_ENV"
+          [ -n "$ENTRADA" ] && exit 0      # día pedido a mano: siempre se rehacen los 3
+          # respaldos (revisor 16 nov): cada video que YA está en la rama "videos" para ese día no se repite y se conserva
+          R="https://raw.githubusercontent.com/${{ github.repository }}/videos"
+          n=0
+          for v in tormentas:T lluvia3d:L mazar:M; do
+            if curl -sfI -m 20 --retry 2 --retry-connrefused "$R/${v%%:*}_$D.mp4" >/dev/null; then echo "HAY_${v##*:}=1" >> "$GITHUB_ENV"; n=$((n+1)); echo "ya está ${v%%:*}_$D.mp4"; fi
+          done
+          [ "$n" = 3 ] && { echo "HECHO=1" >> "$GITHUB_ENV"; echo "los 3 videos de $D ya están: no se repite"; } || true
+      - name: Herramientas
+        if: env.HECHO != '1'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q fonts-inter fonts-noto-color-emoji ffmpeg > /dev/null
+          pip install -q numpy h5py requests pillow
       - name: Video 1 · tormentas del día
+        if: env.HAY_T != '1'
         continue-on-error: true
         timeout-minutes: 25
         run: |
@@ -52,6 +64,7 @@ jobs:
           npx remotion render src/index.jsx Tormentas "$GITHUB_WORKSPACE/salida_videos/tormentas_$DIA.tmp.mp4" --concurrency=2 --log=error
           mv "$GITHUB_WORKSPACE/salida_videos/tormentas_$DIA.tmp.mp4" "$GITHUB_WORKSPACE/salida_videos/tormentas_$DIA.mp4"
       - name: Video 2 · lluvia del día 3D
+        if: env.HAY_L != '1'
         continue-on-error: true
         timeout-minutes: 40
         run: |
@@ -62,16 +75,27 @@ jobs:
           done
           exit 1
       - name: Video 3 · Mazar en 3D
+        if: env.HAY_M != '1'
         continue-on-error: true
         timeout-minutes: 25
         run: |
           cd scripts/videos && { [ -d node_modules/playwright ] || npm install --no-audit --no-fund --loglevel=error --no-save playwright@1.48.2; } && npx playwright install --with-deps chromium
           RAIZ="$GITHUB_WORKSPACE" node video_mazar.js "$GITHUB_WORKSPACE/salida_videos"
       - name: Guardar en la rama "videos"
+        if: env.HECHO != '1'
         run: |
           ls -l salida_videos || true
-          ls salida_videos/*.mp4 > /dev/null 2>&1 || { echo "no salió ningún video"; exit 1; }
+          ls salida_videos/*.mp4 > /dev/null 2>&1 || { echo "no salió ningún video nuevo"; exit 1; }
           rm -rf /tmp/v && mkdir /tmp/v && cp salida_videos/*.mp4 /tmp/v/
+          # la rama se reemplaza entera: primero se bajan los videos de ese día que ya estaban (si uno no baja, NO se empuja)
+          R="https://raw.githubusercontent.com/${{ github.repository }}/videos"
+          for v in tormentas lluvia3d mazar; do
+            f="${v}_$DIA.mp4"
+            if [ ! -f "/tmp/v/$f" ] && curl -sfI -m 20 --retry 2 --retry-connrefused "$R/$f" >/dev/null; then
+              curl -sfL -m 300 --retry 3 --retry-connrefused -o "/tmp/v/$f" "$R/$f" || { echo "no se pudo conservar $f: no se toca la rama"; exit 1; }
+            fi
+          done
+          ls -l /tmp/v
           printf "Videos de DataLab Ec del %s (los genera el robot cada mañana; no se publican solos).\n" "$DIA" > /tmp/v/LEEME.txt
           cd /tmp/v && git init -q && git checkout -q -b videos \
             && git -c user.name="datalab-robot" -c user.email="datalab-robot@users.noreply.github.com" add . \
