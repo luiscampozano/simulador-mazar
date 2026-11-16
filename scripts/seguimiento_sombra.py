@@ -137,7 +137,7 @@ def sombra_rayos(x, f, t0, hora, seguido, ciudades):
     """SOMBRA "dónde llueve fuerte" (Luis, 16 nov: "arma en sombra lo de los rayos para ver dónde está lloviendo y el otro").
     Los rayos se concentran en los núcleos que descargan; la nube entera no. Por cada tormenta:
       · núcleo de rayos = centro de los rayos de los últimos 15 min dentro de la nube (≥ MIN_RAYOS rayos);
-      · DESVÍO medido: su velocidad sale de cómo se movió ESE núcleo entre imágenes (≤ 40 min), no la masa de nube
+      · DESVÍO medido: su velocidad sale de cómo se movió ESE núcleo en los últimos 15–45 min, no la masa de nube
         (las tormentas crecen hacia un lado y se "corren"; el movimiento de la nube no lo ve);
       · avisos_rayos {ciudad: [hora, minutos desde la imagen]}: 1.ª vez que el núcleo, siguiendo SU movimiento, pasaría a
         ≤ KM_RAYO km de la ciudad en ≤ 2 h; llegadas_rayos {ciudad: hora}: 1.ª vez que el núcleo está a ≤ KM_RAYO km.
@@ -145,29 +145,36 @@ def sombra_rayos(x, f, t0, hora, seguido, ciudades):
     ry = f.get("_ry")
     if not ry or not ciudades:
         return
-    prev = x.get("_ryp")
-    x["_ryp"] = [t0.isoformat(), ry[0], ry[1]]
+    hist = x.get("_ryp") or []
+    if hist and not isinstance(hist[0], list): hist = [hist]
+    if not seguido: hist = []
+    hist = [h for h in hist if 0 < (t0 - datetime.fromisoformat(h[0])).total_seconds() <= 50 * 60] + [[t0.isoformat(), ry[0], ry[1]]]
+    x["_ryp"] = hist[-6:]
+    # velocidad suavizada (revisor 16 nov): con un solo par a 10 min, 1 píxel (~5,5 km) son ~33 km/h; se usa el punto más
+    # antiguo de los últimos 15–45 min
+    prev = next((h for h in hist[:-1] if 0.25 <= (t0 - datetime.fromisoformat(h[0])).total_seconds() / 3600 <= 0.75), None)
     x["rayos_nucleo_max"] = max(x.get("rayos_nucleo_max") or 0, ry[2])
     km = lambda la, lo, cla, clo: float(np.hypot((lo - clo) * 111.2 * np.cos(np.radians(cla)), (la - cla) * 111.2))
     ll = x.setdefault("llegadas_rayos", {})
     for n, (cla, clo) in ciudades.items():
         if km(ry[0], ry[1], cla, clo) <= KM_RAYO: ll.setdefault(n, hora)
-    if not (prev and seguido):
+    if not prev:
         return
     dt = (t0 - datetime.fromisoformat(prev[0])).total_seconds() / 3600
-    if not (0.1 <= dt <= 0.7):
-        return
     u = (ry[1] - prev[2]) * 111.2 * np.cos(np.radians(ry[0])) / dt; v = (ry[0] - prev[1]) * 111.2 / dt   # km/h (este, norte)
-    vel = float(np.hypot(u, v)); x["rayos_vel_kmh"] = round(vel)
+    vel = float(np.hypot(u, v))
     if not (5 <= vel <= 90):      # quieto (lo cubre "llegadas") o un salto de núcleo a núcleo, no un movimiento
         return
+    x["rayos_vel_kmh"] = round(vel)
     av = x.setdefault("avisos_rayos", {})
     for n, (cla, clo) in ciudades.items():
         if n in av or n in ll: continue
         dx = (ry[1] - clo) * 111.2 * np.cos(np.radians(cla)); dy = (ry[0] - cla) * 111.2
         t = -(dx * u + dy * v) / (vel ** 2)
-        if 0 < t <= HORAS and np.hypot(dx + u * t, dy + v * t) <= KM_RAYO:
-            av[n] = [hora, round(float(t * 60))]
+        dmin = float(np.hypot(dx + u * t, dy + v * t))
+        if 0 < t <= HORAS and dmin <= KM_RAYO:   # minutos hasta ENTRAR al radio (como "llegadas_rayos"), no al máximo acercamiento
+            te = t - np.sqrt(max(0.0, KM_RAYO ** 2 - dmin ** 2)) / vel
+            av[n] = [hora, max(0, round(float(te * 60)))]
 
 
 def balance_dia(t0, out, ESTADO=ESTADO, espera=15, ciudades=None):
@@ -257,7 +264,7 @@ def balance_dia(t0, out, ESTADO=ESTADO, espera=15, ciudades=None):
                 if n not in av and n not in x["encima"] and n not in f["encima"]: av[n] = [hora, m + f.get("_edad", 0)]
             for n in f["encima"]: ll.setdefault(n, hora)
             try:
-                sombra_rayos(x, f, t0, hora, seguido or hecho, ciudades)
+                sombra_rayos(x, f, t0, hora, seguido, ciudades)
             except Exception as e:   # la sombra nunca tumba el balance
                 print("sombra rayos falló:", repr(e)[:120])
         x["encima"] = sorted(set(x["encima"]) | set(f["encima"]))
