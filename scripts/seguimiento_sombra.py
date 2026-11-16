@@ -465,34 +465,41 @@ def main():
     if (datetime.now(timezone.utc) - t0).total_seconds() > 35 * 60:
         print("seguimiento sombra: imagen vieja", t0.isoformat()); return
     prev = {round((t0 - c[0]).total_seconds() / 60 / 10) * 10: c for c in C[:-1]}
-    if 20 not in prev: print("seguimiento sombra: falta la imagen de hace 20 min"); return
+    # 16 nov (Luis: la lista desaparecía 20 min si faltaba UNA imagen): si falta la de hace 20 min se usa la de 30 (o la de
+    # 10) y, para confirmar, la de 40 (o 50); las velocidades se escalan con los minutos reales de cada tramo.
+    A = next((m for m in (20, 30, 10) if m in prev), None)
+    if A is None: print("seguimiento sombra: faltan las imágenes de hace 10–30 min"); return
+    B = next((m for m in ((40, 50) if A < 30 else (50, 40)) if m in prev and m > A), None)
+    if A != 20 or B not in (None, 40): print(f"seguimiento sombra: imagen faltante; se usan las de hace {A} y {B} min")
     RY = rayos_malla(t0)
     lab0, ids0 = objetos(T0)
-    lab20, ids20 = objetos(prev[20][1])
-    lab40, ids40 = objetos(prev[40][1]) if 40 in prev else (None, [])
+    lab20, ids20 = objetos(prev[A][1])
+    lab40, ids40 = objetos(prev[B][1]) if B else (None, [])
     celdas, sin_rumbo = [], []
     for k in ids0:
         la0, lo0, n0 = centro(lab0, k)
         k20 = pareja(lab0, k, lab20, ids20)
-        if k20 is None: sin_rumbo.append((k, True)); continue  # nació hace menos de 20 min: sin velocidad confiable
+        if k20 is None: sin_rumbo.append((k, True)); continue  # nació hace menos de A min: sin velocidad confiable
         la20, lo20, n20 = centro(lab20, k20)
-        pts = [(-20.0, la20, lo20), (0.0, la0, lo0)]
+        pts = [(-float(A), la20, lo20), (0.0, la0, lo0)]
         if lab40 is not None:
             k40 = pareja(lab20, k20, lab40, ids40)
             if k40 is not None:
-                la40, lo40, _ = centro(lab40, k40); pts.insert(0, (-40.0, la40, lo40))
+                la40, lo40, _ = centro(lab40, k40); pts.insert(0, (-float(B), la40, lo40))
         tt = np.array([p[0] for p in pts]) / 60.0             # velocidad por el CENTRO (para comparar en sombra)
         uc = np.polyfit(tt, [p[2] for p in pts], 1)[0] * 111.2 * np.cos(np.radians(la0)); vc = np.polyfit(tt, [p[1] for p in pts], 1)[0] * 111.2
         if not (0.5 <= n0 / max(n20, 1) <= 2) or np.hypot(uc, vc) > 100: uc = vc = 0.0   # se unió o partió: el centro salta
-        frio20 = np.nan_to_num(prev[20][1], nan=999) <= FRIO
-        di, dj = desplazamiento(lab0 == k, frio20)          # en 20 min (filas hacia el sur, columnas hacia el este)
-        if abs(di) == 6 or abs(dj) == 6: sin_rumbo.append((k, False)); continue   # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
-        u = dj * PASO * 111.2 * np.cos(np.radians(la0)) * 3; v = -di * PASO * 111.2 * 3   # km/h
-        if 40 in prev:                                       # confirmar con hace 40 min (promedio de los dos tramos)
-            frio40 = np.nan_to_num(prev[40][1], nan=999) <= FRIO
-            di2, dj2 = desplazamiento(lab0 == k, frio40, 10)
-            if abs(di2) < 10 and abs(dj2) < 10:
-                u = (u + dj2 * PASO * 111.2 * np.cos(np.radians(la0)) * 1.5) / 2; v = (v - di2 * PASO * 111.2 * 1.5) / 2
+        frio20 = np.nan_to_num(prev[A][1], nan=999) <= FRIO
+        fa, mx = 60.0 / A, max(3, round(6 * A / 20))        # A=20: ×3 y búsqueda de 6 px (≈ 100 km/h), como antes
+        di, dj = desplazamiento(lab0 == k, frio20, mx)       # en A min (filas hacia el sur, columnas hacia el este)
+        if abs(di) == mx or abs(dj) == mx: sin_rumbo.append((k, False)); continue   # tocó el borde de la búsqueda (≥ 100 km/h): no confiable
+        u = dj * PASO * 111.2 * np.cos(np.radians(la0)) * fa; v = -di * PASO * 111.2 * fa   # km/h
+        if B:                                                # confirmar con el tramo largo (promedio de los dos tramos)
+            frio40 = np.nan_to_num(prev[B][1], nan=999) <= FRIO
+            fb, mxb = 60.0 / B, max(5, round(10 * B / 40))
+            di2, dj2 = desplazamiento(lab0 == k, frio40, mxb)
+            if abs(di2) < mxb and abs(dj2) < mxb:
+                u = (u + dj2 * PASO * 111.2 * np.cos(np.radians(la0)) * fb) / 2; v = (v - di2 * PASO * 111.2 * fb) / 2
         pix = np.nonzero((lab0 == k) & (np.nan_to_num(T0, nan=999) <= TORMENTA))   # una vez por nube
         obj = lab0 == k
         x = np.nanmean(T0[obj] - prev[10][1][obj]) if 10 in prev and np.isfinite(prev[10][1][obj]).any() else np.nan
