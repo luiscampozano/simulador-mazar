@@ -470,7 +470,9 @@ def main():
     A = next((m for m in (20, 30, 10) if m in prev), None)
     if A is None: print("seguimiento sombra: faltan las imágenes de hace 10–30 min"); return
     B = next((m for m in ((40, 50) if A < 30 else (50, 40)) if m in prev and m > A), None)
-    if A != 20 or B not in (None, 40): print(f"seguimiento sombra: imagen faltante; se usan las de hace {A} y {B} min")
+    if A != 20 or B not in (None, 40): print(f"seguimiento sombra: imagen faltante; se usan las de hace {A}" + (f" y {B}" if B else "") + " min")
+    # con A = 10, 1 píxel de corrimiento ≈ 33 km/h (revisor 16 nov): demasiado grueso; la lista sale, pero sin rumbo ni camino
+    # (A = 30 prefiere B = 50, la confirmación más larga; con A = 20 y sin la de 40, confirma con la de 50)
     RY = rayos_malla(t0)
     lab0, ids0 = objetos(T0)
     lab20, ids20 = objetos(prev[A][1])
@@ -480,6 +482,7 @@ def main():
         la0, lo0, n0 = centro(lab0, k)
         k20 = pareja(lab0, k, lab20, ids20)
         if k20 is None: sin_rumbo.append((k, True)); continue  # nació hace menos de A min: sin velocidad confiable
+        if A == 10: sin_rumbo.append((k, False)); continue
         la20, lo20, n20 = centro(lab20, k20)
         pts = [(-float(A), la20, lo20), (0.0, la0, lo0)]
         if lab40 is not None:
