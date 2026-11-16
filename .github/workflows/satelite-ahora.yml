@@ -9,11 +9,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write     # 16 nov: para que el bucle pida su propio relevo (abajo)
 concurrency: { group: satelite-ahora, cancel-in-progress: false }   # si ya hay un bucle corriendo, el nuevo espera
 jobs:
   satelite:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    timeout-minutes: 365   # 16 nov: margen para instalación + 340 min + última vuelta
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,9 +35,17 @@ jobs:
       - name: pysteps para el nowcast en sombra (entorno aparte, no toca el numpy del robot)
         run: timeout 300 bash -c "python -m venv /tmp/ps && /tmp/ps/bin/pip install -q pysteps opencv-python-headless requests" || { rm -rf /tmp/ps; echo "pysteps no se instalo, sin nowcast en sombra"; }
       - name: Bucle cada 10 min (~5 h 40 min)
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
-          fin=$(( $(date +%s) + 340*60 ))
+          fin=$(( $(date +%s) + 340*60 )); relevo=0
           while [ $(date +%s) -lt $fin ]; do
+            # 16 nov (Luis: "dato de hace 123 min"): el cron horario a veces no corre en 10 h y entre un bucle y otro quedaban
+            # huecos de 2 h. Faltando ~25 min, el bucle pide su relevo; por la concurrencia, el nuevo espera en cola y arranca
+            # apenas este termina (el cron queda de respaldo). workflow_dispatch con GITHUB_TOKEN sí dispara corridas.
+            # Para DETENER la cadena: deshabilitar el workflow (cancelar una corrida no basta si ya pidió su relevo).
+            if [ $relevo = 0 ] && [ $(( fin - $(date +%s) )) -lt 1500 ]; then
+              timeout 30 gh api -X POST "repos/${{ github.repository }}/actions/workflows/satelite-ahora.yml/dispatches" -f ref=main && relevo=1 && echo "relevo pedido $(date -u +%H:%M)" || echo "no se pudo pedir el relevo"
+            fi
             t0=$(date +%s)
             if timeout 420 python scripts/satelite_ahora.py; then
               rm -f salida/nowcast_sombra.json salida/seguimiento_sombra.json salida/tormentas.json
