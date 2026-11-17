@@ -1,0 +1,41 @@
+{
+ "fecha": "2026-11-17",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 5.68,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "autoajuste_acotado_1_sesgo50_largo",
+    "nombre": "Autoajuste acotado (≤1) + mitad de sesgo desde día 2",
+    "hipotesis": "Dejar actuar el autoajuste solo cuando frena la bajada (≤ 1,0) conserva el +16 % de mejora a 1 día en rachas con ajuste > 1 sin perder su freno en otros regímenes, y restar la mitad del sesgo por plazo desde el día 2 corrige el pesimismo de 5 a 14 días (donde sin_autoajuste_sesgo50_largo gana +42 % a 7 días).",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy, sin_autoajuste baja el error medio a 1 día de 0,412 a 0,346 m (mediana 28,3 vs 37,0 cm; 15 vs 5 aciertos ≤ 5 cm), pero empeora 35 % a 7 días. autoajuste_acotado_1 evita acelerar la bajada cuando el factor supera 1,0, pero cuando el ajuste es ≈ 1,0 deja intacto el pesimismo del titular a 7–14 días (−1,52 y −5,93 m de sesgo). Sumar la corrección de la mitad del sesgo por plazo desde el día 2 une ambos mecanismos sin tocar el día 1.",
+    "codigo": "def c_autoajuste_acotado_1_sesgo50_largo(P, ctx, mod):\n    aj = float(ctx.get(\"ajuste\") or 1.0)\n    nuevo_aj = min(1.0, aj)\n    ctx[\"ajuste\"] = nuevo_aj\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)] + sorted((int(h), float(v[\"sesgo_m\"])) for h, v in ph.items() if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None)\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = [0.0 if d < 1 else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": nuevo_aj, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sin_memoria_sesgo50_largo",
+    "nombre": "Sin autoajuste ni memoria + mitad de sesgo desde día 2",
+    "hipotesis": "Apagar tanto el autoajuste como la memoria de 48 h elimina las dos fuentes de inercia que retrasan la respuesta a 1 día (ambas triplican o duplican los aciertos ≤ 5 cm por separado), mientras que la mitad del sesgo por plazo desde el día 2 corrige el pesimismo a 7 y 14 días.",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy (158 casos), sin_autoajuste sube los aciertos ≤ 5 cm de 5 a 15 (mediana 28,3 cm) y sin_memoria los sube a 8 (además de mejorar a 7 días de 1,560 a 1,431 m). Al quitar la memoria del titular y reemplazarla únicamente desde el día 2 por la corrección de la mitad del sesgo por plazo, el día 1 queda libre de rezagos y los plazos de 5 a 14 días quedan protegidos contra el pesimismo de sin_autoajuste (−2,08 m a 7 días).",
+    "codigo": "def c_sin_autoajuste_sin_memoria_sesgo50_largo(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)] + sorted((int(h), float(v[\"sesgo_m\"])) for h, v in ph.items() if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None)\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    out = [0.0 if d < 1 else round(max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)), 2) for d in range(60)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo65_dia3",
+    "nombre": "Sin autoajuste + 65 % del sesgo desde el día 3",
+    "hipotesis": "Quitar el autoajuste mantiene intacta la mejora de 16 % en los días 1 y 2, y aplicar el 65 % del sesgo por plazo recién desde el día 3 evita empeorar el día 3 (donde el sesgo del titular es apenas −0,12 m) y compensa con más fuerza el pesimismo extra de sin_autoajuste a 7 y 14 días.",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy, sin_autoajuste gana claramente en los días 1, 2 y 3 (errores de 0,346, 0,471 y 0,508 m frente a 0,412, 0,564 y 0,625 m del titular), pero a 7 y 14 días su sesgo cae a −2,08 y −7,89 m (más pesimista que el −1,52 y −5,93 m del titular). Empezar la corrección de sesgo en el día 3 (d >= 2) deja limpios los días 1 y 2, no sobrecorrige el día 3 (donde sesgo_plazo_50 sube el sesgo a +0,164 m) y con 65 % de fuerza compensa el pesimismo adicional que genera quitar el autoajuste a largo plazo.",
+    "codigo": "def c_sin_autoajuste_sesgo65_dia3(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)] + sorted((int(h), float(v[\"sesgo_m\"])) for h, v in ph.items() if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None)\n    if len(pts) < 3:\n        return None\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx[\"cota\"]) - 2115.0)\n    k = dvdz / 0.0864\n    corr = [0.0 if d < 2 else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.65)) for d in range(60)]\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  }
+ ],
+ "estado": "0 de 3 listas para revisión"
+}
