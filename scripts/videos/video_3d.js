@@ -26,12 +26,13 @@ const FPS = 24, suave = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) /
   const V = await p.evaluate(() => ({ nucleos: window.__video.nucleos || [], centro: window.__video.centro }));
   const km = (a, b) => Math.hypot((a.lon - b.lon) * 111.3 * Math.cos(a.lat * Math.PI / 180), (a.lat - b.lat) * 110.6);
   const mezcla = (a, b, t) => ({ lon: a.lon + (b.lon - a.lon) * t, lat: a.lat + (b.lat - a.lat) * t });
-  const C = V.centro, N1 = V.nucleos[0];
-  const F = N1 ? V.nucleos.filter(x => x.mm >= 0.5 * N1.mm) : [];
+  const C = V.centro || { lon: -79.7, lat: -1.75 };   // revisor: con la página vieja (sin 'centro') no debe caerse
+  const NU = (V.nucleos || []).filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lon)), N1 = NU[0];
+  const F = N1 ? NU.filter(x => x.mm >= 0.5 * N1.mm) : [];
   // centro de la caja que contiene a todos los focos (no ponderado: el foco más débil también debe verse entero)
   const CF = F.length ? { lon: (Math.min(...F.map(x => x.lon)) + Math.max(...F.map(x => x.lon))) / 2, lat: (Math.min(...F.map(x => x.lat)) + Math.max(...F.map(x => x.lat))) / 2 } : C;
   const ext = F.length ? Math.max(0, ...F.map(x => km(x, CF))) * 2 : 0;          // tamaño del grupo de focos (km)
-  const LEJOS = Math.max(0.65, Math.min(1.3, (ext + 200) / 460));                 // 1 = la vista general (~Esmeraldas–Machala)
+  const LEJOS = !F.length ? 1 : Math.max(0.65, Math.min(1.3, (ext + 200) / 460));                 // 1 = la vista general (~Esmeraldas–Machala)
   const gira = [];                                                                // recorrido final: focos separados > 150 km
   for (const x of F) if (!gira.some(y => km(x, y) <= 150)) gira.push(x);
   const CERCA = 0.7;
@@ -46,7 +47,7 @@ const FPS = 24, suave = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) /
     for (let i = 0; i < FPS * 1.2; i++) plan.push([24, g, CERCA, x]);
     prev = { o: x, a: CERCA, g };
   });
-  if (!gira.length) for (let i = 0; i < FPS * 5; i++) { const u = suave(i / (FPS * 5)); plan.push([24, GIRO_A + (GIRO_B - GIRO_A) * u, 1, C]); }
+  if (!gira.length) for (let i = 0; i < FPS * 5; i++) { const u = suave(i / (FPS * 5)); plan.push([24, GIRO_A + (GIRO_B - GIRO_A) * u, 1 - 0.2 * u, C]); }   // sin focos: como antes
   for (let i = 0; i < FPS * 1; i++) plan.push(plan[plan.length - 1]);                                         // final
   console.log("focos:", F.map(x => `${x.lugar} ${x.mm}`).join(", ") || "ninguno", "· recorrido:", gira.map(x => x.lugar).join(" → "), "· encuadre", LEJOS.toFixed(2));
   let n = 0;
