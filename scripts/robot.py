@@ -462,6 +462,20 @@ def perfil_py(kind, t, q0, target, serie):
     return q0 + (target - q0) * (1 - math.exp(-t / 7))
 
 
+def sin_lluvia_py(qin, qout, cota, curva, observado=None, dias_obs=None, horizonte=60.0, dt=0.05):
+    """Días hasta 2.116 y 2.115 m si lo que entra (qin) y sale (qout) de Mazar hoy se mantiene, en m³/s. None = no llega."""
+    if qin is None or qout is None or qout <= qin:
+        return {"qin": None if qin is None else round(qin), "qout": None if qout is None else round(qout), "dias_critica": None, "dias_parada": None}
+    h, t, out = float(cota), 0.0, {}
+    for u in (2116, 2115):
+        while h > u and t < horizonte:
+            area = curva["a"] + curva["b"] * (h - 2115)          # hm³ por metro a esa cota (la misma del ritmo de hoy)
+            h -= (qout - qin) * 0.0864 * dt / max(0.5, area); t += dt
+        out[u] = round(t, 1) if h <= u else None
+    return {"qin": round(qin), "qout": round(qout), "dias_critica": out[2116], "dias_parada": out[2115],
+            "lluvia_extra_llego": None if observado is None else max(0.0, round(observado, 2)), "dias_observados": dias_obs}
+
+
 def simular_py(P, ctx, par, horizonte=60):
     """Mismo cálculo que modelo.js → simular()."""
     dt = 0.25
@@ -1885,6 +1899,16 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
     for nombre, di in (("pronostico", diarios), ("semana_seca", di_seco)):
         probs[nombre] = {str(u): probabilidades_py(di, mod.get("ratios_percentiles"), datos["cota"], u) for u in (2120, 2116, 2115)}
     mod["probabilidades"] = probs
+    # Escenario SIN LA LLUVIA PREVISTA (Luis 17 nov: Mazar bajaba 1,4 m/día y la página decía "más de 60 días" porque el
+    # modelo contaba con lluvia en el Paute que llevaba 13 días sin llegar). Física simple: lo que entra y sale HOY se
+    # mantiene; el embalse se achica al bajar (misma curva que el ritmo de hoy). No cuenta feriados, cortes ni Colombia.
+    try:
+        mod["prediccion"]["sin_lluvia"] = sin_lluvia_py(d0["qin"], d0["qturb"], datos["cota"], par["curva_mazar"],
+                                                        (mod.get("ajuste_paute") or {}).get("observado"),
+                                                        (mod.get("ajuste_paute") or {}).get("dias"))
+        log(f"Sin la lluvia prevista: {mod['prediccion']['sin_lluvia']}")
+    except Exception as e:
+        log(f"Escenario sin lluvia: {e}")
     log(f"Probabilidad de llegar a 2.115 en 7/14/30 días: con lluvia {probs['pronostico']['2115']}, semana seca {probs['semana_seca']['2115']}")
     log(f"Zona crítica (2.116): {zc['entrada']}; ventana hasta {zc['salida']}; mínimo {zc['minimo']}")
     log(f"Modelo: {('%.1f días' % cruce) if cruce else 'más de 60 días'} hasta 2.115"
