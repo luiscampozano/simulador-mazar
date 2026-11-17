@@ -760,6 +760,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
                            "cortes_semana_medida": ((datos.get("robot") or {}).get("cortes_semana_medida"))}   # factor de Coca Codo de esta corrida (ccs_por_regimen)
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
     mod["_tit_qt"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(3)]   # caudal turbinado de Mazar del titular, días 0–2 (base_laboral_lunes)
+    mod["_tit_qt15"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(min(_TIT_QT_DIAS, len(d_tit)))]   # días 0–14 (domingo_mazar_minimo, cerebro 17 nov)
     mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
     mod["_cota_obs"] = float(ctx["cota"])   # cota observada de la corrida (una pieza previa puede cambiar ctx["cota"], p. ej. embalse_combinado)
     mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
@@ -781,6 +782,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             completa[cid] = [round(x["cota"], 2) for x in di]
         except Exception as e:
             log(f"Laboratorio: {cid} falló: {e}")
+    try: _registrar_fecha_critica(ts, completa)   # cerebro 17 nov: días a 2.116/2.115 m por candidato del Coca (solo registro)
+    except Exception as e: log(f"Laboratorio: fecha_critica no se guardó: {e}")
     reg = _leer(F_PRED, {"corridas": []})
     reg["corridas"] = [x for x in reg["corridas"] if x["ts"] != ts] + [
         {"ts": ts, "cota": datos["cota"], "tray": tray, "rasgos": _rasgos(P, ctx, mod, datos)}]
@@ -3718,3 +3721,207 @@ _cand_3nov("coca_subida_medida", c_coca_subida_medida, "Río Coca: solo la parte
 _cand_3nov("semana_mazar_coca_medida", c_semana_mazar_coca_medida, "semana_mazar + río Coca con la subida medida",
            "Cerebro de Mazar 16 nov: semana_mazar corrige el turbinado de los días 0–2 (calendario y embalse) y coca_subida_medida "
            "el río Coca de los días 1–14; no se pisan. Calendario, embalse y Coca juntos.", origen=_OR_C16)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 17 nov (aprobación permanente de Luis, 7 nov)
+# El titular convierte MWh ↔ m³/s con eficiencia 0,84 (≈ 29,7 MWh por m³/s·día a 2.122 m); lo medido con el Celec diario
+# (Mazar ÷ (caudal − Δcota × área de la curva)) da ~26,7 (16 nov): los candidatos que fijan el turbinado de Mazar en MWh
+# sueltan ~11 % menos agua que la real. Feriado 20 nov: el titular pone Mazar en 0; los domingos reales dieron 248–777 MWh.
+_OR_C17 = "cerebro 2026-11-17"
+_TIT_QT_DIAS = 15     # correr() guarda el turbinado del titular de los días 0–14 en mod["_tit_qt15"] (domingo_mazar_minimo)
+F_FECHA_CRITICA = os.path.join(DIR, "fecha_critica.json")
+
+
+def _eta_medida(hoy, n=10, atras=16, min_dias=5, curva=None):
+    """Eficiencia de Mazar medida (cerebro 17 nov, pieza 'eta_medida'): por cada día cerrado del Celec diario ANTERIOR a hoy
+    (últimos `atras` días) con Mazar ≥ 700 MWh y el día previo en el registro: caudal turbinado = caudal de entrada − Δcota ×
+    área de la curva (hm³/m → m³/s; el vertido se ignora) y eficiencia = MW medios ÷ (9,81e-3 × caudal turbinado × caída
+    Mazar − Amaluza). Mediana de los `n` más recientes, entre 0,60 y 0,95. Con menos de `min_dias` días: None.
+    Devuelve (eficiencia, días usados, MWh por m³/s·día del último día usado)."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    cur = curva or {"a": 3.6546, "b": 0.12574}   # revisor 17 nov: la curva calibrada de los parámetros si está
+    dias = [d for d in sorted(cel) if d < hoy][-atras:]
+    vals = []
+    for d in dias:
+        x = cel.get(d) or {}
+        try:
+            a = (datetime.fromisoformat(d) - timedelta(days=1)).date().isoformat()
+        except Exception:
+            continue
+        y = cel.get(a) or {}
+        if not all(isinstance(v, (int, float)) for v in (x.get("maz"), x.get("q"), x.get("c"), x.get("am"), y.get("c"))):
+            continue
+        if x["maz"] < 700:
+            continue
+        area = cur["a"] + cur["b"] * max(0.0, float(x["c"]) - 2115)        # hm³ por metro (curva de Mazar)
+        q_turb = float(x["q"]) - (float(x["c"]) - float(y["c"])) * area * 1e6 / 86400.0
+        caida = float(x["c"]) - float(x["am"])
+        if q_turb <= 5 or caida <= 20:
+            continue
+        eff = (float(x["maz"]) / 24.0) / (0.00981 * q_turb * caida)
+        vals.append((d, eff, float(x["maz"]) / q_turb))
+    vals = vals[-n:]
+    if len(vals) < min_dias:
+        return None, len(vals), None
+    e = sorted(v[1] for v in vals)
+    med = e[len(e) // 2] if len(e) % 2 else (e[len(e) // 2 - 1] + e[len(e) // 2]) / 2.0
+    return round(max(0.60, min(0.95, med)), 4), len(vals), round(vals[-1][2], 2)
+
+
+def _con_eta(f):
+    """Pieza 'eta_medida': corre el candidato `f` con la eficiencia de Mazar medida (solo en la conversión MWh ↔ m³/s de sus
+    piezas, vía una copia de los parámetros en mod["_par"]); la simulación sigue con los parámetros del titular."""
+    def g(P, ctx, mod):
+        ts = mod.get("_ts"); par = mod.get("_par")
+        if not ts or not par:
+            return None
+        eff, n, _ = _eta_medida(_ts_dt(ts).date().isoformat(), curva=par.get("curva_mazar"))
+        if eff is None:
+            return None
+        mod2 = dict(mod); mod2["_par"] = dict(par, eficiencia_mazar=eff)
+        r = f(P, ctx, mod2)
+        if r:
+            r[2]["eta_medida"] = eff; r[2]["eta_dias"] = n
+        return r
+    return g
+
+
+c_mazar_noche_dia0_eta = _con_eta(c_mazar_noche_dia0)
+c_mazar_media_2d_eta = _con_eta(c_mazar_media_2d)
+
+
+def _domingo_mediana_mwh(hoy, n=4):
+    """Mediana de Mazar (MWh) de los últimos `n` domingos y feriados ya cerrados del registro domingo_mazar (anteriores a hoy)."""
+    reg = _leer(F_DOMINGOS, {}) or {}
+    v = [float(x["mazar_mwh"]) for d, x in sorted(reg.items()) if d < hoy and isinstance((x or {}).get("mazar_mwh"), (int, float))][-n:]
+    if len(v) < n:
+        return None, v
+    s = sorted(v)
+    return (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0), v
+
+
+def c_domingo_mazar_minimo(P, ctx, mod):
+    """Idea 'domingo_mazar_minimo' (cerebro 17 nov): en los domingos y feriados del horizonte (días 0–14 del simulador) Mazar no
+    turbina menos que la mediana real de los últimos 4 domingos/feriados del registro domingo_mazar (MWh → m³/s con la
+    conversión del titular), vía memoria (como mazar_media_2d: el motor no fija MWh). Los días en que el titular ya turbina
+    más, sin cambio. Es lo contrario de mazar_domingo_parado."""
+    par = mod.get("_par"); qt = mod.get("_tit_qt15"); ts = mod.get("_ts")
+    if not par or not qt or not ts:
+        return None
+    mwh, base = _domingo_mediana_mwh(_ts_dt(ts).date().isoformat())
+    if mwh is None:
+        return None
+    kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+    q_min = mwh / 24.0 / kmz
+    fer = ctx.get("feriados") or []
+    dia0 = ctx.get("diaSemana0", 1) % 7                    # 0 = domingo
+    corr = [0.0] * 60; usados = []
+    for k in range(min(len(qt), 15)):
+        if (dia0 + k) % 7 == 0 or (k < len(fer) and fer[k]):
+            if float(qt[k]) < q_min:
+                corr[k] = -(q_min - float(qt[k])); usados.append(k)
+    if not usados:
+        return P, ctx, {"memoria": list(ctx.get("memoria") or []), "domingo_min_mwh": round(mwh, 1), "dias_objetivo": []}
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "domingo_min_mwh": round(mwh, 1), "domingos_base_mwh": base, "q_min_m3s": round(q_min, 2),
+                    "dias_objetivo": usados, "q_titular_m3s": [round(float(qt[k]), 2) for k in usados]}
+
+
+def c_coca_feriado(P, ctx, mod):
+    """Combinación 'coca_feriado_noche' (cerebro 17 nov) ajustada por el reparo del retador: sin mazar_noche_dia0 (pierde −3 %
+    en el marcador). Río Coca con la subida medida (días 1–14) + Mazar con el mínimo de domingos y feriados. Estricta; la
+    pieza del Coca va primero (no depende de la cota)."""
+    return _combinar(P, ctx, mod, c_coca_subida_medida, c_domingo_mazar_minimo)
+
+
+def _dias_a(tray, nivel):
+    """Días (con decimales, interpolando) hasta que la trayectoria diaria baja a `nivel`; None si no llega en el horizonte."""
+    for k in range(1, len(tray)):
+        a, b = tray[k - 1], tray[k]
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and b <= nivel < a:
+            return round(k - 1 + (a - nivel) / (a - b), 1)
+        if k == 1 and isinstance(a, (int, float)) and a <= nivel:
+            return 0.0
+    return None
+
+
+def _registrar_fecha_critica(ts, completa):
+    """Registro 'fecha_critica_coca_plana' (cerebro 17 nov; no es modelo ni cambia lo publicado): por día, días a 2.116 y
+    2.115 m de las trayectorias del laboratorio de cada corrida (con la memoria de 48 h del ctx; horizonte 30 días: None = no
+    llega en 30; no es el número grande publicado) del titular,
+    coca_subida_medida, coca_mitad y coca_rio_real. Se guarda la primera corrida del día desde las 06:00 ('manana') y la última."""
+    reg = _leer(F_FECHA_CRITICA, {}) or {}
+    fila = {"ts": ts}
+    for cid in ("titular", "coca_subida_medida", "coca_mitad", "coca_rio_real"):
+        t = completa.get(cid)
+        if t:
+            fila[cid] = {"d2116": _dias_a(t, 2116.0), "d2115": _dias_a(t, 2115.0), "cota_14d": t[14] if len(t) > 14 else None}
+    dia = str(ts)[:10]; x = reg.get(dia) or {}
+    if "manana" not in x and str(ts)[11:13] >= "06":
+        x["manana"] = fila
+    x["ultima"] = fila
+    reg[dia] = x
+    _escribir(F_FECHA_CRITICA, dict(sorted(reg.items())[-90:]))
+
+
+_cand_3nov("mazar_noche_dia0_eta", c_mazar_noche_dia0_eta, "mazar_noche_dia0 con la eficiencia medida de Mazar",
+           "Cerebro de Mazar 17 nov (pieza 'eta_medida'): mazar_noche_dia0 convierte los MW de madrugada en caudal con la "
+           "eficiencia 0,84 del titular (≈ 29,7 MWh por m³/s·día a 2.122 m); lo medido (Celec: Mazar ÷ (caudal − Δcota × área "
+           "de la curva), 16 nov) da ~26,7: 135 MW → 108 m³/s frente a ~121 medidos. Con la eficiencia medida (mediana de 10 días "
+           "con Mazar ≥ 700 MWh) suelta el agua real y el error a 1 día baja cuando Mazar turbina fuerte.", origen=_OR_C17)
+_cand_3nov("mazar_media_2d_eta", c_mazar_media_2d_eta, "mazar_media_2d con la eficiencia medida de Mazar",
+           "Cerebro de Mazar 17 nov (pieza 'eta_medida'): la misma corrección en mazar_media_2d (promedio de los 2 últimos "
+           "laborales en MWh → caudal con la eficiencia medida en vez de 0,84).", origen=_OR_C17)
+_cand_3nov("domingo_mazar_minimo", c_domingo_mazar_minimo, "Domingos y feriados: Mazar no baja de su mediana real",
+           "Cerebro de Mazar 17 nov: en los domingos y feriados de los días 0–14 Mazar turbina al menos la mediana de los últimos "
+           "4 domingos/feriados del registro domingo_mazar (lo contrario de mazar_domingo_parado, −2,4 %). Revisor 17 nov: el "
+           "cerebro decía que el titular pone Mazar en 0 el 20–22 nov y que los domingos dan 250–780 MWh; con los datos del 17 "
+           "nov el titular turbina 33,4 m³/s el feriado 20 y 8,7 el domingo 22, y la mediana de 4 es 123,9 MWh (4,2 m³/s; el 1–3 "
+           "nov Mazar paró con la crecida): hoy solo toca el domingo 29 (−0,08 m a 14 días). Se mide igual; si queda casi igual "
+           "al titular, la permanencia lo retira.", origen=_OR_C17)
+_cand_3nov("coca_feriado", c_coca_feriado, "Río Coca con la subida medida + Mazar mínimo en domingos y feriados",
+           "Cerebro de Mazar 17 nov ('coca_feriado_noche'), ajustada por el reparo del retador: sin mazar_noche_dia0 (pierde −3 %). "
+           "coca_subida_medida corrige las subidas del Coca de los días 1–14 y domingo_mazar_minimo los domingos y feriados. "
+           "Riesgo (cerebro): las dos bajan la cota y a 7–14 días el sesgo histórico fue pesimista (−2,2 y −4,4 m). Revisor 17 "
+           "nov: hoy es casi igual a coca_subida_medida (2.115,82 vs 2.115,92 m a 14 días) y la pieza de domingos se calcula "
+           "con el turbinado del titular (posible doble conteo de ~0,07 m).", origen=_OR_C17)
+
+
+
+# ---------------------------------------------------------------- Gemini 16 nov (segundo auditor; revisor Claude independiente 17 nov: 2 aprobados con cambios, 1 rechazado)
+def c_autoajuste_acotado_1(P, ctx, mod):
+    """El autoajuste solo frena (≤ 1,0): si aceleraría la bajada (> 1,0) se fija en 1,0."""
+    nuevo = round(min(1.0, float(ctx.get("ajuste") or 1.0)), 3)
+    ctx["ajuste"] = nuevo
+    return P, ctx, {"ajuste": nuevo}
+
+
+def _coca_75(P, ctx, mod):
+    """Río Coca: 25 % la serie del titular y 75 % el pronóstico del río real (variante de fuerza de coca_mitad/coca_rio_real)."""
+    a, b = ctx.get("serieCoca"), mod.get("serieCocaRio")
+    if not a or not b:
+        return None
+    s = [round(0.25 * float(x) + 0.75 * float(y), 4) for x, y in zip(a, b)]
+    ctx["serieCoca"] = s
+    return P, ctx, {"serieCoca": s}
+
+
+def c_sin_autoajuste_coca_75_sesgo50_dia3(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, _coca_75, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=2))
+
+
+_OR_G16 = "Gemini 2026-11-16"
+CANDIDATOS["autoajuste_acotado_1"] = {
+    "f": c_autoajuste_acotado_1, "promocion": "auto", "origen": _OR_G16, "nombre": "Autoajuste solo cuando frena (≤ 1,0)",
+    "hipotesis": "Dejar actuar el autoajuste solo cuando frena la bajada (≤ 1,0) y fijarlo en 1,0 cuando la aceleraría conserva la mejora "
+                 "a 1–3 días de sin_autoajuste en los días con ajuste > 1 sin perder el freno de largo plazo. Revisor 17 nov: el ajuste "
+                 "estuvo sobre 1 solo del 12 al 15 nov (máximo 1,278; hoy 1,024); coincide con el titular en ~2/3 de las corridas (212 "
+                 "de 319), así que sus cifras a 7 y 14 días saldrán casi todas de corridas iguales al titular; estimado hacia atrás "
+                 "+10,7 % a 1 día, +12 % a 3 y +2,5 % a 7 (37 casos)."}
+CANDIDATOS["sin_autoajuste_coca_75_sesgo50_dia3"] = {
+    "f": c_sin_autoajuste_coca_75_sesgo50_dia3, "promocion": "luis", "origen": _OR_G16,
+    "nombre": "Sin autoajuste + Coca 75 % río real + mitad de sesgo desde día 3",
+    "hipotesis": "Variante de fuerza de sin_autoajuste_coca_real_sesgo50_dia3 (Gemini 14 nov; −3,3 % a 1 día con 24 casos al 17 nov): río "
+                 "Coca 75 % del pronóstico del río real y 25 % del titular, sin autoajuste y la mitad del sesgo por plazo desde el día 3, "
+                 "para bajar el pesimismo a 7 y 14 días. Referencias al 17 nov: sin_autoajuste_coca_real +10,0 % a 1 día y +12,4 % a 7 "
+                 "(4 días); sin_autoajuste_sesgo50_largo +15,7 % y +42,1 %. Armado con piezas existentes (revisor 17 nov)."}
