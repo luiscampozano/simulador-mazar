@@ -2829,7 +2829,7 @@ def _base_laboral_mwh(hoy, manual, n=14):
     return None, None
 
 
-def _base_laboral(P, ctx, mod):
+def _base_laboral(P, ctx, mod, disparo_cenace=False):
     """Idea 'domingo_parado_base_laboral' (cerebro) / 'lunes_laboral_mas_reposicion' (investigador): el primer día laboral
     después de un domingo o feriado con Mazar parado (< 300 MWh), Mazar turbina como el último día laboral completo (Celec),
     no con el reparto del modelo. Se aplica al día objetivo k (0 si hoy es ese día laboral; 1 si hoy es domingo/feriado con
@@ -2850,12 +2850,19 @@ def _base_laboral(P, ctx, mod):
     if laboral(0):
         ay = (dia0 - 1) % 7
         if ay == 0 or _es_feriado_pasado(ayer, manual):
-            m = _mazar_mwh_dia(ayer)
-            if m is not None and m < 300: k = 0
+            if disparo_cenace:   # lunes_laboral_cenace (cerebro 18 nov): misma fuente a los dos lados (Cenace), no Celec
+                m = _cenace_mazar_mwh(ayer, 20); ref = _cenace_ultimo_laboral(ayer, manual)
+                if m is not None and ref and m < 0.5 * ref: k = 0
+            else:
+                m = _mazar_mwh_dia(ayer)
+                if m is not None and m < 300: k = 0
     elif (dia0 == 0 or (fer and fer[0])) and laboral(1):
         pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(hoy) or {}
         h = float(pl.get("horas") or 0)
-        if h >= 4 and isinstance(pl.get("Paute"), (int, float)) and float(pl.get("Mazar") or 0.0) * 24.0 / h < 300: k = 1
+        if disparo_cenace:
+            m = _cenace_mazar_mwh(hoy, 4); ref = _cenace_ultimo_laboral(hoy, manual)
+            if m is not None and ref and m < 0.5 * ref: k = 1
+        elif h >= 4 and isinstance(pl.get("Paute"), (int, float)) and float(pl.get("Mazar") or 0.0) * 24.0 / h < 300: k = 1
     if k is None:
         return sin_cambio
     base, dia_base = _base_laboral_mwh(hoy, manual)
@@ -3849,10 +3856,10 @@ def _registrar_fecha_critica(ts, completa):
     """Registro 'fecha_critica_coca_plana' (cerebro 17 nov; no es modelo ni cambia lo publicado): por día, días a 2.116 y
     2.115 m de las trayectorias del laboratorio de cada corrida (con la memoria de 48 h del ctx; horizonte 30 días: None = no
     llega en 30; no es el número grande publicado) del titular,
-    coca_subida_medida, coca_mitad y coca_rio_real. Se guarda la primera corrida del día desde las 06:00 ('manana') y la última."""
+    coca_subida_medida, coca_mitad, coca_rio_real y subidas_cero (cerebro 18 nov). Se guarda la primera corrida del día desde las 06:00 ('manana') y la última."""
     reg = _leer(F_FECHA_CRITICA, {}) or {}
     fila = {"ts": ts}
-    for cid in ("titular", "coca_subida_medida", "coca_mitad", "coca_rio_real"):
+    for cid in ("titular", "coca_subida_medida", "coca_mitad", "coca_rio_real", "subidas_cero"):   # subidas_cero: cerebro 18 nov
         t = completa.get(cid)
         if t:
             fila[cid] = {"d2116": _dias_a(t, 2116.0), "d2115": _dias_a(t, 2115.0), "cota_14d": t[14] if len(t) > 14 else None}
@@ -3925,3 +3932,106 @@ CANDIDATOS["sin_autoajuste_coca_75_sesgo50_dia3"] = {
                  "Coca 75 % del pronóstico del río real y 25 % del titular, sin autoajuste y la mitad del sesgo por plazo desde el día 3, "
                  "para bajar el pesimismo a 7 y 14 días. Referencias al 17 nov: sin_autoajuste_coca_real +10,0 % a 1 día y +12,4 % a 7 "
                  "(4 días); sin_autoajuste_sesgo50_largo +15,7 % y +42,1 %. Armado con piezas existentes (revisor 17 nov)."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 18 nov (aprobación permanente de Luis, 7 nov)
+# Lunes 9 y 16 nov: 2.332 y 2.319 MWh tras domingos de 248 y 777 MWh; base_laboral_lunes no se activó el 16 (pide domingo
+# < 300 MWh). Las subidas prometidas (Paute 23 → 39,5 m³/s; Coca 755 → 1.200 MW) no llegan con aire seco en la Amazonía.
+_OR_C18 = "cerebro 2026-11-18"
+
+
+def _cenace_mazar_mwh(dia, min_h):
+    """MWh de Mazar de `dia` según el Cenace (serie_cenace.json, acumulado del día), escalado a 24 h; exige ≥ min_h horas
+    medidas y el dato de Paute (si el Cenace no trae Mazar con Paute presente, Mazar = 0, como en _mazar_mwh_dia)."""
+    pl = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}).get(dia) or {}
+    h = float(pl.get("horas") or 0)
+    if h < min_h or not isinstance(pl.get("Paute"), (int, float)):
+        return None
+    return float(pl.get("Mazar") or 0.0) * 24.0 / h
+
+
+def _cenace_ultimo_laboral(antes_de, manual):
+    """Mazar (MWh, Cenace, ≥ 20 h) del último día laboral (lunes a viernes, sin feriado) anterior a `antes_de` que esté en
+    serie_cenace.json (guarda ~4 días: tras un feriado largo puede no haber y la pieza no se activa)."""
+    pls = ((_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {})
+    for d in sorted(pls, reverse=True):
+        if d >= antes_de: continue
+        try:
+            if datetime.fromisoformat(d).weekday() >= 5 or _es_feriado_pasado(d, manual): continue
+        except Exception:
+            continue
+        m = _cenace_mazar_mwh(d, 20)
+        if m is not None and m > 0:
+            return m
+    return None
+
+
+def c_lunes_laboral_cenace(P, ctx, mod):
+    """Idea 'lunes_laboral_cenace' (cerebro 18 nov, variante de base_laboral_lunes) con el reparo del retador (Carbon): el
+    disparo compara Cenace con Cenace (no Cenace con Celec, que discrepan): primer día laboral tras domingo/feriado cuyo
+    Mazar (Cenace, MW medios × 24) fue < 50 % del Mazar (Cenace) del último día laboral → base de día laboral (último Celec
+    laboral, como base_laboral_lunes)."""
+    return _base_laboral(P, ctx, mod, disparo_cenace=True)
+
+
+def c_paute_obs_tope1(P, ctx, mod):
+    """Subida del Paute con el factor observado (lo que llegó ÷ lo prometido, ajuste_paute.observado del robot) recortado a
+    [0, 1] (hoy 0 en vez del 0,417 que aplica el titular). Solo días con subida prometida (bruta > 1)."""
+    bruta, info = mod.get("serieMazarBruta"), mod.get("ajuste_paute") or {}
+    f = info.get("observado")
+    if not bruta or not isinstance(f, (int, float)):
+        return None
+    f = max(0.0, min(1.0, float(f)))
+    actual = ctx.get("serieMazar") or bruta
+    serie = [round(1 + (b - 1) * f, 4) if b > 1 else a for a, b in zip(actual, bruta)]
+    ctx["serieMazar"] = serie
+    return P, ctx, {"serieMazar": serie, "paute_f_observado": round(f, 3)}
+
+
+def c_subidas_medidas(P, ctx, mod):
+    """Combinación 'subidas_medidas' (cerebro 18 nov): Paute con el factor observado recortado a [0, 1] + coca_subida_medida.
+    Lo demás (autoajuste, memoria) como el titular."""
+    return _combinar(P, ctx, mod, c_coca_subida_medida, c_paute_obs_tope1)
+
+
+def c_subidas_cero(P, ctx, mod):
+    """'escenario_plano' (cerebro 18 nov, pedido como registro): días 1+ sin ninguna subida prometida de Paute ni de Coca
+    (las series quedan ≤ 1; las bajadas se conservan). Es el extremo de subidas_medidas (f = 0) y entra en fecha_critica.json."""
+    sm, sc = ctx.get("serieMazar"), ctx.get("serieCoca")
+    if not sm or not sc:
+        return None
+    nm = [x if d == 0 else min(1.0, x) for d, x in enumerate(sm)]
+    nc = [x if d == 0 else min(1.0, x) for d, x in enumerate(sc)]
+    ctx["serieMazar"] = nm; ctx["serieCoca"] = nc
+    return P, ctx, {"serieMazar": nm, "serieCoca": nc}
+
+
+def c_lideres_4(P, ctx, mod):
+    """Combinación de 4 piezas que hoy van adelante (retador Carbon, 18 nov): balance_3_laborales (Paute desde los 3 últimos
+    laborales) + lluvia_gye30 (demanda de la Costa con aguaceros en Guayaquil, ventana 3 días; opcional) +
+    sin_autoajuste_sesgo50_largo + embalse_combinado (opcional, al final porque cambia la cota)."""
+    return _combinar(P, ctx, mod, c_balance_3_laborales, _opcional(lambda P_, c_, m_: _lluvia_gye30(P_, c_, m_, ref_ventana=3)),
+                     c_sin_autoajuste_sesgo50_largo, _opcional(c_embalse_combinado))
+
+
+_cand_3nov("lunes_laboral_cenace", c_lunes_laboral_cenace, "El lunes Mazar turbina como día laboral (disparo con Cenace)",
+           "Cerebro de Mazar 18 nov: el lunes 16 el titular dijo de más 1,01 m y base_laboral_lunes no se activó (pide domingo < 300 "
+           "MWh y el domingo 15 fue 777). Con el disparo relativo (Mazar del domingo o feriado < 50 % del último laboral) el 16 sí "
+           "se activa. Reparo del retador: Cenace y Celec discrepan hasta 10 veces y el Cenace omite a Mazar en 0 MW; por eso el "
+           "disparo compara Cenace con Cenace (≥ 20 h; Mazar ausente con Paute presente = 0). Ojo: serie_cenace guarda ~4 días; tras "
+           "el feriado del 20 nov el lunes 23 puede no tener laboral de referencia y no se activa.", origen=_OR_C18)
+_cand_3nov("subidas_medidas", c_subidas_medidas, "Paute y Coca: solo la parte de la subida que de verdad llega",
+           "Cerebro de Mazar 18 nov: las dos subidas prometidas fallan a la vez con aire seco en la Amazonía (agua precipitable 47 "
+           "mm): en 14 días llegó 0 % de lo prometido en el Paute y ~10 % en el Coca. Paute con el factor observado recortado a "
+           "[0, 1] (hoy 0 en vez de 0,417) + coca_subida_medida. Reparo del retador: la pieza del Paute sola ya se midió "
+           "(paute_ajuste_completo, retirado por empate) y propone combinaciones de 3+ piezas (ver lideres_4).", origen=_OR_C18)
+_cand_3nov("subidas_cero", c_subidas_cero, "Escenario plano: sin las subidas prometidas de Paute y Coca",
+           "Cerebro de Mazar 18 nov ('escenario_plano', pedido como registro): el titular (~58 días a 2.116) cree todas las subidas y "
+           "el 'sin lluvia' exagera; falta el escenario del medio. Aquí, desde el día 1, ni Paute ni Coca suben (series ≤ 1, las "
+           "bajadas quedan). Se mide como candidato y sus días a 2.116/2.115 m se guardan en fecha_critica.json.", origen=_OR_C18)
+_cand_3nov("lideres_4", c_lideres_4, "4 piezas que hoy ganan: balance 3 laborales + Costa + sin autoajuste/sesgo + embalse",
+           "Retador (Carbon) del cerebro de Mazar 18 nov: combinar las piezas que hoy van adelante (sin_autoajuste_sesgo50_largo "
+           "+17,1 % a 1 día, embalse_combinado +15,1 %, balance_3_laborales +7,8 %) con la demanda de la Costa (lluvia_gye30, "
+           "ventana de 3 días; revisor 18 nov: esa pieza va en empate, 0 % a 1 día). La Costa y el embalse son opcionales (si no corren, el resto sigue).",
+           origen=_OR_C18 + " (retador)")
+
