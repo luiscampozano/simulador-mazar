@@ -32,31 +32,82 @@ DATOS = os.environ.get("SERIE_DATOS", os.path.join(RAIZ, "_serie_r"))   # clon d
 
 
 def cliente():
-    import cdsapi
+    from ecmwf.datastores import Client
     tok = os.environ.get("CDS_API_KEY", "").strip()
     if not tok: sys.exit("Falta el secreto CDS_API_KEY")
-    return cdsapi.Client(url="https://cds.climate.copernicus.eu/api", key=tok, quiet=False, progress=False)
+    return Client(url="https://cds.climate.copernicus.eu/api", key=tok, progress=False)
 
 
 def fin_datos():
-    return date.today() - timedelta(days=8)          # ERA5 sale con ~5 días de atraso
+    """Fin de mes (ERA5 sale con ~5 días de atraso): fijo todo el mes, así un pedido que quedó en la cola se reconoce y reusa."""
+    f = date.today().replace(day=1) - timedelta(days=1)
+    return f if date.today().day > 10 else f.replace(day=1) - timedelta(days=1)
 
 
-def pedir(c, conj, req, dest, intentos=8):
-    """Un pedido a la vez. Si la cola personal está llena, espera y reintenta."""
-    for i in range(intentos):
+def _norm(x):
+    if isinstance(x, dict): return {k: _norm(v) for k, v in sorted(x.items())}
+    if isinstance(x, (list, tuple)):
+        v = sorted((_norm(i) for i in x), key=str)
+        return v[0] if len(v) == 1 else v
+    try: return f"{float(x):g}"
+    except (TypeError, ValueError): return str(x)
+
+
+def _igual(remoto, req):
+    try: r = remoto.request
+    except Exception: return False
+    return all(_norm(r.get(k)) == _norm(v) for k, v in req.items())
+
+
+def _mis_pedidos(c, conj):
+    """Pedidos de la cuenta en este conjunto que siguen vivos o ya están listos (solo lectura)."""
+    out = []
+    try:
+        ids = c.get_jobs(limit=30, sortby="-created", status=["accepted", "running", "successful"]).request_ids
+    except Exception as e:
+        print("  no pude listar pedidos:", str(e)[:200], flush=True); return out
+    for jid in ids:
         try:
-            c.retrieve(conj, req, dest)
-            return dest
-        except Exception as e:
-            msg = str(e)
-            r = getattr(e, "response", None)
-            if r is not None:
-                try: msg += " | " + r.text[:500]
+            r = c.get_remote(jid)
+            if r.collection_id == conj: out.append(r)
+        except Exception: pass
+    return out
+
+
+def pedir(c, conj, req, dest, intentos=40):
+    """Un pedido a la vez. Si ese mismo pedido ya está en la cola o listo (de una corrida que se cortó), lo reusa
+    en vez de mandar otro; si la cola personal está llena por otros pedidos, espera a que se vacíe."""
+    malos = set()
+    for i in range(intentos):
+        vivos = [x for x in _mis_pedidos(c, conj) if x.request_id not in malos]
+        r = next((x for x in vivos if _igual(x, req)), None)
+        if r is None:
+            ocupados = [x for x in vivos if x.status in ("accepted", "running")]
+            if ocupados:
+                print(f"  {conj}: {len(ocupados)} pedido(s) anteriores en la cola; espero", flush=True)
+                time.sleep(300); continue
+            try: r = c.submit(conj, req)
+            except Exception as e:
+                msg = str(e) + " | " + (getattr(getattr(e, "response", None), "text", "") or "")[:300]
+                print(f"  {conj}: envío {i + 1} falló: {msg[:300]}", flush=True)
+                if "too large" in msg.lower() or "cost limits" in msg.lower(): raise RuntimeError("too large: " + msg[:200])
+                time.sleep(300); continue
+            print(f"  {conj}: pedido nuevo {r.request_id}", flush=True)
+        else:
+            print(f"  {conj}: reuso el pedido {r.request_id} ({r.status})", flush=True)
+        t0, ultimo = time.time(), None
+        while True:
+            st = r.status
+            if st != ultimo: print(f"  {conj}: {st} tras {(time.time() - t0) / 60:.0f} min", flush=True); ultimo = st
+            if st == "successful":
+                try: r.download(dest); return dest
+                except Exception as e: print("   no se pudo bajar el resultado:", str(e)[:200], flush=True); break
+            if st in ("failed", "rejected", "dismissed", "deleted"):
+                try: print("   motivo:", str(r.json.get("message") or r.json)[:300], flush=True)
                 except Exception: pass
-            print(f"  {conj}: intento {i + 1} falló: {msg[:300]}", flush=True)
-            if "too large" in msg.lower() or "cost limits" in msg.lower(): raise RuntimeError("too large: " + msg[:200])
-            time.sleep(300 if "queued" in msg.lower() else 60 * min(i + 1, 5))
+                break
+            time.sleep(60)
+        malos.add(r.request_id); time.sleep(30)
     raise RuntimeError(f"{conj} sin datos tras {intentos} intentos")
 
 

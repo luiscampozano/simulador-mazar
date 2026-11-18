@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with: { ref: serie-r, path: _serie_r }
-      - run: python3 -m pip install --quiet cdsapi xarray netCDF4 numpy pandas
+      - run: python3 -m pip install --quiet ecmwf-datastores-client xarray netCDF4 numpy pandas
       - env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}", SERIE_DATOS: "${{ github.workspace }}/_serie_r" }
         run: |
           git -C _serie_r config user.name "datalab-robot" && git -C _serie_r config user.email "datalab-robot@users.noreply.github.com"
