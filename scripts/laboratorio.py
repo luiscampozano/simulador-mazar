@@ -672,6 +672,139 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_autoajuste_acotado_1_sesgo50_largo(P, ctx, mod):
+    aj = float(ctx.get('ajuste') or 1.0)
+    nuevo_aj = round(min(1.0, aj), 3)
+    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}
+    pts = [(0, 0.0)]
+    for h, v in ph.items():
+        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:
+            pts.append((int(h), float(v['sesgo_m'])))
+    pts.sort()
+    if len(pts) < 3:
+        return None
+    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}
+    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)
+    k = dvdz / 0.0864
+    corr = []
+    for d in range(60):
+        if d < 1:
+            corr.append(0.0)
+        else:
+            t0 = d
+            s0 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t0 <= h1:
+                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)
+                    break
+            t1 = d + 1
+            s1 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t1 <= h1:
+                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)
+                    break
+            val = -(s1 - s0) * k * 0.5
+            corr.append(max(-80.0, min(80.0, val)))
+    base = list(ctx.get('memoria') or [])
+    n = max(len(base), len(corr))
+    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['ajuste'] = nuevo_aj
+    ctx['memoria'] = out
+    return P, ctx, {'ajuste': nuevo_aj, 'memoria': out}
+
+
+CANDIDATOS["autoajuste_acotado_1_sesgo50_largo"] = {"f": c_autoajuste_acotado_1_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-18", "nombre": "Autoajuste acotado (≤1) + mitad de sesgo desde día 2", "hipotesis": "Limitar el autoajuste a ≤ 1,0 y quitar la mitad del sesgo por plazo desde el día 2 conserva la ganancia a 1 día cuando el ajuste es > 1 (+17,1 %) y frena el pesimismo de 7 a 14 días más que sin_autoajuste_sesgo50_largo."}
+
+
+def c_sin_autoajuste_sesgo65_dia3(P, ctx, mod):
+    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}
+    pts = [(0, 0.0)]
+    for h, v in ph.items():
+        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:
+            pts.append((int(h), float(v['sesgo_m'])))
+    pts.sort()
+    if len(pts) < 3:
+        return None
+    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}
+    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)
+    k = dvdz / 0.0864
+    corr = []
+    for d in range(60):
+        if d < 2:
+            corr.append(0.0)
+        else:
+            t0 = d
+            s0 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t0 <= h1:
+                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)
+                    break
+            t1 = d + 1
+            s1 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t1 <= h1:
+                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)
+                    break
+            val = -(s1 - s0) * k * 0.65
+            corr.append(max(-80.0, min(80.0, val)))
+    base = list(ctx.get('memoria') or [])
+    n = max(len(base), len(corr))
+    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['ajuste'] = 1.0
+    ctx['memoria'] = out
+    return P, ctx, {'ajuste': 1.0, 'memoria': out}
+
+
+CANDIDATOS["sin_autoajuste_sesgo65_dia3"] = {"f": c_sin_autoajuste_sesgo65_dia3, "promocion": "luis", "origen": "Gemini 2026-11-18", "nombre": "Sin autoajuste + 65 % de sesgo desde día 3", "hipotesis": "Quitar el autoajuste y descontar el 65 % del sesgo por plazo desde el día 3 mantiene intacta la mejora de 1 y 2 días de sin_autoajuste (+17,1 % y +20,8 %) y corrige el fuerte pesimismo de 7 a 14 días sin empeorar el día 3."}
+
+
+def c_sin_autoajuste_dia_suave_sesgo50_largo(P, ctx, mod):
+    dd = ctx.get('deltaDia')
+    if not dd:
+        return None
+    nuevo_dd = [round(float(x) * 0.5, 1) for x in dd]
+    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}
+    pts = [(0, 0.0)]
+    for h, v in ph.items():
+        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:
+            pts.append((int(h), float(v['sesgo_m'])))
+    pts.sort()
+    if len(pts) < 3:
+        return None
+    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}
+    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)
+    k = dvdz / 0.0864
+    corr = []
+    for d in range(60):
+        if d < 1:
+            corr.append(0.0)
+        else:
+            t0 = d
+            s0 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t0 <= h1:
+                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)
+                    break
+            t1 = d + 1
+            s1 = pts[-1][1]
+            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):
+                if t1 <= h1:
+                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)
+                    break
+            val = -(s1 - s0) * k * 0.5
+            corr.append(max(-80.0, min(80.0, val)))
+    base = list(ctx.get('memoria') or [])
+    n = max(len(base), len(corr))
+    out = [round((float(base[i]) if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]
+    ctx['ajuste'] = 1.0
+    ctx['deltaDia'] = nuevo_dd
+    ctx['memoria'] = out
+    return P, ctx, {'ajuste': 1.0, 'deltaDia': nuevo_dd, 'memoria': out}
+
+
+CANDIDATOS["sin_autoajuste_dia_suave_sesgo50_largo"] = {"f": c_sin_autoajuste_dia_suave_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-18", "nombre": "Sin autoajuste + día semana suave + mitad de sesgo desde día 2", "hipotesis": "Combinar la eliminación del autoajuste y la mitad del sesgo desde el día 2 con el patrón semanal de demanda a la mitad suaviza los saltos de fin de semana y feriados y mejora el acierto a 1–3 días sin perder el control a 7 y 14 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
