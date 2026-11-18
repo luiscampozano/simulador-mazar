@@ -23,7 +23,7 @@ def bajar(ruta):
     f = tempfile.mktemp(suffix=".nc")
     for i in range(4):
         for base in BASES:
-            r = subprocess.run(["curl", "-sfL", "--retry", "2", "-A", UA, "-o", f, base + ruta], capture_output=True, text=True)
+            r = subprocess.run(["curl", "-sfL", "--http1.1", "--retry", "3", "-A", UA, "-o", f, base + ruta], capture_output=True, text=True)
             if r.returncode == 0 and os.path.getsize(f) > 10000:
                 return f
             print("  ", base.split("/")[2], ruta, "intento", i + 1, "curl", r.returncode, r.stderr.strip()[:200], flush=True)
