@@ -1,0 +1,38 @@
+# Serie N: reanálisis NCEP/NCAR R1 diario (NOAA PSL), 1981–hoy, caja del Pacífico ecuatorial oriental. A mano.
+name: Serie N
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  lista:
+    runs-on: ubuntu-latest
+    outputs: { anios: "${{ steps.a.outputs.anios }}" }
+    steps:
+      - id: a
+        run: echo "anios=$(python3 -c 'import json,datetime;print(json.dumps(list(range(1981,datetime.date.today().year+1))))')" >> $GITHUB_OUTPUT
+  bajar:
+    needs: lista
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        anio: ${{ fromJSON(needs.lista.outputs.anios) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet xarray netCDF4 numpy
+      - run: python3 scripts/serie_n.py ${{ matrix.anio }} /tmp/n${{ matrix.anio }}.nc
+      - uses: actions/checkout@v4
+        with: { ref: serie-r, path: _serie_r }
+      - working-directory: _serie_r
+        run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3 4 5 6 7 8; do
+            git fetch -q origin serie-r && git reset -q --hard origin/serie-r
+            mkdir -p r && cp /tmp/n${{ matrix.anio }}.nc r/
+            git add r/n${{ matrix.anio }}.nc && git commit -q -m "Serie N ${{ matrix.anio }} [skip ci]" || exit 0
+            git push -q origin HEAD:serie-r && exit 0; sleep $((RANDOM % 25 + 5))
+          done
+          exit 1

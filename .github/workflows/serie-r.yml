@@ -1,75 +1,47 @@
-# Serie R: valores diarios de ERA5 en puntos fijos, 1981–hoy, un archivo por año en la rama serie-r. A mano.
-# Si un año ya está en la rama, se salta (menos el año en curso). Volver a lanzarlo completa lo que falte.
+# Serie R: ERA5 diario en puntos fijos, 1981–hoy, en la rama serie-r.
+#  - puntos: superficie por punto (series de tiempo del CDS, rápido).
+#  - rejilla s / p: CAPE y niveles de presión en pedazos (la cola general del CDS es lenta); cada pedazo se guarda apenas
+#    llega y la próxima corrida retoma lo que falte. Corre cada 6 h hasta completar, y a mano.
 name: Serie R
 on:
   workflow_dispatch:
-    inputs:
-      anios:
-        description: "Años (JSON). Vacío = 1981 a hoy"
-        required: false
-        default: ""
+  schedule:
+    - cron: "17 */6 * * *"
 permissions:
   contents: write
 concurrency: { group: serie-r, cancel-in-progress: false }
 jobs:
-  mjo:   # índice RMM de la MJO (Bureau of Meteorology de Australia, desde 1974): un solo archivo
+  mjo:   # índice RMM de la MJO (Bureau of Meteorology de Australia, desde 1974)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - run: |
+        with: { ref: serie-r, path: _serie_r }
+      - working-directory: _serie_r
+        run: |
           curl -sfL -A "Mozilla/5.0" -o /tmp/mjo.txt "http://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt"
           test $(wc -l < /tmp/mjo.txt) -gt 15000
           git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
-          for i in 1 2 3 4 5 6; do
-            if git ls-remote --exit-code --heads origin serie-r >/dev/null; then git fetch -q origin serie-r && git checkout -q -f -B serie-r origin/serie-r
-            else git checkout -q --orphan serie-r && git rm -rq --cached . && git clean -fdq; fi
+          for i in 1 2 3 4 5; do
+            git fetch -q origin serie-r && git reset -q --hard origin/serie-r
             mkdir -p r && cp /tmp/mjo.txt r/mjo.txt
             git add r/mjo.txt && git commit -q -m "Serie R: MJO [skip ci]" || exit 0
-            git push -q origin serie-r && exit 0; sleep $((RANDOM % 20 + 5))
+            git push -q origin HEAD:serie-r && exit 0; sleep $((RANDOM % 20 + 5))
           done
           exit 1
-  lista:
-    runs-on: ubuntu-latest
-    outputs: { anios: "${{ steps.a.outputs.anios }}" }
-    steps:
-      - id: a
-        run: |
-          if [ -n '${{ inputs.anios }}' ]; then echo 'anios=${{ inputs.anios }}' >> $GITHUB_OUTPUT
-          else echo "anios=$(python3 -c 'import json,datetime;print(json.dumps(list(range(1981,datetime.date.today().year+1))))')" >> $GITHUB_OUTPUT; fi
   bajar:
-    needs: lista
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 2
       matrix:
-        anio: ${{ fromJSON(needs.lista.outputs.anios) }}
+        parte: ["puntos", "rejilla s 320", "rejilla p 320"]
     steps:
       - uses: actions/checkout@v4
-      - name: ¿Ya está?
-        id: ya
+      - uses: actions/checkout@v4
+        with: { ref: serie-r, path: _serie_r }
+      - run: python3 -m pip install --quiet cdsapi xarray netCDF4 numpy pandas
+      - env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}", SERIE_DATOS: "${{ github.workspace }}/_serie_r" }
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' "https://raw.githubusercontent.com/${{ github.repository }}/serie-r/r/e${{ matrix.anio }}.json.gz")
-          if [ "$code" = "200" ] && [ "${{ matrix.anio }}" != "$(date +%Y)" ]; then echo "salta=1" >> $GITHUB_OUTPUT; fi
-      - if: steps.ya.outputs.salta != '1'
-        run: python3 -m pip install --quiet cdsapi xarray netCDF4 numpy pandas
-      - if: steps.ya.outputs.salta != '1'
-        env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}" }
-        run: python3 scripts/serie_r.py ${{ matrix.anio }} /tmp/e${{ matrix.anio }}.json.gz
-      - if: steps.ya.outputs.salta != '1'
-        name: Guardar en la rama serie-r
-        run: |
-          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
-          for i in 1 2 3 4 5 6; do
-            if git ls-remote --exit-code --heads origin serie-r >/dev/null; then
-              git fetch -q origin serie-r && git checkout -q -f -B serie-r origin/serie-r
-            else
-              git checkout -q --orphan serie-r && git rm -rq --cached . && git clean -fdq
-            fi
-            mkdir -p r && cp /tmp/e${{ matrix.anio }}.json.gz r/
-            git add r/e${{ matrix.anio }}.json.gz && git commit -q -m "Serie R ${{ matrix.anio }} [skip ci]" || exit 0
-            git push -q origin serie-r && exit 0; sleep $((RANDOM % 20 + 5))
-          done
-          exit 1
+          git -C _serie_r config user.name "datalab-robot" && git -C _serie_r config user.email "datalab-robot@users.noreply.github.com"
+          python3 scripts/serie_r.py ${{ matrix.parte }}
