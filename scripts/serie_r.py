@@ -24,7 +24,7 @@ SERIE_VARS = ["2m_temperature", "2m_dewpoint_temperature", "boundary_layer_heigh
               "sea_surface_temperature", "surface_solar_radiation_downwards", "total_precipitation", "10m_u_component_of_wind",
               "10m_v_component_of_wind", "total_cloud_cover", "surface_latent_heat_flux"]
 G_SUP = ["convective_available_potential_energy", "convective_inhibition", "total_column_water_vapour", "low_cloud_cover",
-         "volumetric_soil_water_layer_1", "k_index", "total_totals_index"]
+         "volumetric_soil_water_layer_1"]   # 18 nov: k_index y total_totals no venían en el netCDF; se calculan de niveles si hace falta
 G_NIV = ["relative_humidity", "u_component_of_wind", "v_component_of_wind", "temperature", "vertical_velocity", "divergence"]
 NIVELES = ["850", "700", "500", "200"]
 RHO = {"850": 1.06, "700": 0.91, "500": 0.69}   # densidad típica (kg/m³): omega (Pa/s) → m/s
@@ -258,6 +258,7 @@ def procesar(anio, tag, tmp):
             for n, var, fn in (("cape_max", "cape", np.nanmax), ("cin_min", "cin", np.nanmin), ("tcwv", "tcwv", np.nanmean),
                                ("lcc", "lcc", np.nanmean), ("suelo", "swvl1", np.nanmean), ("k_max", "kx", np.nanmax),
                                ("tt_max", "totalx", np.nanmax)):
+                if var not in s: continue
                 for d, x in por_dia(s[var], fn).items(): pon(d, k, n, x, 3 if n == "suelo" else 2)
     else:
         P = abrir(tmp)
@@ -300,12 +301,12 @@ def parte_rejilla(tipo, minutos):
             rel = f"r/g_{a}_{t}.json.gz"
             if rel not in activos and _igual(r, pedido_de(a, t, m)[1]):
                 activos[rel] = (r, a, t, m); print("  retomo", rel, r.status, flush=True); break
-    lleno_hasta = 0
+    lleno_hasta, cupo = 0, EN_COLA   # cupo baja solo si Copernicus rechaza por cola llena
     while True:
         tiempo = time.time() - t0 < minutos * 60
         if tiempo and time.time() > lleno_hasta:
             for a, t, m in pend:
-                if len(activos) >= EN_COLA: break
+                if len(activos) >= cupo: break
                 rel = f"r/g_{a}_{t}.json.gz"
                 if rel in activos or rel in fallidos: continue
                 try:
@@ -335,7 +336,15 @@ def parte_rejilla(tipo, minutos):
                     if os.path.exists(tmp): os.remove(tmp)
                 del activos[rel]
             elif st in ("failed", "rejected", "dismissed", "deleted"):
-                print("  falló en Copernicus", rel, st, flush=True); fallidos.add(rel); del activos[rel]
+                try: msg = str((r.json or {}).get("message") or (r.json or {}).get("detail") or r.json)[:300]
+                except Exception: msg = ""
+                del activos[rel]
+                if st == "rejected" and ("queue" in msg.lower() or "limit" in msg.lower() or "maximum" in msg.lower() or not msg):
+                    # 18 nov: la cola personal admite pocos pedidos por conjunto; no es un fallo del pedazo, se reintenta luego
+                    cupo = max(1, len(activos)); lleno_hasta = time.time() + 600
+                    print(f"  cola llena en Copernicus ({msg[:120]}); cupo = {cupo}, reintento en 10 min", flush=True)
+                else:
+                    print("  falló en Copernicus", rel, st, msg, flush=True); fallidos.add(rel)
         if not tiempo:
             print(f"sin tiempo; {len(activos)} pedazos siguen en la cola para la próxima corrida", flush=True); break
         time.sleep(60)
