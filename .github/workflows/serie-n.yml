@@ -2,6 +2,8 @@
 name: Serie N
 on:
   workflow_dispatch:
+    inputs:
+      anios: { description: "Años separados por coma (vacío = los que falten desde 1981)", required: false, default: "" }
 permissions:
   contents: write
 jobs:
@@ -9,8 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs: { anios: "${{ steps.a.outputs.anios }}" }
     steps:
+      - uses: actions/checkout@v4
+        with: { ref: serie-r }
       - id: a
-        run: echo "anios=$(python3 -c 'import json,datetime;print(json.dumps(list(range(1981,datetime.date.today().year+1))))')" >> $GITHUB_OUTPUT
+        env: { PEDIDO: "${{ inputs.anios }}" }
+        run: |
+          python3 - >> $GITHUB_OUTPUT <<'PY'
+          import datetime, json, os
+          p = os.environ.get("PEDIDO", "").strip()
+          if p: a = [int(x) for x in p.split(",")]
+          else:
+              hoy = datetime.date.today().year
+              a = [x for x in range(1981, hoy + 1) if x == hoy or not os.path.exists(f"r/n{x}.nc")]
+          print("anios=" + json.dumps(a))
+          PY
   bajar:
     needs: lista
     runs-on: ubuntu-latest
