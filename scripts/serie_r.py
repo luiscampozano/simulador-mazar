@@ -41,7 +41,7 @@ def cliente():
     import cdsapi
     tok = os.environ.get("CDS_API_KEY", "").strip()
     if not tok: sys.exit("Falta el secreto CDS_API_KEY")
-    return cdsapi.Client(url="https://cds.climate.copernicus.eu/api", key=tok, quiet=True, progress=False)
+    return cdsapi.Client(url="https://cds.climate.copernicus.eu/api", key=tok, quiet=False, debug=os.environ.get("SERIE_DEBUG") == "1", progress=False)
 
 
 def abrir(f):

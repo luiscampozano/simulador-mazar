@@ -56,7 +56,7 @@ jobs:
       - if: steps.ya.outputs.salta != '1'
         run: python3 -m pip install --quiet cdsapi xarray netCDF4 numpy pandas
       - if: steps.ya.outputs.salta != '1'
-        env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}" }
+        env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}", SERIE_DEBUG: "0" }
         run: python3 scripts/serie_r.py ${{ matrix.anio }} /tmp/e${{ matrix.anio }}.json.gz
       - if: steps.ya.outputs.salta != '1'
         name: Guardar en la rama serie-r
