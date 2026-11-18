@@ -1,0 +1,58 @@
+# Serie R: valores diarios de ERA5 en puntos fijos, 1981–hoy, un archivo por año en la rama serie-r. A mano.
+# Si un año ya está en la rama, se salta (menos el año en curso). Volver a lanzarlo completa lo que falte.
+name: Serie R
+on:
+  workflow_dispatch:
+    inputs:
+      anios:
+        description: "Años (JSON). Vacío = 1981 a hoy"
+        required: false
+        default: ""
+permissions:
+  contents: write
+concurrency: { group: serie-r, cancel-in-progress: false }
+jobs:
+  lista:
+    runs-on: ubuntu-latest
+    outputs: { anios: "${{ steps.a.outputs.anios }}" }
+    steps:
+      - id: a
+        run: |
+          if [ -n '${{ inputs.anios }}' ]; then echo 'anios=${{ inputs.anios }}' >> $GITHUB_OUTPUT
+          else echo "anios=$(python3 -c 'import json,datetime;print(json.dumps(list(range(1981,datetime.date.today().year+1))))')" >> $GITHUB_OUTPUT; fi
+  bajar:
+    needs: lista
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        anio: ${{ fromJSON(needs.lista.outputs.anios) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: ¿Ya está?
+        id: ya
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://raw.githubusercontent.com/${{ github.repository }}/serie-r/r/e${{ matrix.anio }}.json.gz")
+          if [ "$code" = "200" ] && [ "${{ matrix.anio }}" != "$(date +%Y)" ]; then echo "salta=1" >> $GITHUB_OUTPUT; fi
+      - if: steps.ya.outputs.salta != '1'
+        run: python3 -m pip install --quiet cdsapi xarray netCDF4 numpy pandas
+      - if: steps.ya.outputs.salta != '1'
+        env: { CDS_API_KEY: "${{ secrets.CDS_API_KEY }}" }
+        run: python3 scripts/serie_r.py ${{ matrix.anio }} /tmp/e${{ matrix.anio }}.json.gz
+      - if: steps.ya.outputs.salta != '1'
+        name: Guardar en la rama serie-r
+        run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3 4 5 6; do
+            if git ls-remote --exit-code --heads origin serie-r >/dev/null; then
+              git fetch -q origin serie-r && git checkout -q -f -B serie-r origin/serie-r
+            else
+              git checkout -q --orphan serie-r && git rm -rq --cached . && git clean -fdq
+            fi
+            mkdir -p r && cp /tmp/e${{ matrix.anio }}.json.gz r/
+            git add r/e${{ matrix.anio }}.json.gz && git commit -q -m "Serie R ${{ matrix.anio }} [skip ci]" || exit 0
+            git push -q origin serie-r && exit 0; sleep $((RANDOM % 20 + 5))
+          done
+          exit 1
