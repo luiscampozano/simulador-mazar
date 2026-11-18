@@ -61,7 +61,11 @@ def pedir(c, conj, req, intentos=4):
             return abrir(f)
         except Exception as e:
             msg = str(e)
-            print(f"  {conj} {req.get('month')}: intento {i + 1} falló: {msg[:200]}", flush=True)
+            r = getattr(e, "response", None)
+            if r is not None:
+                try: msg += " | " + r.text[:600]
+                except Exception: pass
+            print(f"  {conj} {req.get('month')}: intento {i + 1} falló: {msg[:800]}", flush=True)
             if "too large" in msg.lower() or "cost limits" in msg.lower(): raise
             time.sleep(60 * (i + 1))
         finally:
