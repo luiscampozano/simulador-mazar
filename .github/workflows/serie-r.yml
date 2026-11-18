@@ -12,6 +12,23 @@ permissions:
   contents: write
 concurrency: { group: serie-r, cancel-in-progress: false }
 jobs:
+  mjo:   # índice RMM de la MJO (Bureau of Meteorology de Australia, desde 1974): un solo archivo
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -sfL -A "Mozilla/5.0" -o /tmp/mjo.txt "http://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt"
+          test $(wc -l < /tmp/mjo.txt) -gt 15000
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3 4 5 6; do
+            if git ls-remote --exit-code --heads origin serie-r >/dev/null; then git fetch -q origin serie-r && git checkout -q -f -B serie-r origin/serie-r
+            else git checkout -q --orphan serie-r && git rm -rq --cached . && git clean -fdq; fi
+            mkdir -p r && cp /tmp/mjo.txt r/mjo.txt
+            git add r/mjo.txt && git commit -q -m "Serie R: MJO [skip ci]" || exit 0
+            git push -q origin serie-r && exit 0; sleep $((RANDOM % 20 + 5))
+          done
+          exit 1
   lista:
     runs-on: ubuntu-latest
     outputs: { anios: "${{ steps.a.outputs.anios }}" }

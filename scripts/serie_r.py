@@ -15,7 +15,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 PUNTOS = {k: tuple(v) for k, v in json.load(open(os.path.join(AQUI, "puntos_clima.json"))).items()}
 PUNTOS.update({"Bahía de Caráquez": (-0.598, -80.424), "Piñas": (-3.681, -79.681),
                "x_golfo": (-3.0, -80.6), "x_humboldt": (-8.0, -80.5), "x_choco": (5.0, -79.0), "x_amazonia": (-1.5, -76.5),
-               "x_galapagos": (-0.9, -89.6)})
+               "x_galapagos": (-0.9, -89.6), "x_81o": (-2.0, -81.0)})
 LEJOS = {"x_anticiclon": (-30.0, -90.0), "x_pascua": (-27.1, -109.4)}
 AREA = [8, -92, -10, -74]            # N, O, S, E
 AREA_LEJOS = [-26, -110, -31, -89]
@@ -24,11 +24,16 @@ HORAS = ["12:00", "15:00", "18:00", "21:00"]
 SUP = ["convective_available_potential_energy", "convective_inhibition", "total_column_water_vapour", "2m_temperature",
        "2m_dewpoint_temperature", "low_cloud_cover", "volumetric_soil_water_layer_1", "sea_surface_temperature", "k_index",
        "total_totals_index", "mean_sea_level_pressure", "10m_u_component_of_wind", "10m_v_component_of_wind",
-       "boundary_layer_height"]
-NIV = ["relative_humidity", "u_component_of_wind", "v_component_of_wind"]
-NIVELES = ["850", "700", "500", "200"]
+       "boundary_layer_height", "surface_solar_radiation_downwards", "total_precipitation"]
+NIV = ["relative_humidity", "u_component_of_wind", "v_component_of_wind", "temperature", "vertical_velocity", "divergence"]
+NIVELES = ["850", "700", "500", "300", "200"]
+HORAS_NIV = ["12:00", "18:00", "23:00", "01:00"]     # 07 y 13 h locales (día) + 18 y 20 h locales (tarde-noche)
+DIA_NIV, TARDE_NIV = (12, 18), (23, 1)
+RHO = {"700": 0.91, "500": 0.69}                     # densidad típica (kg/m³) para pasar omega (Pa/s) a m/s
+LATS_81 = [x / 2 for x in range(8, -13, -1)]        # franja a 81° O, de 4° N a 6° S
 VARS = ["cape_max", "cin_min", "tcwv", "t2_max", "td2", "lcc", "suelo", "sst", "k_max", "tt_max", "msl", "v10", "blh_max",
-        "hr850", "hr700", "hr500", "v850", "d850", "v700", "d700", "v500", "d500", "v200", "d200"]
+        "sol_man", "pr", "hr850", "hr700", "hr500", "t850", "t500", "u850", "v850", "u700", "v700", "u500", "v500",
+        "u300", "v300", "u200", "v200", "w700_t", "w500_t", "w500_d", "div200_t", "div200_d", "div850_t"]
 LOCK = threading.Lock()
 
 
@@ -95,23 +100,30 @@ def viento(u, v):
     return math.hypot(u, v), (math.degrees(math.atan2(-u, -v)) + 360) % 360
 
 
+def horas(da, t, hs):
+    """Solo las horas UTC indicadas."""
+    return da.where(da[t].dt.hour.isin(list(hs)), drop=True)
+
+
 def trimestre(c, anio, meses, fin):
     r = base(anio, meses, fin)
     with ThreadPoolExecutor(3) as ex:
         fs = ex.submit(pedir, c, "reanalysis-era5-single-levels", dict(r, variable=SUP, area=AREA))
         fp = ex.submit(pedir, c, "reanalysis-era5-pressure-levels", dict(r, variable=NIV, pressure_level=NIVELES, area=AREA,
-                                                                          time=["12:00", "18:00"]))
+                                                                          time=HORAS_NIV))
         fl = ex.submit(pedir, c, "reanalysis-era5-single-levels", dict(r, variable=["mean_sea_level_pressure"], area=AREA_LEJOS,
                                                                        time=["12:00", "18:00"]))
         S, P, L = fs.result(), fp.result(), fl.result()
     out = {}
     ts, tp, tl = tiempo(S), tiempo(P), tiempo(L)
     niv = "pressure_level" if "pressure_level" in P.coords else "level"
+    nv = lambda q, n: q.sel({niv: int(n)})
+    pon = lambda d, k, nombre, x, nd=2: out.setdefault(d, {}).setdefault(k, {}).__setitem__(nombre, round(x, nd))
     for k, (la, lo) in PUNTOS.items():
         s, p = celda(S, la, lo), celda(P, la, lo)
         col = {}
         col["cape_max"] = por_dia(s["cape"], ts, np.nanmax)
-        col["cin_min"] = por_dia(s["cin"], ts, np.nanmin) if "cin" in s else {}
+        col["cin_min"] = por_dia(s["cin"], ts, np.nanmin)
         col["tcwv"] = por_dia(s["tcwv"], ts, np.nanmean)
         col["t2_max"] = {d: x - 273.15 for d, x in por_dia(s["t2m"], ts, np.nanmax).items()}
         col["td2"] = {d: x - 273.15 for d, x in por_dia(s["d2m"], ts, np.nanmean).items()}
@@ -123,23 +135,35 @@ def trimestre(c, anio, meses, fin):
         col["msl"] = {d: x / 100 for d, x in por_dia(s["msl"], ts, np.nanmean).items()}
         col["v10"] = por_dia(np.hypot(s["u10"], s["v10"]), ts, np.nanmean)
         col["blh_max"] = por_dia(s["blh"], ts, np.nanmax)
-        for n in ("850", "700", "500", "200"):
-            q = p.sel({niv: int(n)})
-            if n != "200": col["hr" + n] = por_dia(q["r"], tp, np.nanmean)
-            U, V = por_dia(q["u"], tp, np.nanmean), por_dia(q["v"], tp, np.nanmean)
-            vv = {d: viento(U[d], V[d]) for d in U if d in V}
-            col["v" + n] = {d: x[0] for d, x in vv.items()}
-            col["d" + n] = {d: x[1] for d, x in vv.items()}
+        col["sol_man"] = {d: x / 3600 for d, x in por_dia(horas(s["ssrd"], ts, (12, 15)), ts, np.nanmean).items()}   # W/m², 07–10 h
+        col["pr"] = {d: x * 1000 for d, x in por_dia(s["tp"], ts, np.nanmean).items()}                             # mm/h (muestra)
+        pd_ = horas(p, tp, DIA_NIV)
+        pt_ = horas(p, tp, TARDE_NIV)
+        for n in ("850", "700", "500"):
+            col["hr" + n] = por_dia(nv(pd_["r"], n), tp, np.nanmean)
+        for n in ("850", "500"):
+            col["t" + n] = {d: x - 273.15 for d, x in por_dia(nv(pd_["t"], n), tp, np.nanmean).items()}
+        for n in NIVELES:
+            col["u" + n] = por_dia(nv(pd_["u"], n), tp, np.nanmean)
+            col["v" + n] = por_dia(nv(pd_["v"], n), tp, np.nanmean)
+        for n in ("700", "500"):      # positivo = aire que sube (m/s)
+            col[f"w{n}_t"] = {d: -x / (RHO[n] * 9.81) for d, x in por_dia(nv(pt_["w"], n), tp, np.nanmean).items()}
+        col["w500_d"] = {d: -x / (RHO["500"] * 9.81) for d, x in por_dia(nv(pd_["w"], "500"), tp, np.nanmean).items()}
+        col["div200_t"] = {d: x * 1e5 for d, x in por_dia(nv(pt_["d"], "200"), tp, np.nanmean).items()}   # ×10⁻⁵ /s
+        col["div200_d"] = {d: x * 1e5 for d, x in por_dia(nv(pd_["d"], "200"), tp, np.nanmean).items()}
+        col["div850_t"] = {d: x * 1e5 for d, x in por_dia(nv(pt_["d"], "850"), tp, np.nanmean).items()}
         for nombre, serie in col.items():
-            for d, x in serie.items():
-                out.setdefault(d, {}).setdefault(k, {})[nombre] = round(x, 3 if nombre == "suelo" else 2)
+            for d, x in serie.items(): pon(d, k, nombre, x, 3 if nombre in ("suelo", "w700_t", "w500_t", "w500_d", "pr") else 2)
     for k, (la, lo) in LEJOS.items():
-        for d, x in por_dia(celda(L, la, lo)["msl"], tl, np.nanmean).items():
-            out.setdefault(d, {}).setdefault(k, {})["msl"] = round(x / 100, 2)
+        for d, x in por_dia(celda(L, la, lo)["msl"], tl, np.nanmean).items(): pon(d, k, "msl", x / 100)
     n, s_, o, e = CAJA_N12
     caja = S["sst"].sel(latitude=slice(n, s_), longitude=slice(o, e)).mean(["latitude", "longitude"])
-    for d, x in por_dia(caja, ts, np.nanmean).items():
-        out.setdefault(d, {}).setdefault("x_nino12", {})["sst"] = round(x - 273.15, 2)
+    for d, x in por_dia(caja, ts, np.nanmean).items(): pon(d, "x_nino12", "sst", x - 273.15)
+    # franja a 81° O (ZCIT sur): convergencia en 850 hPa (día completo) y lluvia de muestra, por latitud
+    for la in LATS_81:
+        q, z = celda(P, la, -81.0), celda(S, la, -81.0)
+        for d, x in por_dia(nv(q["d"], "850"), tp, np.nanmean).items(): pon(d, "x_z81", f"c{la:+.1f}", -x * 1e5)
+        for d, x in por_dia(z["tp"], ts, np.nanmean).items(): pon(d, "x_z81", f"p{la:+.1f}", x * 1000, 3)
     return out
 
 
@@ -164,9 +188,9 @@ def main():
             else: raise
         todo.update({d: v for d, v in parte.items() if d <= fin.isoformat() and d.startswith(str(anio))})
         print(f"{anio} meses {meses}: {len(parte)} días en {time.time() - t0:.0f} s", flush=True)
-    pts = {**PUNTOS, **LEJOS, "x_nino12": None}
+    pts = {**PUNTOS, **LEJOS, "x_nino12": None, "x_z81": {"lon": -81.0, "lats": LATS_81}}
     with gzip.open(salida, "wt", encoding="utf-8") as f:
-        json.dump({"fuente": "ERA5 (Copernicus C3S, CC-BY 4.0), celda más cercana; horas 12-21 UTC", "anio": anio,
+        json.dump({"fuente": "ERA5 (Copernicus C3S, CC-BY 4.0), celda más cercana; superficie 12-21 UTC; niveles 12 y 18 UTC (_d) y 23 y 01 UTC (_t)", "anio": anio,
                    "vars": VARS, "puntos": pts, "dias": dict(sorted(todo.items()))}, f, ensure_ascii=False, separators=(",", ":"))
     print(anio, "listo:", len(todo), "días")
 
