@@ -237,64 +237,108 @@ def por_dia(da, fn, horas=None):
     return out
 
 
-def pedazo(c, anio, tag, meses):
-    import numpy as np
+def pedido_de(anio, tag, meses):
     req = {"product_type": ["reanalysis"], "year": [str(anio)], "month": [f"{m:02d}" for m in meses],
            "day": [f"{d:02d}" for d in range(1, 32)], "data_format": "netcdf", "download_format": "unarchived", "area": AREA}
-    tmp = tempfile.mktemp(suffix=".nc"); out = {}
+    if tag.startswith("s"):
+        return "reanalysis-era5-single-levels", dict(req, variable=G_SUP, time=["12:00", "15:00", "18:00", "21:00"])
+    return "reanalysis-era5-pressure-levels", dict(req, variable=G_NIV, pressure_level=NIVELES, time=["18:00", "23:00"])
+
+
+def procesar(anio, tag, tmp):
+    import numpy as np
+    out = {}
 
     def pon(d, k, n, x, nd=2):
         if str(d).startswith(str(anio)): out.setdefault(str(d), {}).setdefault(k, {})[n] = round(x, nd)
-    try:
-        if tag.startswith("s"):
-            pedir(c, "reanalysis-era5-single-levels", dict(req, variable=G_SUP, time=["12:00", "15:00", "18:00", "21:00"]), tmp)
-            S = abrir(tmp)
-            for k, (la, lo) in PUNTOS.items():
-                s = S.sel(latitude=la, longitude=lo, method="nearest")
-                for n, var, fn in (("cape_max", "cape", np.nanmax), ("cin_min", "cin", np.nanmin), ("tcwv", "tcwv", np.nanmean),
-                                   ("lcc", "lcc", np.nanmean), ("suelo", "swvl1", np.nanmean), ("k_max", "kx", np.nanmax),
-                                   ("tt_max", "totalx", np.nanmax)):
-                    for d, x in por_dia(s[var], fn).items(): pon(d, k, n, x, 3 if n == "suelo" else 2)
-        else:
-            pedir(c, "reanalysis-era5-pressure-levels", dict(req, variable=G_NIV, pressure_level=NIVELES, time=["18:00", "23:00"]), tmp)
-            P = abrir(tmp)
-            nv = "pressure_level" if "pressure_level" in P.coords else "level"
-            for k, (la, lo) in PUNTOS.items():
-                p = P.sel(latitude=la, longitude=lo, method="nearest")
-                for suf, h in (("_d", [18]), ("_t", [23])):        # _d = 13 h local; _t = 18 h local
-                    for n in NIVELES:
-                        q = p.sel({nv: int(n)})
-                        if n != "200":
-                            for d, x in por_dia(q["r"], np.nanmean, h).items(): pon(d, k, f"hr{n}{suf}", x)
-                        for d, x in por_dia(q["u"], np.nanmean, h).items(): pon(d, k, f"u{n}{suf}", x)
-                        for d, x in por_dia(q["v"], np.nanmean, h).items(): pon(d, k, f"v{n}{suf}", x)
-                        if n in ("850", "500"):
-                            for d, x in por_dia(q["t"], np.nanmean, h).items(): pon(d, k, f"t{n}{suf}", x - 273.15)
-                        if n in RHO:
-                            for d, x in por_dia(q["w"], np.nanmean, h).items(): pon(d, k, f"w{n}{suf}", -x / (RHO[n] * 9.81), 3)
-                        if n in ("200", "850"):
-                            for d, x in por_dia(q["d"], np.nanmean, h).items(): pon(d, k, f"div{n}{suf}", x * 1e5)
-            for la in LATS_81:   # franja a 81° O (ZCIT sur): convergencia en 850 hPa
-                q = P.sel(latitude=la, longitude=-81.0, method="nearest").sel({nv: 850})
-                for d, x in por_dia(q["d"], np.nanmean).items(): pon(d, "x_z81", f"c{la:+.1f}", -x * 1e5)
-    finally:
-        if os.path.exists(tmp): os.remove(tmp)
+    if tag.startswith("s"):
+        S = abrir(tmp)
+        for k, (la, lo) in PUNTOS.items():
+            s = S.sel(latitude=la, longitude=lo, method="nearest")
+            for n, var, fn in (("cape_max", "cape", np.nanmax), ("cin_min", "cin", np.nanmin), ("tcwv", "tcwv", np.nanmean),
+                               ("lcc", "lcc", np.nanmean), ("suelo", "swvl1", np.nanmean), ("k_max", "kx", np.nanmax),
+                               ("tt_max", "totalx", np.nanmax)):
+                for d, x in por_dia(s[var], fn).items(): pon(d, k, n, x, 3 if n == "suelo" else 2)
+    else:
+        P = abrir(tmp)
+        nv = "pressure_level" if "pressure_level" in P.coords else "level"
+        for k, (la, lo) in PUNTOS.items():
+            p = P.sel(latitude=la, longitude=lo, method="nearest")
+            for suf, h in (("_d", [18]), ("_t", [23])):        # _d = 13 h local; _t = 18 h local
+                for n in NIVELES:
+                    q = p.sel({nv: int(n)})
+                    if n != "200":
+                        for d, x in por_dia(q["r"], np.nanmean, h).items(): pon(d, k, f"hr{n}{suf}", x)
+                    for d, x in por_dia(q["u"], np.nanmean, h).items(): pon(d, k, f"u{n}{suf}", x)
+                    for d, x in por_dia(q["v"], np.nanmean, h).items(): pon(d, k, f"v{n}{suf}", x)
+                    if n in ("850", "500"):
+                        for d, x in por_dia(q["t"], np.nanmean, h).items(): pon(d, k, f"t{n}{suf}", x - 273.15)
+                    if n in RHO:
+                        for d, x in por_dia(q["w"], np.nanmean, h).items(): pon(d, k, f"w{n}{suf}", -x / (RHO[n] * 9.81), 3)
+                    if n in ("200", "850"):
+                        for d, x in por_dia(q["d"], np.nanmean, h).items(): pon(d, k, f"div{n}{suf}", x * 1e5)
+        for la in LATS_81:   # franja a 81° O (ZCIT sur): convergencia en 850 hPa
+            q = P.sel(latitude=la, longitude=-81.0, method="nearest").sel({nv: 850})
+            for d, x in por_dia(q["d"], np.nanmean).items(): pon(d, "x_z81", f"c{la:+.1f}", -x * 1e5)
     return dict(sorted(out.items()))
 
 
+EN_COLA = int(os.environ.get("SERIE_PARALELO", "3"))   # pedazos a la vez por conjunto (Luis 18 nov: 3)
+
+
 def parte_rejilla(tipo, minutos):
+    """Hasta EN_COLA pedazos esperando a la vez en la cola de Copernicus (la espera es larga y la descarga corta).
+    Los pedidos que quedaron vivos de una corrida anterior se reconocen y se reusan; al acabarse el tiempo, los que
+    sigan en la cola los retoma la próxima corrida."""
     c, t0, hay = cliente(), time.time(), existentes()
-    for anio, tag, meses in pedazos(tipo):
-        rel = f"r/g_{anio}_{tag}.json.gz"
-        if rel in hay: continue
-        if time.time() - t0 > minutos * 60: print("sin tiempo; sigue en la próxima corrida", flush=True); break
-        t1 = time.time()
-        try: D = pedazo(c, anio, tag, meses)
-        except Exception as e:
-            print(anio, tag, "FALLÓ", str(e)[:300], flush=True); continue
-        guardar(rel, {"anio": anio, "pedazo": tag, "meses": meses, "fuente": "ERA5 (Copernicus C3S, CC-BY 4.0), celda más cercana",
-                      "horas": "s: 12-21 UTC; p: 18 UTC (_d, 13 h) y 23 UTC (_t, 18 h)", "dias": D})
-        print(anio, tag, f"{len(D)} días en {(time.time() - t1) / 60:.0f} min", flush=True)
+    pend = [(a, t, m) for a, t, m in pedazos(tipo) if f"r/g_{a}_{t}.json.gz" not in hay]
+    conj = pedido_de(*pend[0])[0] if pend else None
+    print(f"{tipo}: faltan {len(pend)} pedazos; {EN_COLA} a la vez", flush=True)
+    activos, fallidos = {}, set()   # rel -> (remoto, anio, tag, meses)
+    for r in _mis_pedidos(c, conj) if pend else []:    # retomar lo que ya está en la cola
+        for a, t, m in pend:
+            rel = f"r/g_{a}_{t}.json.gz"
+            if rel not in activos and _igual(r, pedido_de(a, t, m)[1]):
+                activos[rel] = (r, a, t, m); print("  retomo", rel, r.status, flush=True); break
+    lleno_hasta = 0
+    while True:
+        tiempo = time.time() - t0 < minutos * 60
+        if tiempo and time.time() > lleno_hasta:
+            for a, t, m in pend:
+                if len(activos) >= EN_COLA: break
+                rel = f"r/g_{a}_{t}.json.gz"
+                if rel in activos or rel in fallidos: continue
+                try:
+                    r = c.submit(*pedido_de(a, t, m)); activos[rel] = (r, a, t, m); print("  pido", rel, r.request_id, flush=True)
+                except Exception as e:
+                    msg = str(e) + " | " + (getattr(getattr(e, "response", None), "text", "") or "")[:200]
+                    print("  no aceptó", rel, msg[:250], flush=True)
+                    if "too large" in msg.lower() or "cost limits" in msg.lower(): fallidos.add(rel); continue
+                    lleno_hasta = time.time() + 600; break   # cola llena: probar de nuevo en 10 min
+        if not activos:
+            if not tiempo or not any(f"r/g_{a}_{t}.json.gz" not in fallidos for a, t, m in pend): break
+            time.sleep(60); continue
+        for rel, (r, a, t, m) in list(activos.items()):
+            try: st = r.status
+            except Exception as e: print("  estado?", rel, str(e)[:120], flush=True); continue
+            if st == "successful":
+                tmp = tempfile.mktemp(suffix=".nc"); t1 = time.time()
+                try:
+                    r.download(tmp); D = procesar(a, t, tmp)
+                    guardar(rel, {"anio": a, "pedazo": t, "meses": m, "fuente": "ERA5 (Copernicus C3S, CC-BY 4.0), celda más cercana",
+                                  "horas": "s: 12-21 UTC; p: 18 UTC (_d, 13 h) y 23 UTC (_t, 18 h)", "dias": D})
+                    print(" ", rel, f"{len(D)} días; procesado en {(time.time() - t1) / 60:.1f} min", flush=True)
+                    pend = [x for x in pend if f"r/g_{x[0]}_{x[1]}.json.gz" != rel]
+                except Exception as e:
+                    print("  FALLÓ al procesar", rel, str(e)[:250], flush=True); fallidos.add(rel)
+                finally:
+                    if os.path.exists(tmp): os.remove(tmp)
+                del activos[rel]
+            elif st in ("failed", "rejected", "dismissed", "deleted"):
+                print("  falló en Copernicus", rel, st, flush=True); fallidos.add(rel); del activos[rel]
+        if not tiempo:
+            print(f"sin tiempo; {len(activos)} pedazos siguen en la cola para la próxima corrida", flush=True); break
+        time.sleep(60)
 
 
 if __name__ == "__main__":
