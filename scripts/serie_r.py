@@ -53,7 +53,8 @@ def abrir(f):
     return xr.open_dataset(f).load()
 
 
-def pedir(c, conj, req, intentos=4):
+def pedir(c, conj, req, intentos=12):
+    """Un pedido a la vez (el CDS rechaza si hay demasiados en cola). Si la cola está llena, espera y reintenta."""
     for i in range(intentos):
         f = tempfile.mktemp(suffix=".nc")
         try:
@@ -65,9 +66,9 @@ def pedir(c, conj, req, intentos=4):
             if r is not None:
                 try: msg += " | " + r.text[:600]
                 except Exception: pass
-            print(f"  {conj} {req.get('month')}: intento {i + 1} falló: {msg[:800]}", flush=True)
-            if "too large" in msg.lower() or "cost limits" in msg.lower(): raise
-            time.sleep(60 * (i + 1))
+            print(f"  {conj} {req.get('month')}: intento {i + 1} falló: {msg[:300]}", flush=True)
+            if "too large" in msg.lower() or "cost limits" in msg.lower(): raise RuntimeError("too large: " + msg[:200])
+            time.sleep(300 if "queued" in msg.lower() else 60 * min(i + 1, 5))
         finally:
             if os.path.exists(f): os.remove(f)
     raise RuntimeError(f"{conj} sin datos tras {intentos} intentos")
@@ -111,13 +112,11 @@ def horas(da, t, hs):
 
 def trimestre(c, anio, meses, fin):
     r = base(anio, meses, fin)
-    with ThreadPoolExecutor(3) as ex:
-        fs = ex.submit(pedir, c, "reanalysis-era5-single-levels", dict(r, variable=SUP, area=AREA))
-        fp = ex.submit(pedir, c, "reanalysis-era5-pressure-levels", dict(r, variable=NIV, pressure_level=NIVELES, area=AREA,
-                                                                          time=HORAS_NIV))
-        fl = ex.submit(pedir, c, "reanalysis-era5-single-levels", dict(r, variable=["mean_sea_level_pressure"], area=AREA_LEJOS,
-                                                                       time=["12:00", "18:00"]))
-        S, P, L = fs.result(), fp.result(), fl.result()
+    S = pedir(c, "reanalysis-era5-single-levels", dict(r, variable=SUP, area=AREA))
+    L = pedir(c, "reanalysis-era5-single-levels", dict(r, variable=["mean_sea_level_pressure"], area=AREA_LEJOS, time=["12:00", "18:00"]))
+    PP = [pedir(c, "reanalysis-era5-pressure-levels", dict(base(anio, [m], fin), variable=NIV, pressure_level=NIVELES,
+                                                           area=AREA, time=HORAS_NIV)) for m in meses]   # por mes: tope de tamaño
+    P = PP[0] if len(PP) == 1 else xr.concat(PP, dim=tiempo(PP[0]), data_vars="minimal", coords="minimal", compat="override")
     out = {}
     ts, tp, tl = tiempo(S), tiempo(P), tiempo(L)
     niv = "pressure_level" if "pressure_level" in P.coords else "level"
