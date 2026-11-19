@@ -295,7 +295,7 @@ def parte_rejilla(tipo, minutos):
     pend = [(a, t, m) for a, t, m in pedazos(tipo) if f"r/g_{a}_{t}.json.gz" not in hay]
     conj = pedido_de(*pend[0])[0] if pend else None
     print(f"{tipo}: faltan {len(pend)} pedazos; {EN_COLA} a la vez", flush=True)
-    activos, fallidos = {}, set()   # rel -> (remoto, anio, tag, meses)
+    activos, fallidos, rech = {}, set(), {}   # rel -> (remoto, anio, tag, meses); rech: rechazos por pedazo
     for r in _mis_pedidos(c, conj) if pend else []:    # retomar lo que ya está en la cola
         for a, t, m in pend:
             rel = f"r/g_{a}_{t}.json.gz"
@@ -336,15 +336,18 @@ def parte_rejilla(tipo, minutos):
                     if os.path.exists(tmp): os.remove(tmp)
                 del activos[rel]
             elif st in ("failed", "rejected", "dismissed", "deleted"):
-                try: msg = str((r.json or {}).get("message") or (r.json or {}).get("detail") or r.json)[:300]
-                except Exception: msg = ""
                 del activos[rel]
-                if st == "rejected" and ("queue" in msg.lower() or "limit" in msg.lower() or "maximum" in msg.lower() or not msg):
-                    # 18 nov: la cola personal admite pocos pedidos por conjunto; no es un fallo del pedazo, se reintenta luego
-                    cupo = max(1, len(activos)); lleno_hasta = time.time() + 600
-                    print(f"  cola llena en Copernicus ({msg[:120]}); cupo = {cupo}, reintento en 10 min", flush=True)
+                motivo = ""
+                try: r.download(tempfile.mktemp(suffix=".nc"))   # el motivo del rechazo viene en el error de /results
+                except Exception as e:
+                    motivo = (str(e) + " | " + (getattr(getattr(e, "response", None), "text", "") or ""))[:400]
+                rech[rel] = rech.get(rel, 0) + 1
+                if "too large" in motivo.lower() or "cost limit" in motivo.lower() or rech[rel] >= 4:
+                    print("  falló en Copernicus", rel, st, motivo, flush=True); fallidos.add(rel)
                 else:
-                    print("  falló en Copernicus", rel, st, msg, flush=True); fallidos.add(rel)
+                    # 19 nov: casi siempre es la cola personal llena (pedidos de corridas anteriores); no es culpa del pedazo
+                    cupo = max(1, len(activos)); lleno_hasta = time.time() + 900
+                    print(f"  rechazado ({rech[rel]}/4), reintento en 15 min con cupo {cupo}: {rel} · {motivo[:250]}", flush=True)
         if not tiempo:
             print(f"sin tiempo; {len(activos)} pedazos siguen en la cola para la próxima corrida", flush=True); break
         time.sleep(60)
