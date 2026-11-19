@@ -1,0 +1,93 @@
+{
+ "fecha": "2026-11-19",
+ "modelo": "gemini-4-argon",
+ "gasto_mes_usd": 6.082,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia3",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 3",
+    "hipotesis": "Quitar el autoajuste y descontar la mitad del sesgo por plazo recién desde el día 3 conserva la ganancia a 1, 2 y 3 días de sin_autoajuste (+21 % a 1d y +22 % a 3d) sin el sobreajuste optimista a 3 días de sin_autoajuste_sesgo50_largo.",
+    "promocion": "luis",
+    "por_que": "En el marcador de hoy, sin_autoajuste baja el error medio de 0,279 a 0,218 m a 1 día (+21,9 %) y de 0,599 a 0,469 m a 3 días (+21,7 %), con sesgo positivo a 2 y 3 días (+0,136 y +0,115 m). En sin_autoajuste_sesgo50_largo la corrección empieza en el día 2 y empuja el día 3 a +0,35 m de sesgo optimista; retrasar la corrección del 50 % al día 3 (d >= 2) deja intacto el acierto de 1 a 3 días y corrige el pesimismo de 7 y 14 días (−1,50 y −7,20 m en sin_autoajuste).",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia3(P, ctx, mod):\n    ctx['ajuste'] = 1.0\n    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:\n            pts.append((int(h), float(v['sesgo_m'])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = out\n    return P, ctx, {'ajuste': 1.0, 'memoria': out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.06,
+     2119.38,
+     2123.79
+    ],
+    "candidato_1_7_14": [
+     2119.08,
+     2120.29,
+     2125.68
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia5",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 5",
+    "hipotesis": "Quitar el autoajuste y aplicar la mitad del sesgo por plazo solo desde el día 5 mantiene el pronóstico limpio de sin_autoajuste hasta 5 días (donde ya empata con el titular: 0,616 vs 0,609 m) y corrige únicamente el pesimismo de 7 a 14 días.",
+    "promocion": "luis",
+    "por_que": "El marcador muestra que sin_autoajuste gana a 1, 2 y 3 días y a 5 días tiene un sesgo mucho menor que el titular (−0,158 m frente a −0,341 m, con mediana 0,476 vs 0,548 m); el pesimismo fuerte recién aparece a 7, 10 y 14 días (−1,50, −4,47 y −7,20 m). Empezar la corrección de sesgo en el día 5 (d >= 4) evita tocar los plazos de 1 a 5 días y ataca exclusivamente la deriva de largo plazo que hoy impide que sin_autoajuste califique para reemplazo.",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia5(P, ctx, mod):\n    ctx['ajuste'] = 1.0\n    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:\n            pts.append((int(h), float(v['sesgo_m'])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 4:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    base = list(ctx.get('memoria') or [])\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = out\n    return P, ctx, {'ajuste': 1.0, 'memoria': out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.06,
+     2119.38,
+     2123.79
+    ],
+    "candidato_1_7_14": [
+     2119.08,
+     2120.01,
+     2125.44
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_memoria_75_sesgo50_dia3",
+    "nombre": "Sin autoajuste + memoria al 75 % + mitad de sesgo desde día 3",
+    "hipotesis": "Quitar el autoajuste, reducir un 25 % la memoria de 48 h para recortar el rezago entre corridas y descontar la mitad del sesgo por plazo desde el día 3 baja aún más el error a 1 día sin perder estabilidad ni empeorar a 7 y 14 días.",
+    "promocion": "luis",
+    "por_que": "Quitar la memoria entera (sin_memoria) empeora a 1 día (0,324 vs 0,279 m) y reducirla a la mitad (memoria_mitad) apenas empata, pero a 3 y 5 días sin_memoria mejora la mediana (0,459 y 0,351 m vs 0,517 y 0,548 m del titular). Un recorte suave al 75 % de la memoria combinado con sin_autoajuste (mediana 18,7 cm a 1 día) y la corrección de sesgo desde el día 3 busca sumar la reducción de rezago sin el ruido de apagar la memoria.",
+    "codigo": "def c_sin_autoajuste_memoria_75_sesgo50_dia3(P, ctx, mod):\n    mem = ctx.get('memoria')\n    if not mem:\n        return None\n    ctx['ajuste'] = 1.0\n    base = [float(x) * 0.75 for x in mem]\n    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:\n            pts.append((int(h), float(v['sesgo_m'])))\n    pts.sort()\n    if len(pts) < 3:\n        return None\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.12497}\n    dvdz = c['a'] + c['b'] * max(0.0, float(ctx['cota']) - 2115.0)\n    k = dvdz / 0.0864\n    corr = []\n    for d in range(60):\n        if d < 2:\n            corr.append(0.0)\n        else:\n            t0 = d\n            s0 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t0 <= h1:\n                    s0 = v0 + (v1 - v0) * (t0 - h0) / (h1 - h0)\n                    break\n            t1 = d + 1\n            s1 = pts[-1][1]\n            for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n                if t1 <= h1:\n                    s1 = v0 + (v1 - v0) * (t1 - h0) / (h1 - h0)\n                    break\n            val = -(s1 - s0) * k * 0.5\n            corr.append(max(-80.0, min(80.0, val)))\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx['memoria'] = out\n    return P, ctx, {'ajuste': 1.0, 'memoria': out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.06,
+     2119.38,
+     2123.79
+    ],
+    "candidato_1_7_14": [
+     2119.0,
+     2119.91,
+     2125.46
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-19"
+}
