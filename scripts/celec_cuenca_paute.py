@@ -14,5 +14,7 @@ for src in sorted(set(re.findall(r'<script[^>]+src="([^"]+)"', h))):
     try: fuentes.append((src, get(u)))
     except Exception as e: print("no se pudo leer", src, e)
 for nom, t in fuentes:
-    for m in re.finditer(r"(?i)cuenca|paute|mazar|mrid|pointValues|caudal", t):
-        print(f"{nom}: …{t[max(0, m.start() - 120):m.end() + 160]!r}")
+    for m in re.finditer(r"CuencaPaute|cuencaPaute|Cuenca Paute|cuenca del Paute", t):
+        print(f"{nom}: …{t[max(0, m.start() - 700):m.end() + 300]!r}")
+    for m in re.finditer(r"mrid\w*\s*=\s*\d+|getPointValues\(\d+|getQuery\w*\(", t):
+        print(f"{nom} ID: …{t[max(0, m.start() - 80):m.end() + 80]!r}")
