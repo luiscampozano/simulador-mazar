@@ -761,6 +761,11 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     mod["_tit_1d"] = round(d_tit[1]["cota"], 3)
     mod["_tit_qt"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(3)]   # caudal turbinado de Mazar del titular, días 0–2 (base_laboral_lunes)
     mod["_tit_qt15"] = [round(float(d_tit[k]["qturb"]), 2) for k in range(min(_TIT_QT_DIAS, len(d_tit)))]   # días 0–14 (domingo_mazar_minimo, cerebro 17 nov)
+    try:   # revisor 19 nov: media de los 4 pasos de 6 h de cada día (qturb de t = k es el instante, no el día); lo usa _fijar_mazar
+        d_p, _ = simular(_copia(P), _copia(ctx), par, horizonte=_TIT_QT_DIAS + 1, pasos=True)
+        mod["_tit_qt15_media"] = [round(sum(float(x["qturb"]) for x in d_p if k <= x["t"] < k + 1 - 1e-9) / 4.0, 2) for k in range(_TIT_QT_DIAS)]
+    except Exception as e:
+        log(f"Laboratorio: turbinado medio del titular no disponible: {e}")
     mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
     mod["_cota_obs"] = float(ctx["cota"])   # cota observada de la corrida (una pieza previa puede cambiar ctx["cota"], p. ej. embalse_combinado)
     mod["_tit_paute0"] = round(d_tit[0]["paute"], 1)   # Paute del titular en el día 0 (paute_guardian_dia0; revisor: sin mezclar el día 1)
@@ -4035,3 +4040,212 @@ _cand_3nov("lideres_4", c_lideres_4, "4 piezas que hoy ganan: balance 3 laborale
            "ventana de 3 días; revisor 18 nov: esa pieza va en empate, 0 % a 1 día). La Costa y el embalse son opcionales (si no corren, el resto sigue).",
            origen=_OR_C18 + " (retador)")
 
+
+
+# ---------------------------------------------------------------- Gemini 18 nov (segundo auditor; revisor Claude independiente 19 nov: 2 aprobados, 1 rechazado)
+# Armados con piezas existentes (el revisor comprobó que dan lo mismo que el código de Gemini). Rechazado:
+# sin_autoajuste_dia_suave_sesgo50_largo (vuelve a meter dia_semana_suave, retirado el 13 nov por permanencia).
+def c_autoajuste_acotado_1_sesgo50_largo(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_autoajuste_acotado_1, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=1))
+
+
+def c_sin_autoajuste_sesgo65_dia3(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.65, desde=2))
+
+
+_OR_G18 = "Gemini 2026-11-18"
+CANDIDATOS["autoajuste_acotado_1_sesgo50_largo"] = {
+    "f": c_autoajuste_acotado_1_sesgo50_largo, "promocion": "luis", "origen": _OR_G18,
+    "nombre": "Autoajuste solo cuando frena + mitad de sesgo desde día 2",
+    "hipotesis": "Autoajuste acotado a ≤ 1,0 + la mitad del sesgo por plazo desde el día 2: conserva la ganancia a 1 día de "
+                 "sin_autoajuste_sesgo50_largo cuando el ajuste es > 1 y frena el pesimismo de 7–14 días. Revisor 19 nov: con ajuste > 1 "
+                 "(hoy 1,017) es idéntico a sin_autoajuste_sesgo50_largo; solo difiere cuando el ajuste es < 1. Si se promueve, el robot "
+                 "calcula la memoria después de aplicar_titular (habría que tocar robot.py)."}
+CANDIDATOS["sin_autoajuste_sesgo65_dia3"] = {
+    "f": c_sin_autoajuste_sesgo65_dia3, "promocion": "luis", "origen": _OR_G18,
+    "nombre": "Sin autoajuste + 65 % del sesgo desde día 3",
+    "hipotesis": "Sin autoajuste y descontando el 65 % del sesgo por plazo desde el día 3: a 1 y 2 días es igual a sin_autoajuste "
+                 "(+21 % a 1 día al 19 nov) y corrige el pesimismo de 7–14 días. Revisor 19 nov: sin_autoajuste_sesgo50_largo ya va "
+                 "optimista desde el día 3 (+0,35 m a 3 días, +0,59 a 7); con 65 % puede pasarse a 5–7 días; a 10–14 días el titular "
+                 "sigue muy pesimista (−3,3 y −5,4 m), así que vale medirlo."}
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 19 nov (aprobación permanente de Luis, 7 nov)
+_OR_C19 = "cerebro 2026-11-19"
+
+
+def _kmz(ctx, mod):
+    """MW por m³/s de Mazar con la conversión del titular (eficiencia × salto a Amaluza)."""
+    par = mod.get("_par") or {}
+    if not par.get("eficiencia_mazar"):
+        return None
+    return 0.00981 * float(par["eficiencia_mazar"]) * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+
+
+def _ultimo_domingo_celec(hoy):
+    """(día, fila Celec) del último domingo ya cerrado (anterior a hoy) con maz, mol y sop en el Celec diario."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    for d in sorted(cel, reverse=True):
+        if d >= hoy: continue
+        try:
+            if datetime.fromisoformat(d).weekday() != 6: continue
+        except Exception:
+            continue
+        x = cel[d] or {}
+        if all(isinstance(x.get(k), (int, float)) for k in ("maz", "mol", "sop")):
+            return d, x
+        return None, None   # el último domingo no tiene dato completo: no se busca uno más viejo
+    return None, None
+
+
+def _coca_real_mw(dia):
+    """Coca Codo real (MW medios, registro/ccs_rendimiento.json) de un día ya cerrado."""
+    r = (_leer(os.path.join("registro", "ccs_rendimiento.json"), {}) or {}).get(dia) or {}
+    v = r.get("real_mw")
+    return float(v) if isinstance(v, (int, float)) and v > 0 else None
+
+
+def _fijar_mazar(ctx, mod, objetivo):
+    """objetivo = {día k: MWh de Mazar}. Lleva el turbinado del titular de esos días a ese MWh (en los dos sentidos) vía memoria,
+    como domingo_mazar_minimo (el motor no fija MWh). corr = caudal del titular − caudal objetivo (más turbinado = menos agua).
+    Revisor 19 nov: con el turbinado MEDIO de cada día del titular (_tit_qt15_media), no el del instante t = k."""
+    qt = mod.get("_tit_qt15_media"); k_mw = _kmz(ctx, mod)
+    if not qt or not k_mw:
+        return None
+    corr = [0.0] * 60; det = {}
+    for k, mwh in objetivo.items():
+        if k >= len(qt) or mwh is None: continue
+        q_obj = max(0.0, float(mwh) / 24.0 / k_mw)
+        corr[k] = float(qt[k]) - q_obj
+        det[str(k)] = {"mwh": round(float(mwh), 1), "q_obj": round(q_obj, 2), "q_titular": round(float(qt[k]), 2)}
+    return _sumar_memoria(ctx, corr), det
+
+
+def _es_feriado_futuro(ctx, k):
+    fer = ctx.get("feriados") or []
+    return k < len(fer) and bool(fer[k])
+
+
+def _es_domingo_futuro(ctx, k):
+    return (ctx.get("diaSemana0", 1) + k) % 7 == 0      # diaSemana0: 0 = domingo
+
+
+def _objetivo_domingo_coca(ctx, mod, hoy):
+    """MWh de Mazar para un domingo/feriado según 'feriado_domingo_coca_medida': Paute = Paute (Celec) del último domingo +
+    (Coca de ese domingo − Coca del último día cerrado); Mazar = MWh de ese domingo × Paute nuevo ÷ Paute del domingo."""
+    d, x = _ultimo_domingo_celec(hoy)
+    if not d:
+        return None, {}
+    ayer = (datetime.fromisoformat(hoy) - timedelta(days=1)).date().isoformat()
+    c_dom, c_ult = _coca_real_mw(d), _coca_real_mw(ayer)
+    if c_dom is None or c_ult is None:
+        return None, {}
+    p_dom = (float(x["maz"]) + float(x["mol"]) + float(x["sop"])) / 24.0
+    if p_dom <= 0:
+        return None, {}
+    p_nuevo = max(0.0, p_dom + (c_dom - c_ult))
+    mwh = float(x["maz"]) * p_nuevo / p_dom
+    return mwh, {"domingo": d, "paute_dom_mw": round(p_dom, 1), "coca_dom_mw": c_dom, "coca_ultimo_mw": c_ult, "dia_coca": ayer,
+                 "paute_nuevo_mw": round(p_nuevo, 1), "mazar_mwh": round(mwh, 1)}
+
+
+def c_feriado_como_domingo(P, ctx, mod):
+    """Idea del comité 18 nov ('feriado_como_domingo', encargo comite_20261118_1): en los feriados nacionales del horizonte
+    (días 0–14, manual.feriados) Mazar turbina el MWh del último domingo con Celec publicado antes de la corrida. Ajuste por el
+    reparo del retador (Carbon, 19 nov: 'cambiar la eficiencia a 26,5 hundió candidatos previos'): MWh → m³/s con la conversión
+    del titular, no con 26,5 MWh por m³/s·día."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    d, x = _ultimo_domingo_celec(hoy)
+    if not d:
+        return None
+    obj = {k: float(x["maz"]) for k in range(15) if _es_feriado_futuro(ctx, k)}
+    if not obj:
+        return P, ctx, {"memoria": list(ctx.get("memoria") or []), "domingo_ref": d, "dias_objetivo": []}
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "domingo_ref": d, "domingo_mwh": float(x["maz"]), "dias_objetivo": det}
+
+
+def c_feriado_domingo_coca_medida(P, ctx, mod):
+    """Idea 'feriado_domingo_coca_medida' (cerebro 19 nov): en domingos y feriados de los días 0–14, Paute = Paute del último
+    domingo + (Coca de ese domingo − Coca medida del último día cerrado) y Mazar = MWh de ese domingo × Paute nuevo ÷ Paute
+    del domingo. Paute del domingo con el Celec diario (Mazar + Molino + Sopladora; el cerebro usó Cenace, que guarda ~4 días);
+    Coca con registro/ccs_rendimiento.json (real_mw) del día cerrado, no la media móvil de 24 h."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    mwh, info = _objetivo_domingo_coca(ctx, mod, hoy)
+    if mwh is None:
+        return None
+    obj = {k: mwh for k in range(15) if _es_feriado_futuro(ctx, k) or _es_domingo_futuro(ctx, k)}
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, dict(info, memoria=m, dias_objetivo=det)
+
+
+def c_calendario_medido(P, ctx, mod):
+    """Escenario 'calendario_medido' (cerebro 19 nov): días 1–7 con Mazar según el calendario medido; desde el día 8 y el
+    día 0, titular. Laboral (lunes a viernes, incluido el lunes tras domingo/feriado, como lunes_laboral_cenace) = media Celec
+    de Mazar de los 3 últimos laborales; sábado = 0,77 × esa media; domingo y feriado = feriado_domingo_coca_medida. Se apaga
+    si el río Coca está en crecida (modelo.coca_rio.crecida). Ojo (cerebro): fijar MWh perdió a 1 día antes (mazar_media_2d
+    −21 %, semana_mazar −59 %)."""
+    ts = mod.get("_ts")
+    if not ts or ((mod.get("coca_rio") or {}).get("crecida")):
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    lab = _laborales_previos(hoy, manual, 3)
+    if len(lab) < 3:
+        return None
+    base = sum(float(x["maz"]) for _, x in lab) / 3.0
+    dom, info = _objetivo_domingo_coca(ctx, mod, hoy)
+    if dom is None:
+        return None
+    obj = {}
+    for k in range(1, 8):
+        if _es_feriado_futuro(ctx, k) or _es_domingo_futuro(ctx, k):
+            obj[k] = dom
+        elif (ctx.get("diaSemana0", 1) + k) % 7 == 6:     # sábado
+            obj[k] = 0.77 * base
+        else:
+            obj[k] = base
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "laboral_mwh": round(base, 1), "laborales": [d for d, _ in lab], "domingo": info, "dias_objetivo": det}
+
+
+def c_lideres_autoajuste_largo(P, ctx, mod):
+    """Idea 'lideres_autoajuste_largo' (cerebro 19 nov): lideres_4 cambiando sin_autoajuste_sesgo50_largo por
+    sin_autoajuste_y_autoajuste_largo: balance_3_laborales + esa pieza + embalse_combinado (opcional, al final porque cambia la cota).
+    Sin lluvia_gye30 (la idea nombra solo estas 3 piezas)."""
+    return _combinar(P, ctx, mod, c_balance_3_laborales, c_sin_autoajuste_y_autoajuste_largo, _opcional(c_embalse_combinado))
+
+
+_cand_3nov("feriado_como_domingo", c_feriado_como_domingo, "Feriado: Mazar turbina como el último domingo (Celec)",
+           "Comité 18 nov (encargo comite_20261118_1, espera +3 % a 1 día): en feriados nacionales confirmados Mazar turbina el MWh del "
+           "último domingo con Celec (hoy 776,9 MWh del 15 nov). Cerebro 19 nov: aporta fijar el dato medido cuando Coca mueve el "
+           "feriado (43,5 → 29,9 m³/s en un día). Revisor 19 nov: en la corrida de las 14:00 el titular ya pone ~19–20 m³/s el 20 y "
+           "el candidato lo sube a ~27. Con la conversión del titular, no 26,5 (reparo del retador).", origen=_OR_C19 + " (comité 18 nov)")
+_cand_3nov("feriado_domingo_coca_medida", c_feriado_domingo_coca_medida, "Domingos y feriados: Paute del último domingo corregido por Coca medida",
+           "Cerebro de Mazar 19 nov: el domingo 15 Mazar hizo 777 MWh con Coca en ~914 MW; hoy Coca da ~770. Paute = Paute del "
+           "domingo + (Coca del domingo − Coca de ayer); Mazar escala con Paute. Hoy ~621 MW de Paute → ~1.016 MWh de Mazar. Suma "
+           "calendario y Coca medida, sin usar el pronóstico del río.", origen=_OR_C19)
+_cand_3nov("calendario_medido", c_calendario_medido, "Calendario medido días 1–7 (laboral, sábado, domingo/feriado con Coca medida)",
+           "Cerebro de Mazar 19 nov: quita la promesa de Coca de la semana que decide la fecha crítica. Laboral = media Celec de los 3 "
+           "últimos laborales (~2.223 MWh), sábado = 0,77 × eso, domingo/feriado = feriado_domingo_coca_medida, lunes = laboral; se "
+           "apaga con el Coca en crecida. El cerebro calcula 2.116 m el 24–26 nov. Ojo: fijar MWh perdió a 1 día antes "
+           "(mazar_media_2d −21 %, semana_mazar −59 %).", origen=_OR_C19)
+_cand_3nov("lideres_autoajuste_largo", c_lideres_autoajuste_largo, "Líderes: balance 3 laborales + sin autoajuste y autoajuste largo + embalse",
+           "Cerebro de Mazar 19 nov: lideres_4 con sin_autoajuste_y_autoajuste_largo (el mejor a 1 día con > 100 casos: +23,3 %, 132) "
+           "en vez de sin_autoajuste_sesgo50_largo; el factor de autoajuste es lo más ligado al signo del error (−0,85). Sin piezas "
+           "de madrugada (mazar_noche_dia0_eta −386 %).", origen=_OR_C19)

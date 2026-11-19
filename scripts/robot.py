@@ -479,8 +479,9 @@ def sin_lluvia_py(qin, qout, cota, curva, observado=None, dias_obs=None, horizon
             "lluvia_extra_llego": None if observado is None else max(0.0, round(observado, 2)), "dias_observados": dias_obs}
 
 
-def simular_py(P, ctx, par, horizonte=60):
-    """Mismo cálculo que modelo.js → simular()."""
+def simular_py(P, ctx, par, horizonte=60, pasos=False):
+    """Mismo cálculo que modelo.js → simular(). pasos=True (solo el laboratorio, auditor 19 nov) guarda cada paso de 6 h en vez
+    de solo los días enteros; por defecto no cambia nada."""
     dt = 0.25
     a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
     vol = lambda x: a * x + b * x * x / 2
@@ -568,7 +569,7 @@ def simular_py(P, ctx, par, horizonte=60):
             paute = min(max(req, 0), filo, 1757)
             qt = max(0.0, (paute - kms * inter) / (kmz + kms))
             V += max(0.0, qin - qt) * 86400 * dt / 1e6
-        if abs(t - round(t)) < 1e-9:
+        if pasos or abs(t - round(t)) < 1e-9:
             diarios.append({"t": t, "cota": cota_ini, "cotaV": cotaV_ini,
                             "paute": paute, "qturb": qt, "qin": qin})
     return diarios, cruce
