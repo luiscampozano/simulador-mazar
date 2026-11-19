@@ -1,0 +1,10 @@
+# De una vez (Luis 19 nov): leer la página de gráficas de Celec Sur para ubicar el caudal de la cuenca del Paute.
+name: Celec · ubicar caudal de la cuenca del Paute
+on: { workflow_dispatch: {} }
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/celec_cuenca_paute.py | head -c 60000
