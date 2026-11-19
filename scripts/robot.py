@@ -348,6 +348,7 @@ F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
 F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
+F_MAZAR_QH = os.path.join("registro", "mazar_q_horas.json")         # caudal de entrada a Mazar hora a hora (Celec 30538; Luis 19 nov)
 F_COCA_RIO = os.path.join("registro", "coca_rio.json")             # caudal REAL horario del río Coca en Coca Codo Sinclair (Celec, punto 100037)
 MRID_COCA = 100037
 # Coca Codo Sinclair: MW ≈ 5,25 × (caudal − 21 m³/s), con tope continuo de 1.200 MW (≈ 250 m³/s). Ajustado con la
@@ -2020,8 +2021,17 @@ def main():
         if not 2090 < cota_t < 2160:
             raise ValueError(f"cota fuera de rango: {cota_t}")
         cota_24 = valor_en(cotas, t_cota - timedelta(hours=24))
-        caud = [v for tt, v in celec_serie(MRID_CAUDAL, ahora)
-                if t_cota - timedelta(hours=24) < tt <= t_cota and 0 <= v < 2000]
+        serie_q = celec_serie(MRID_CAUDAL, ahora)
+        caud = [v for tt, v in serie_q if t_cota - timedelta(hours=24) < tt <= t_cota and 0 <= v < 2000]
+        try:   # Luis 19 nov: el caudal de entrada a Mazar hora a hora para la página (últimos 30 días)
+            qh = _leer_json(F_MAZAR_QH, {})
+            for tt, v in serie_q:
+                if 0 <= v < 2000: qh[tt.strftime("%Y-%m-%dT%H")] = round(v, 1)
+            lim = (ahora - timedelta(days=30)).strftime("%Y-%m-%dT%H")
+            with open(F_MAZAR_QH, "w", encoding="utf-8") as fo:
+                json.dump({k: qh[k] for k in sorted(qh) if k >= lim}, fo, separators=(",", ":"))
+        except Exception as e_:
+            log(f"caudal horario de Mazar no guardado: {e_}")
         q24 = sum(caud) / len(caud) if len(caud) >= 12 else None
         fuentes["celec"] = {"ok": True, "lectura": t_cota.isoformat()}
         log(f"Celec: cota {cota_t:.2f} a las {t_cota:%H:%M}; hace 24 h {cota_24}; caudal 24 h {q24}")
