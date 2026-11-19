@@ -1,0 +1,21 @@
+# Historial diario del caudal de la cuenca del Paute (Celec 24812) para "lo normal del mes" (Luis 19 nov). A mano.
+name: Cuenca del Paute · historial
+on:
+  workflow_dispatch:
+    inputs: { mes: { description: "Mes (1-12; vacío = el actual)", required: false, default: "" } }
+permissions: { contents: write }
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/cuenca_paute_hist.py ${{ inputs.mes }}
+      - run: |
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          cp historial/paute_cuenca_diario.json /tmp/h.json
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main && git reset -q --hard origin/main && cp /tmp/h.json historial/paute_cuenca_diario.json
+            git add historial/paute_cuenca_diario.json && git commit -q -m "Historial cuenca del Paute [skip ci]" || exit 0
+            git push -q origin HEAD:main && exit 0; sleep 7
+          done
