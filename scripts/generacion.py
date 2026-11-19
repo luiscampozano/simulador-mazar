@@ -395,7 +395,7 @@ def actualizar(ahora, get, url_cenace, log=print):
         "rios_extra": intenta("glofas_extra", rios_extra, prev.get("rios_extra") or []),
         "rios_reales": rios_reales(datos, hoy_d),
         "coca_horas": coca_horas(),
-        "mazar_horas": mazar_horas(),
+        "mazar_horas": intenta("mazar_horas", mazar_horas, prev.get("mazar_horas") or {}),
         "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),
         "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }

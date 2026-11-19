@@ -91,7 +91,7 @@
       <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>
       <div id="g-cc-alerta"></div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span></div>
-      <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
+      <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: generación hora a hora"></svg></div>
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
       <div class="g-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">
       ${[["mq", "Lo que entra a Mazar hora a hora", "Caudal de entrada al embalse de Mazar.", "var(--g-real)"],
