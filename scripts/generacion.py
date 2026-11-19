@@ -327,7 +327,9 @@ def mazar_horas(horas=48):
     for f in ("celec_2010_2022.json", "celec_diario.json"): H.update(_leer(os.path.join("historial", f), {}))
     mes = datetime.now(timezone(timedelta(hours=-5))).month
     qs = [v["q"] for d, v in H.items() if int(d[5:7]) == mes and isinstance(v, dict) and isinstance(v.get("q"), (int, float))]
-    return {"serie": serie, "normal_mes": round(sum(qs) / len(qs), 1) if qs else None, "mes": mes}
+    cu = _leer(os.path.join("registro", "paute_cuenca_horas.json"), {})
+    return {"serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]],
+            "normal_mes": round(sum(qs) / len(qs), 1) if qs else None, "mes": mes}
 
 
 def corregir_rios(rios, reales):

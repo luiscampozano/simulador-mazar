@@ -348,6 +348,8 @@ F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
 F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
+F_PAUTE_QH = os.path.join("registro", "paute_cuenca_horas.json")    # caudal de la cuenca del Paute hora a hora (Celec 24812; Luis 19 nov)
+MRID_CUENCA_PAUTE = 24812
 F_MAZAR_QH = os.path.join("registro", "mazar_q_horas.json")         # caudal de entrada a Mazar hora a hora (Celec 30538; Luis 19 nov)
 F_COCA_RIO = os.path.join("registro", "coca_rio.json")             # caudal REAL horario del río Coca en Coca Codo Sinclair (Celec, punto 100037)
 MRID_COCA = 100037
@@ -2030,6 +2032,12 @@ def main():
             lim = (ahora - timedelta(days=30)).strftime("%Y-%m-%dT%H")
             with open(F_MAZAR_QH, "w", encoding="utf-8") as fo:
                 json.dump({k: qh[k] for k in sorted(qh) if k >= lim}, fo, separators=(",", ":"))
+            # y el caudal de toda la cuenca del Paute (punto 24812 de la página de gráficas de Celec Sur, ~70 m³/s)
+            qc = _leer_json(F_PAUTE_QH, {})
+            for tt, v in celec_serie(MRID_CUENCA_PAUTE, ahora):
+                if 0 <= v < 5000: qc[tt.strftime("%Y-%m-%dT%H")] = round(v, 1)
+            with open(F_PAUTE_QH, "w", encoding="utf-8") as fo:
+                json.dump({k: qc[k] for k in sorted(qc) if k >= lim}, fo, separators=(",", ":"))
         except Exception as e_:
             log(f"caudal horario de Mazar no guardado: {e_}")
         q24 = sum(caud) / len(caud) if len(caud) >= 12 else None

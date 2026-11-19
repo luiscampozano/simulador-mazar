@@ -93,7 +93,8 @@
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados (escala izquierda)</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span><span><i style="background:var(--g-col);height:3px"></i>caudal del río Coca, m³/s (escala derecha)</span></div>
       <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
-      <div class="g-box g-col"><div><h3 class="g-h3">Lo que entra a Mazar hora a hora</h3><div class="g-sub">Puntos: caudal de entrada al embalse cada hora (Celec; salta mucho de una hora a otra). Línea: promedio de 6 h. Raya: lo normal del mes (2010–hoy).</div></div>
+      <div class="g-box g-col"><div><h3 class="g-h3">Río Paute hora a hora</h3><div class="g-sub">Puntos: dato de cada hora (Celec; salta mucho de una hora a otra). Líneas: promedio de 6 h. Raya: lo normal del mes que entra a Mazar (2010–hoy).</div></div>
+      <div class="g-legend"><span><i style="background:var(--g-real);height:3px"></i>entra a Mazar</span><span><i style="background:var(--g-col);height:3px"></i>toda la cuenca del Paute (Amaluza)</span><span><i class="d" style="border-top-color:var(--g-warn)"></i>normal del mes en Mazar</span></div>
       <div class="g-lbl" id="g-mq-t"></div>
       <div class="g-chart"><svg id="g-mq" role="img" aria-label="Caudal de entrada a Mazar hora a hora"></svg></div></div>
       <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
@@ -362,7 +363,7 @@
       const x0 = tOf(CC[0][0]), x1 = tOf(CC[CC.length - 1][0]) + 36e5;
       const barras = CC.filter(x => x[2] != null).map(x => [tOf(x[0]) + 3e5, tOf(x[0]) + 33e5, 0, x[2], x[2] < 100 && x[1] > 150 ? "var(--g-crit)" : "var(--g-ok)"]);
       const zonas = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150).map(x => [tOf(x[0]), tOf(x[0]) + 36e5, "var(--g-crit)"]);
-      const xt = CC.filter((x, i) => i % 6 === 0).map(x => [tOf(x[0]) + 18e5, x[0].slice(11, 13) + ":00"]);
+      const xt = CC.filter(x => ["00", "12"].includes(x[0].slice(11, 13))).map(x => [tOf(x[0]), x[0].slice(11, 13) === "00" ? fechaCorta(x[0].slice(0, 10)) : "12:00"]);   // 19 nov: con el día, cada 12 h
       grafico("g-cc", { x0, x1, y0: 0, y1: 1300, y2: 650, yt: [0, 260, 520, 780, 1040, 1300], xt, zonas,
         series: [{ tipo: "barras", d: barras }, { d: CC.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-col)", w: 2.5, y2: true, puntos: true, r: 2 }] });
       const par = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150);
@@ -373,17 +374,18 @@
       } else $("g-cc-alerta").innerHTML = "";
     }
     // Luis 19 nov: entrada a Mazar hora a hora (48 h), con promedio de 6 h y lo normal del mes
-    const MQ = ((G.mazar_horas || {}).serie || []).filter(x => x[1] != null), nm = (G.mazar_horas || {}).normal_mes;
+    const MQ = ((G.mazar_horas || {}).serie || []).filter(x => x[1] != null), MC = ((G.mazar_horas || {}).cuenca || []).filter(x => x[1] != null), nm = (G.mazar_horas || {}).normal_mes;
     if (MQ.length > 3) {
-      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = MQ.map(x => [tOf(x[0]) + 18e5, x[1]]);
-      const m6 = pts.map(p => { const w = pts.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
-      const x0 = tOf(MQ[0][0]), x1 = tOf(MQ[MQ.length - 1][0]) + 36e5, top = techo(MQ.map(x => x[1]).concat(nm ? [nm * 1.05] : []), 10);
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = MQ.map(x => [tOf(x[0]) + 18e5, x[1]]), ptc = MC.map(x => [tOf(x[0]) + 18e5, x[1]]);
+      const media = P => P.map(p => { const w = P.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
+      const m6 = media(pts), c6 = media(ptc);
+      const x0 = Math.min(tOf(MQ[0][0]), MC.length ? tOf(MC[0][0]) : Infinity), x1 = tOf(MQ[MQ.length - 1][0]) + 36e5, top = techo(MQ.map(x => x[1]).concat(MC.map(x => x[1]), nm ? [nm * 1.05] : []), 10);
       const xt = MQ.filter((x, i) => x[0].slice(11, 13) === "00" || i === 0).map(x => [tOf(x[0]), fechaCorta(x[0].slice(0, 10))]);
-      const series = [{ d: pts, c: "var(--g-col)", w: 0.01, puntos: true, r: 2.2 }, { d: m6, c: "var(--g-real)", w: 2.6 }];
+      const series = [{ d: ptc, c: "var(--g-col)", w: 0.01, puntos: true, r: 1.8 }, { d: c6, c: "var(--g-col)", w: 2.2 }, { d: pts, c: "var(--g-real)", w: 0.01, puntos: true, r: 2.2 }, { d: m6, c: "var(--g-real)", w: 2.8 }];
       if (nm) series.push({ d: [[x0, nm], [x1, nm]], c: "var(--g-warn)", w: 1.2, dash: "5 4" });
       grafico("g-mq", { h: 200, x0, x1, y0: 0, y1: top, yt: marcasY(top), xt, series });
       const u = m6[m6.length - 1][1], MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-      $("g-mq-t").textContent = `Ahora ~${f(u)} m³/s (promedio de 6 h, ${MQ[MQ.length - 1][0].slice(11, 13)}:00)` + (nm ? ` · lo normal en ${MESES[(G.mazar_horas.mes || 1) - 1]}: ${f(nm)} m³/s (${f(u / nm * 100)} %)` : "");
+      $("g-mq-t").textContent = `Entra a Mazar ~${f(u)} m³/s (promedio de 6 h, ${MQ[MQ.length - 1][0].slice(11, 13)}:00)` + (nm ? `, ${f(u / nm * 100)} % de lo normal en ${MESES[(G.mazar_horas.mes || 1) - 1]} (${f(nm)})` : "") + (c6.length ? ` · toda la cuenca del Paute ~${f(c6[c6.length - 1][1])} m³/s` : "");
     } else if ($("g-mq")) $("g-mq-t").textContent = "Se está juntando el dato hora a hora (empieza el 19 nov).";
     const T = G.ccs_crecida, rc = RR.coca;
     if (rc && T) {
