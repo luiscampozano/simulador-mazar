@@ -94,9 +94,10 @@
       <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
       <div class="g-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">
-      ${[["mq", "Lo que entra a Mazar hora a hora", "Caudal de entrada al embalse de Mazar."],
-         ["mc", "Cuenca del Paute hora a hora", "Todo el río Paute hasta Amaluza (Mazar + los ríos que se le unen después)."],
-         ["mk", "Río Coca hora a hora", "El río que mueve a Coca Codo Sinclair."]].map(([id, t, s]) => `<div class="g-box g-col"><div><h3 class="g-h3">${t}</h3><div class="g-sub">${s} Puntos: dato de cada hora (Celec). Línea: promedio de 6 h. Raya amarilla: lo normal del mes.</div></div>
+      ${[["mq", "Lo que entra a Mazar hora a hora", "Caudal de entrada al embalse de Mazar.", "var(--g-real)"],
+         ["mc", "Cuenca del Paute hora a hora", "Todo el río Paute hasta Amaluza (Mazar + los ríos que se le unen después).", "var(--g-col)"],
+         ["mk", "Río Coca hora a hora", "El río que mueve a Coca Codo Sinclair.", "var(--g-ok)"]].map(([id, t, s, c]) => `<div class="g-box g-col"><div><h3 class="g-h3">${t}</h3><div class="g-sub">${s}</div></div>
+      <div class="g-legend"><span><i class="s" style="background:${c};border-radius:50%;width:8px;height:8px"></i>dato de cada hora (Celec)</span><span><i style="background:${c};height:3px"></i>promedio de 6 h</span><span><i class="d" style="border-top-color:var(--g-warn)"></i>lo normal del mes</span></div>
       <div class="g-lbl" id="g-${id}-t"></div><div class="g-chart"><svg id="g-${id}" role="img" aria-label="${t}"></svg></div></div>`).join("")}
       </div>
       <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
