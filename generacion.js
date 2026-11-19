@@ -379,7 +379,8 @@
     const nomMes = MESES[(MH.mes || 1) - 1];
     function horaria(id, filas, normal, refTxt, col) {
       const D = (filas || []).filter(x => x[1] != null);
-      if (D.length < 4) { $(`g-${id}-t`).textContent = "Se está juntando el dato hora a hora (empezó el 19 nov)."; return; }
+      if (D.length < 4) { $(`g-${id}-t`).textContent = "Se está juntando el dato hora a hora (empezó el 19 nov)."; $(`g-${id}`).style.display = "none"; return; }
+      $(`g-${id}`).style.display = "";
       const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = D.map(x => [tOf(x[0]) + 18e5, x[1]]);
       const m6 = pts.map(p => { const w = pts.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
       const x0 = tOf(D[0][0]), x1 = tOf(D[D.length - 1][0]) + 36e5, top = techo(D.map(x => x[1]).concat(normal ? [normal * 1.08] : []), 10);
