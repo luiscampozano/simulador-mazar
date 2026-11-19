@@ -328,8 +328,14 @@ def mazar_horas(horas=48):
     mes = datetime.now(timezone(timedelta(hours=-5))).month
     qs = [v["q"] for d, v in H.items() if int(d[5:7]) == mes and isinstance(v, dict) and isinstance(v.get("q"), (int, float))]
     cu = _leer(os.path.join("registro", "paute_cuenca_horas.json"), {})
-    return {"serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]],
-            "normal_mes": round(sum(qs) / len(qs), 1) if qs else None, "mes": mes}
+    hc = _leer(os.path.join("historial", "paute_cuenca_diario.json"), {})   # promedios diarios de 24812 (2010–hoy)
+    qc = [v for d, v in hc.items() if int(d[5:7]) == mes and isinstance(v, (int, float))]
+    rio = _leer(os.path.join("registro", "coca_rio.json"), {})               # río Coca hora a hora (Celec 100037, desde oct 2025)
+    co = [v for k, v in rio.items() if int(k[5:7]) == mes and isinstance(v, (int, float))]
+    prom = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
+    return {"serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]], "coca": [[k, rio[k]] for k in sorted(rio)[-horas:]],
+            "normal_mes": prom(qs), "normal_cuenca": prom(qc), "anios_cuenca": len({d[:4] for d, v in hc.items() if int(d[5:7]) == mes}),
+            "normal_coca": prom(co), "anios_coca": sorted({k[:4] for k in rio if int(k[5:7]) == mes}), "mes": mes}
 
 
 def corregir_rios(rios, reales):
