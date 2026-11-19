@@ -319,6 +319,17 @@ def coca_horas(horas=48):
     return [[k, rio[k], round(tur[k] * 8 * 5.25) if k in tur else None] for k in ks]
 
 
+def mazar_horas(horas=48):
+    """Luis 19 nov: caudal que entra a Mazar hora a hora (Celec 30538, lo guarda el robot) y lo normal del mes (2010–hoy)."""
+    q = _leer(os.path.join("registro", "mazar_q_horas.json"), {})
+    serie = [[k, q[k]] for k in sorted(q)[-horas:]]
+    H = {}
+    for f in ("celec_2010_2022.json", "celec_diario.json"): H.update(_leer(os.path.join("historial", f), {}))
+    mes = datetime.now(timezone(timedelta(hours=-5))).month
+    qs = [v["q"] for d, v in H.items() if int(d[5:7]) == mes and isinstance(v, dict) and isinstance(v.get("q"), (int, float))]
+    return {"serie": serie, "normal_mes": round(sum(qs) / len(qs), 1) if qs else None, "mes": mes}
+
+
 def corregir_rios(rios, reales):
     """GloFAS no acierta igual en todos los ríos: en cada uno se mide cuánto es lo real frente a lo que dice
     (días con caudal medido, hasta 14) y se corrige su pronóstico con ese factor."""
@@ -376,6 +387,7 @@ def actualizar(ahora, get, url_cenace, log=print):
         "rios_extra": intenta("glofas_extra", rios_extra, prev.get("rios_extra") or []),
         "rios_reales": rios_reales(datos, hoy_d),
         "coca_horas": coca_horas(),
+        "mazar_horas": mazar_horas(),
         "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),
         "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }

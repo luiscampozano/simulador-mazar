@@ -93,6 +93,9 @@
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados (escala izquierda)</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span><span><i style="background:var(--g-col);height:3px"></i>caudal del río Coca, m³/s (escala derecha)</span></div>
       <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: caudal y generación hora a hora"></svg></div>
       <div><h3 class="g-h3">Riesgo de paro por sedimentos · próximos 7 días</h3><div class="g-sub" id="g-cc-riesgo-txt"></div></div><div class="g-riesgo" id="g-cc-riesgo"></div></div>
+      <div class="g-box g-col"><div><h3 class="g-h3">Lo que entra a Mazar hora a hora</h3><div class="g-sub">Puntos: caudal de entrada al embalse cada hora (Celec; salta mucho de una hora a otra). Línea: promedio de 6 h. Raya: lo normal del mes (2010–hoy).</div></div>
+      <div class="g-lbl" id="g-mq-t"></div>
+      <div class="g-chart"><svg id="g-mq" role="img" aria-label="Caudal de entrada a Mazar hora a hora"></svg></div></div>
       <div><h3 class="g-h3">El río de cada central</h3><div class="g-sub">Izquierda, el caudal: puntos = medido por Celec; línea = pronóstico GloFAS corregido con lo medido (punteada: GloFAS sin corregir). Derecha, lo que generó la central cada 2 h frente a su capacidad.</div></div>
       <div class="g-col" id="g-rios"></div>
       <div><h3 class="g-h3">Los ríos de las demás hidroeléctricas</h3><div class="g-sub">Daule-Peripa, Toachi-Pilatón, Baba, Manduriacu, Ocaña y Pucará. El Cenace no publica su generación por separado (las suma en "otras hidroeléctricas") y Celec no publica su caudal, así que aquí va el pronóstico GloFAS comparado con lo <b>normal para la fecha</b> en ese mismo río: el número absoluto de GloFAS puede estar desviado, la comparación es lo útil.</div></div>
@@ -369,6 +372,19 @@
         $("g-cc-alerta").innerHTML = `<div class="g-alerta">⚠️ <b>Paro de Coca Codo:</b> ${par.length} h sin generar en las últimas 36 h${sub ? `; el río subió de ${f(sub[0][1])} a ${f(sub[1][1])} m³/s en 2 h (${sub[1][0].slice(11, 13)}:00), la señal típica de una crecida con sedimentos` : ""}. Con el río que tenía pudo generar ~${f(Math.round(perd / 100) * 100)} MWh más.</div>`;
       } else $("g-cc-alerta").innerHTML = "";
     }
+    // Luis 19 nov: entrada a Mazar hora a hora (48 h), con promedio de 6 h y lo normal del mes
+    const MQ = ((G.mazar_horas || {}).serie || []).filter(x => x[1] != null), nm = (G.mazar_horas || {}).normal_mes;
+    if (MQ.length > 3) {
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = MQ.map(x => [tOf(x[0]) + 18e5, x[1]]);
+      const m6 = pts.map(p => { const w = pts.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
+      const x0 = tOf(MQ[0][0]), x1 = tOf(MQ[MQ.length - 1][0]) + 36e5, top = techo(MQ.map(x => x[1]).concat(nm ? [nm * 1.05] : []), 10);
+      const xt = MQ.filter((x, i) => x[0].slice(11, 13) === "00" || i === 0).map(x => [tOf(x[0]), fechaCorta(x[0].slice(0, 10))]);
+      const series = [{ d: pts, c: "var(--g-col)", w: 0.01, puntos: true, r: 2.2 }, { d: m6, c: "var(--g-real)", w: 2.6 }];
+      if (nm) series.push({ d: [[x0, nm], [x1, nm]], c: "var(--g-warn)", w: 1.2, dash: "5 4" });
+      grafico("g-mq", { h: 200, x0, x1, y0: 0, y1: top, yt: marcasY(top), xt, series });
+      const u = m6[m6.length - 1][1], MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      $("g-mq-t").textContent = `Ahora ~${f(u)} m³/s (promedio de 6 h, ${MQ[MQ.length - 1][0].slice(11, 13)}:00)` + (nm ? ` · lo normal en ${MESES[(G.mazar_horas.mes || 1) - 1]}: ${f(nm)} m³/s (${f(u / nm * 100)} %)` : "");
+    } else if ($("g-mq")) $("g-mq-t").textContent = "Se está juntando el dato hora a hora (empieza el 19 nov).";
     const T = G.ccs_crecida, rc = RR.coca;
     if (rc && T) {
       const ih = rc.dias.indexOf(hoy), qq = rc.med_c || rc.q_c || rc.q;
