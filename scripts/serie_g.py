@@ -192,6 +192,72 @@ def bh(ps):
     return q
 
 
+def _resumen(mm, fuerte, m):
+    n = int(m.sum())
+    if n < 30: return None
+    x = mm[m]
+    return {"n": n, "mm_medio": round(float(np.nanmean(x)), 2), "llueve_1mm": round(float((x >= 1).mean()), 3),
+            "moderada_10mm": round(float((x >= 10).mean()), 3), "dia_fuerte": round(float(fuerte[m].mean()), 3)}
+
+
+def dosis(pun, mm, fuerte, tr, te, yr, rnd, tabla3d=False):
+    """Dosis-respuesta (Luis, 20 nov: "una rama igual es combustible"): cuánta lluvia da cada vértice según su nivel.
+    Nivel = percentil del puntaje del grupo respecto a los años de entrenamiento; todo se mide en los años de prueba.
+    - curva: por decil del vértice, mm medio y frecuencia de lluvia (≥1 mm), moderada (≥10 mm) y día fuerte; también con los
+      otros dos vértices altos (su promedio en el tercio alto) y bajos (tercio bajo).
+    - piso: el decil más bajo (el vértice casi "apagado"): cuánta lluvia queda.
+    - forma: ¿se suman, se multiplican o manda el más bajo? Correlación de rangos con los mm y AUC del día fuerte, fuera de
+      muestra, con IC90 por años de la diferencia frente a la suma.
+    - tabla 5×5×5 (solo temporada completa): mm medio por quintil de cada vértice."""
+    P = {}
+    for g, s in pun.items():
+        ref = np.sort(s[tr & np.isfinite(s)])
+        p = np.searchsorted(ref, s) / len(ref); p[~np.isfinite(s)] = np.nan; P[g] = np.clip(p, 0, 0.9999)
+    gs = ("G1", "G2", "G3"); M = np.c_[[P[g] for g in gs]].T
+    ok = te & np.all(np.isfinite(M), axis=1) & np.isfinite(mm)
+    out = {"curva": {}, "piso": {}}
+    for j, g in enumerate(gs):
+        dec = np.floor(M[:, j] * 10).astype(int)
+        otros = np.nanmean(np.delete(M, j, axis=1), axis=1)
+        cur = {"todos": [], "otros_altos": [], "otros_bajos": []}
+        for k in range(10):
+            mk = ok & (dec == k)
+            cur["todos"].append(_resumen(mm, fuerte, mk))
+            cur["otros_altos"].append(_resumen(mm, fuerte, mk & (otros >= 2 / 3)))
+            cur["otros_bajos"].append(_resumen(mm, fuerte, mk & (otros <= 1 / 3)))
+        out["curva"][g] = cur
+        out["piso"][g] = {"decil_mas_bajo": cur["todos"][0], "decil_mas_bajo_con_otros_altos": cur["otros_altos"][0],
+                          "decil_mas_alto": cur["todos"][9]}
+    out["base_prueba"] = _resumen(mm, fuerte, ok)
+    # forma de la combinación
+    idx = {"suma": M.mean(axis=1), "producto": M.prod(axis=1), "minimo": M.min(axis=1), "maximo": M.max(axis=1)}
+    from scipy.stats import spearmanr
+    def medir(m):
+        r = {}
+        for k, v in idx.items():
+            r[k] = (float(spearmanr(v[m], mm[m]).statistic), auc(v[m], fuerte[m]))
+        return r
+    base = medir(ok)
+    uy = np.unique(yr[ok]); bo = {k: [] for k in idx}
+    for _ in range(100):
+        ss = rnd.choice(uy, len(uy)); m = ok & np.isin(yr, ss)
+        r = medir(m)
+        for k in idx: bo[k].append((r[k][0] - r["suma"][0], r[k][1] - r["suma"][1]))
+    out["forma"] = {k: {"rho_mm": round(base[k][0], 3), "auc_fuerte": round(base[k][1], 3),
+                        **({"dif_rho_vs_suma_ic90": [round(float(np.percentile([b[0] for b in bo[k]], q)), 3) for q in (5, 95)],
+                            "dif_auc_vs_suma_ic90": [round(float(np.percentile([b[1] for b in bo[k]], q)), 3) for q in (5, 95)]}
+                           if k != "suma" else {})} for k in idx}
+    if tabla3d:
+        Q = np.floor(M * 5).astype(int); t = {}
+        for a in range(5):
+            for b in range(5):
+                for c in range(5):
+                    r = _resumen(mm, fuerte, ok & (Q[:, 0] == a) & (Q[:, 1] == b) & (Q[:, 2] == c))
+                    if r: t[f"G1q{a + 1} G2q{b + 1} G3q{c + 1}"] = r
+        out["tabla_5x5x5"] = t
+    return out
+
+
 def analizar(ciudades, dias, nombres, X, Y, rnd=np.random.default_rng(7), nboot=100):
     Z, F, V, anio, mes = anomalias(X, Y, dias)
     vi = {v: i for i, v in enumerate(nombres)}
@@ -332,6 +398,8 @@ def analizar(ciudades, dias, nombres, X, Y, rnd=np.random.default_rng(7), nboot=
                 for g in ("G1", "G2", "G3"):
                     R["juntos"][f"dias_fuertes_con_{g}_bajo"] = round(float((nivel[g] == 0)[m & y].mean()), 3)
             R["veto"] = dict(sorted(veto.items(), key=lambda kv: -(kv[1]["baja_con_resto_parecido"] or 0)))
+            if "juntos" in R and len(pun) == 3:
+                R["dosis"] = dosis(pun, Y[A, I], y, tr & todo, te & todo, yr, rnd, tabla3d=(temporada == "todo"))
             out["regiones"].setdefault(reg, {})[temporada] = R
             print(f"{reg} {temporada}: {R['filas']} filas; grupos " + ", ".join(f"{g} {x['auc_prueba']}" for g, x in R["grupos"].items())
                   + (f"; juntos {R['juntos']['auc_suma']} / con interacción {R['juntos']['auc_con_interaccion']}" if "juntos" in R else ""), flush=True)
