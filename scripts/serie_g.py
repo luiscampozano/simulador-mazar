@@ -33,8 +33,15 @@ G = {
     "G2": ["div200_t", "div200_d", "viento200", "u200", "u200_galapagos", "u200_amazonia", "mjo_amp", "mjo_rmm1", "mjo_rmm2",
            "msl_anticiclon", "grad_anticiclon"],
 }
-ENTRENA = (1981, 2010)
-PRUEBA = (2011, 2026)
+# Segunda vuelta (verificador, 20 nov): VERDAD=sat usa CHIRPS repartido con satélite (IMERG, 1998+; el "rnl" reparte con
+# ERA5 y es circular); MODO=anterior usa todas las variables del día anterior (lo que se sabe antes: anticipar, no explicar).
+VERDAD = os.environ.get("VERDAD", "rnl")
+MODO = os.environ.get("MODO", "mismo")
+ENTRENA, PRUEBA = ((1998, 2012), (2013, 2026)) if VERDAD == "sat" else ((1981, 2010), (2011, 2026))
+# Fuera: cin_min (le falta a la mitad de los días y no al azar: los días con dato llueven 2–3 veces más). Con el MISMO día
+# también la radiación de la mañana, la capa de mezcla y las nubes bajas: la lluvia y sus nubes las bajan (consecuencia).
+EXCLUIR = {"cin_min"} | ({"sol_man", "blh_max", "lcc"} if MODO == "mismo" else set())
+G = {g: [v for v in vs if v not in EXCLUIR] for g, vs in G.items()}
 
 
 def git_json(rel):
@@ -51,7 +58,8 @@ def archivos():
 
 
 def cargar():
-    chirps = json.load(open(os.path.join(RAIZ, "historial", "chirps_diario.json"), encoding="utf-8"))["ciudades"]
+    chirps = json.load(open(os.path.join(RAIZ, "historial", "chirps_sat_diario.json" if VERDAD == "sat" else "chirps_diario.json"),
+                            encoding="utf-8"))["ciudades"]
     ciudades = [c for v in REGIONES.values() for c in v if c in chirps]
     d0, d1 = date(1981, 1, 1), date(2026, 10, 31)
     dias = [d0 + timedelta(n) for n in range((d1 - d0).days + 1)]
@@ -276,28 +284,54 @@ def analizar(ciudades, dias, nombres, X, Y, rnd=np.random.default_rng(7), nboot=
                             if m.sum() >= 50:
                                 tabla[f"G1{'+' if k1 else '-'} G2{'+' if k2 else '-'} G3{'+' if k3 else '-'}"] = {"tasa": round(float(y[m].mean()), 3), "n": int(m.sum())}
                 R["juntos"]["tercios_prueba"] = tabla
-            # 4) veto: con ≥ 60 % de las otras variables del grupo del lado favorable, ¿cuánto baja la tasa si esta está en su tercio bajo?
+            # 4) ¿hay "veto"? Para cada variable fuerte de un grupo: entre días con el RESTO del grupo parecido (mismo decil del
+            #    puntaje de las otras), cuánto baja la tasa con esta en su tercio bajo frente al alto; y qué parte de los días
+            #    fuertes ocurrió con esta en su tercio bajo (si fuera condición necesaria, ~0 %; si no importa, ~33 %).
             veto = {}
             for g, vs in G.items():
                 usadas = [v for v in vs if v in R["variables"] and R["variables"][v]["auc_entrena"] >= 0.55]
-                if len(usadas) < 3: continue
-                S = np.c_[[R["variables"][v]["signo"] * Zr[:, vi[v]] for v in usadas]].T
-                for k, v in enumerate(usadas):
-                    otras = np.delete(S, k, axis=1)
-                    fav = (np.nansum(otras > 0, axis=1) >= 0.6 * otras.shape[1]) & ok
-                    lo, hi = fav & (S[:, k] < -0.43), fav & (S[:, k] > 0.43)
-                    if lo.sum() < 200 or hi.sum() < 200: continue
-                    t_lo, t_hi = float(y[lo].mean()), float(y[hi].mean())
-                    bo = []
-                    uy = np.unique(yr); idl = {u: np.where(lo & (yr == u))[0] for u in uy}; idh = {u: np.where(hi & (yr == u))[0] for u in uy}
-                    for _ in range(200):
-                        ss = rnd.choice(uy, len(uy)); kl = np.concatenate([idl[u] for u in ss]); kh = np.concatenate([idh[u] for u in ss])
-                        if len(kl) and len(kh) and y[kh].mean() > 0: bo.append(1 - y[kl].mean() / y[kh].mean())
-                    veto[v] = {"grupo": g, "tasa_tercio_bajo": round(t_lo, 3), "tasa_tercio_alto": round(t_hi, 3),
-                               "baja_relativa": round(1 - t_lo / t_hi, 3) if t_hi > 0 else None,
+                for v in usadas:
+                    otras = [vi[x] for x in usadas if x != v]
+                    xv = R["variables"][v]["signo"] * Zr[:, vi[v]]
+                    okc = ok & np.isfinite(xv) & (np.all(np.isfinite(Zr[:, otras]), axis=1) if otras else True)
+                    if otras:
+                        a = okc & tr
+                        w = logit(np.c_[np.ones(a.sum()), Zr[a][:, otras]], y[a].astype(float))
+                        sc = np.full(len(y), np.nan); sc[okc] = np.c_[np.ones(okc.sum()), Zr[okc][:, otras]] @ w
+                        dec = np.digitize(sc, np.nanpercentile(sc[a], np.arange(10, 100, 10)))
+                    else: dec = np.zeros(len(y), int)
+                    lo_c, hi_c = np.nanpercentile(xv[okc & tr], [33.3, 66.7])
+                    def baja(m):
+                        num = den = 0.0
+                        for b in range(10):
+                            mb = m & (dec == b); l, h = mb & (xv < lo_c), mb & (xv > hi_c)
+                            if l.sum() >= 30 and h.sum() >= 30 and y[h].mean() > 0:
+                                peso = l.sum() + h.sum(); num += peso * y[l].mean(); den += peso * y[h].mean()
+                        return 1 - num / den if den > 0 else None
+                    base = baja(okc & te)
+                    if base is None: continue
+                    uy = np.unique(yr[okc & te]); bo = []
+                    for _ in range(100):
+                        ss = rnd.choice(uy, len(uy)); m = okc & te & np.isin(yr, ss)
+                        # remuestreo por años (aproximado: un año elegido dos veces cuenta una vez)
+                        x = baja(m)
+                        if x is not None: bo.append(x)
+                    fuertes = okc & te & y
+                    veto[v] = {"grupo": g, "baja_con_resto_parecido": round(base, 3),
                                "ic90": [round(float(np.percentile(bo, 5)), 3), round(float(np.percentile(bo, 95)), 3)] if bo else None,
-                               "n_bajo": int(lo.sum()), "n_alto": int(hi.sum())}
-            R["veto"] = dict(sorted(veto.items(), key=lambda kv: -(kv[1]["baja_relativa"] or 0)))
+                               "dias_fuertes_con_esta_baja": round(float((xv[fuertes] < lo_c).mean()), 3) if fuertes.sum() else None,
+                               "n_fuertes": int(fuertes.sum())}
+            # el triángulo: qué parte de los días fuertes tuvo algún grupo en su tercio bajo, y la tasa en esos días
+            if "juntos" in R and len(pun) == 3:
+                m = te & todo
+                algun_bajo = (nivel["G1"] == 0) | (nivel["G2"] == 0) | (nivel["G3"] == 0)
+                R["juntos"]["dias_fuertes_con_algun_grupo_bajo"] = round(float(algun_bajo[m & y].mean()), 3)
+                R["juntos"]["esperado_si_no_importara"] = round(1 - (2 / 3) ** 3, 3)
+                R["juntos"]["tasa_algun_grupo_bajo"] = round(float(y[m & algun_bajo].mean()), 3)
+                R["juntos"]["tasa_ninguno_bajo"] = round(float(y[m & ~algun_bajo].mean()), 3)
+                for g in ("G1", "G2", "G3"):
+                    R["juntos"][f"dias_fuertes_con_{g}_bajo"] = round(float((nivel[g] == 0)[m & y].mean()), 3)
+            R["veto"] = dict(sorted(veto.items(), key=lambda kv: -(kv[1]["baja_con_resto_parecido"] or 0)))
             out["regiones"].setdefault(reg, {})[temporada] = R
             print(f"{reg} {temporada}: {R['filas']} filas; grupos " + ", ".join(f"{g} {x['auc_prueba']}" for g, x in R["grupos"].items())
                   + (f"; juntos {R['juntos']['auc_suma']} / con interacción {R['juntos']['auc_con_interaccion']}" if "juntos" in R else ""), flush=True)
@@ -307,6 +341,9 @@ def analizar(ciudades, dias, nombres, X, Y, rnd=np.random.default_rng(7), nboot=
 if __name__ == "__main__":
     sal = sys.argv[sys.argv.index("--salida") + 1] if "--salida" in sys.argv else None
     c, d, n, X, Y = cargar()
+    if MODO == "anterior":   # todo del día anterior (lo que ya se sabe la víspera)
+        X[:, 1:, :] = X[:, :-1, :]; X[:, 0, :] = np.nan
+    print(f"VERDAD={VERDAD} MODO={MODO} entrena {ENTRENA} prueba {PRUEBA} fuera {sorted(EXCLUIR)}", flush=True)
     print(f"cargado: {len(c)} ciudades × {len(d)} días × {len(n)} variables; con dato {np.isfinite(X).mean():.0%}", flush=True)
     for v in n:
         f = np.isfinite(X[:, :, n.index(v)]).mean()
