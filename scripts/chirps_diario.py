@@ -6,7 +6,10 @@ from datetime import date, timedelta
 import rasterio
 AQUI = os.path.dirname(os.path.abspath(__file__))
 P = list(json.load(open(os.path.join(AQUI, "puntos_clima.json"))).items())
-U = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/rnl/{y}/chirps-v3.0.rnl.{y}.{m:02d}.{d:02d}.tif"
+# CHIRPS_PROD=sat: el mismo total de 5 días repartido con el satélite (IMERG, 1998 en adelante) en vez de ERA5; sirve de
+# verdad independiente para comparar con ERA5 (verificador del Atlas, 20 nov: el reparto "rnl" copia los días de ERA5).
+PROD = os.environ.get("CHIRPS_PROD", "rnl")
+U = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/" + PROD + "/{y}/chirps-v3.0." + PROD + ".{y}.{m:02d}.{d:02d}.tif"
 y0, y1, sal = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
 out = {n: {} for n, _ in P}; faltan = []
 d = date(y0, 1, 1)
