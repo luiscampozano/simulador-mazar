@@ -1,0 +1,52 @@
+# Lluvia diaria CHIRPS v3 repartida con satélite ("sat", IMERG; 1998–hoy) en las ciudades del clima de DataLab Ec.
+# Verdad independiente de ERA5 para el análisis de la Serie R (la versión "rnl" reparte los días con ERA5). A mano.
+name: Clima · historial diario CHIRPS (satélite)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        tramo: ["1998 2000", "2001 2003", "2004 2006", "2007 2009", "2010 2012", "2013 2015", "2016 2018", "2019 2021", "2022 2024", "2025 2026"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet rasterio
+      - env: { CHIRPS_PROD: sat }
+        run: python3 scripts/chirps_diario.py ${{ matrix.tramo }} parte.json
+      - uses: actions/upload-artifact@v4
+        with: { name: "parte-${{ strategy.job-index }}", path: parte.json }
+  unir:
+    needs: bajar
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: partes }
+      - name: Unir y guardar
+        run: |
+          python3 - <<'PY'
+          import json, glob, os
+          todo, faltan = {}, []
+          for f in sorted(glob.glob("partes/*/parte.json")):
+              d = json.load(open(f)); faltan += d["faltan"]
+              for c, s in d["ciudades"].items(): todo.setdefault(c, {}).update(s)
+          os.makedirs("historial", exist_ok=True)
+          json.dump({"fuente": "CHIRPS v3.0 diario (sat: reparto con IMERG), Climate Hazards Center UCSB", "faltan": sorted(faltan),
+                     "ciudades": {c: dict(sorted(s.items())) for c, s in todo.items()}}, open("/tmp/chirps_sat.json", "w"), separators=(",", ":"))
+          print({c: len(s) for c, s in list(todo.items())[:3]}, "faltan", len(faltan))
+          PY
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main && git checkout -q -f -B h origin/main
+            cp /tmp/chirps_sat.json historial/chirps_sat_diario.json
+            git add historial/chirps_sat_diario.json && git commit -q -m "Historial diario CHIRPS satélite [skip ci]" || exit 0
+            git push -q origin h:main && exit 0; sleep $((RANDOM % 15 + 5))
+          done
+          exit 1
