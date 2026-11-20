@@ -1,7 +1,7 @@
 """Lluvia diaria CHIRPS v3 (rnl: total de 5 días repartido con ERA5; 1981 en adelante) en los puntos de las ciudades del
 clima de DataLab Ec. Corre en GitHub Actions (repo público): baja cada archivo diario global (~16 MB), lee los puntos y lo
 borra. Uso: python3 scripts/chirps_diario.py AÑO_DESDE AÑO_HASTA salida.json"""
-import json, os, sys, time, urllib.request
+import json, os, socket, sys, time, urllib.request
 from datetime import date, timedelta
 import rasterio
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +9,7 @@ P = list(json.load(open(os.path.join(AQUI, "puntos_clima.json"))).items())
 # CHIRPS_PROD=sat: el mismo total de 5 días repartido con el satélite (IMERG, 1998 en adelante) en vez de ERA5; sirve de
 # verdad independiente para comparar con ERA5 (verificador del Atlas, 20 nov: el reparto "rnl" copia los días de ERA5).
 PROD = os.environ.get("CHIRPS_PROD", "rnl")
+socket.setdefaulttimeout(120)   # sin esto una descarga colgada traba la tarea hasta su límite (20 nov: 3 tramos >4 h)
 U = "https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/" + PROD + "/{y}/chirps-v3.0." + PROD + ".{y}.{m:02d}.{d:02d}.tif"
 y0, y1, sal = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
 out = {n: {} for n, _ in P}; faltan = []
@@ -18,9 +19,11 @@ while d <= min(date(y1, 12, 31), date.today() - timedelta(days=30)):
     for i in range(4):
         try:
             urllib.request.urlretrieve(U.format(y=d.year, m=d.month, d=d.day), f)
+            dia = {}
             with rasterio.open(f) as r:
                 for (n, _), v in zip(P, r.sample([(lo, la) for _, (la, lo) in P])):
-                    x = float(v[0]); out[n][d.isoformat()] = round(x, 1) if x >= 0 else None
+                    x = float(v[0]); dia[n] = round(x, 1) if x >= 0 else None
+            for n, x in dia.items(): out[n][d.isoformat()] = x   # el día entra completo o no entra
             ok = True; break
         except Exception as e:
             if "404" in str(e): break
