@@ -1,0 +1,49 @@
+# Serie R · rejilla desde ARCO-ERA5 (copia pública de ERA5 en Google Cloud): sin la cola del CDS (Luis, 20 nov 2026).
+# Mismos archivos r/g_AAAA_{s,p}N.json.gz en la rama serie-r que hace serie_r.py; los pedazos posteriores al fin de ARCO
+# (~5 meses de atraso) los sigue bajando serie-r.yml desde Copernicus. Cada tarea toma uno de cada N pedazos que faltan.
+name: Serie R · ARCO
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "43 */6 * * *"     # retoma lo que haya quedado; si no falta nada, termina en segundos
+permissions:
+  contents: write
+concurrency: { group: serie-arco, cancel-in-progress: false }
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        include:
+          - { tipo: s, n: 0, de: 4 }
+          - { tipo: s, n: 1, de: 4 }
+          - { tipo: s, n: 2, de: 4 }
+          - { tipo: s, n: 3, de: 4 }
+          - { tipo: p, n: 0, de: 16 }
+          - { tipo: p, n: 1, de: 16 }
+          - { tipo: p, n: 2, de: 16 }
+          - { tipo: p, n: 3, de: 16 }
+          - { tipo: p, n: 4, de: 16 }
+          - { tipo: p, n: 5, de: 16 }
+          - { tipo: p, n: 6, de: 16 }
+          - { tipo: p, n: 7, de: 16 }
+          - { tipo: p, n: 8, de: 16 }
+          - { tipo: p, n: 9, de: 16 }
+          - { tipo: p, n: 10, de: 16 }
+          - { tipo: p, n: 11, de: 16 }
+          - { tipo: p, n: 12, de: 16 }
+          - { tipo: p, n: 13, de: 16 }
+          - { tipo: p, n: 14, de: 16 }
+          - { tipo: p, n: 15, de: 16 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: serie-r, path: _serie_r }
+      - run: python3 -m pip install --quiet numcodecs numpy
+      - env: { SERIE_DATOS: "${{ github.workspace }}/_serie_r", ARCO_HILOS: "16" }
+        run: |
+          git -C _serie_r config user.name "datalab-robot" && git -C _serie_r config user.email "datalab-robot@users.noreply.github.com"
+          python3 scripts/serie_arco.py lote ${{ matrix.tipo }} ${{ matrix.n }} ${{ matrix.de }} 300
