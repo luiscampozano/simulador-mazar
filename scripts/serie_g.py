@@ -238,9 +238,9 @@ def dosis(pun, mm, fuerte, tr, te, yr, rnd, tabla3d=False):
             r[k] = (float(spearmanr(v[m], mm[m]).statistic), auc(v[m], fuerte[m]))
         return r
     base = medir(ok)
-    uy = np.unique(yr[ok]); bo = {k: [] for k in idx}
-    for _ in range(100):
-        ss = rnd.choice(uy, len(uy)); m = ok & np.isin(yr, ss)
+    uy = np.unique(yr[ok]); bo = {k: [] for k in idx}; por = {u: np.where(ok & (yr == u))[0] for u in uy}
+    for _ in range(100):   # con reposición: un año elegido dos veces cuenta dos veces (verificador, 20 nov)
+        m = np.concatenate([por[u] for u in rnd.choice(uy, len(uy))])
         r = medir(m)
         for k in idx: bo[k].append((r[k][0] - r["suma"][0], r[k][1] - r["suma"][1]))
     out["forma"] = {k: {"rho_mm": round(base[k][0], 3), "auc_fuerte": round(base[k][1], 3),
