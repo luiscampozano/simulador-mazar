@@ -26,7 +26,7 @@ REGIONES = {
 }
 # Grupos (nombres neutros). Variable: (origen, punto, clave/función). "c" = la propia ciudad.
 G = {
-    "G1": ["tcwv", "cape_max", "cin_min", "hr850", "hr700", "hr500", "suelo", "lcc", "td2", "t2_max", "sol_man", "lhf",
+    "G1": ["tcwv", "cape_max", "cin_min", "hr850", "hr700", "hr500", "suelo_ayer", "lcc", "td2", "t2_max", "sol_man", "lhf_ayer",
            "sst_golfo", "sst_golfo_menos_humboldt", "sst_galapagos", "tcwv_choco", "tcwv_amazonia", "tcwv_galapagos"],
     "G3": ["w500_t", "w500_d", "w700_t", "w850_t", "conv850_t", "blh_max", "zc81_max", "zc81_lat", "u850_81o", "u850_choco",
            "v850_choco", "u850_golfo"],
@@ -59,6 +59,8 @@ def cargar():
     nombres = [v for g in G.values() for v in g]
     vi = {v: i for i, v in enumerate(nombres)}
     X = np.full((len(ciudades), len(dias), len(nombres)), np.nan, dtype=np.float32)
+    global SUELO, LHF
+    SUELO = np.full((len(ciudades), len(dias)), np.nan, dtype=np.float32); LHF = SUELO.copy()
     Y = np.full((len(ciudades), len(dias)), np.nan, dtype=np.float32)
     for a, c in enumerate(ciudades):
         for k, v in chirps[c].items():
@@ -86,6 +88,7 @@ def cargar():
                 if not p: continue
                 for k2, v2 in p.items():
                     if k2 in vi and v2 is not None: X[a, i, vi[k2]] = v2
+                if p.get("suelo") is not None: SUELO[a, i] = p["suelo"]
                 for nom, val in (("hr850", _m(p, "hr850")), ("hr700", _m(p, "hr700")), ("hr500", _m(p, "hr500")),
                                  ("u200", _m(p, "u200"))):
                     if val is not None: X[a, i, vi[nom]] = val
@@ -111,8 +114,9 @@ def cargar():
         for k, v in sc.items():
             i = di.get(k)
             if i is None: continue
-            for k2 in ("td2", "t2_max", "sol_man", "lhf", "blh_max"):
+            for k2 in ("td2", "t2_max", "sol_man", "blh_max"):
                 if v.get(k2) is not None: X[a, i, vi[k2]] = v[k2]
+            if v.get("lhf") is not None: LHF[a, i] = v["lhf"]
             if v.get("msl") is not None and ("msl_anticiclon", i) in comun:
                 X[a, i, vi["grad_anticiclon"]] = comun[("msl_anticiclon", i)] - v["msl"]
     # MJO
@@ -125,6 +129,10 @@ def cargar():
                 comun[("mjo_amp", di[k])] = float(p[6]); comun[("mjo_rmm1", di[k])] = float(p[3]); comun[("mjo_rmm2", di[k])] = float(p[4])
     except Exception: pass
     for (nom, i), val in comun.items(): X[:, i, vi[nom]] = val
+    # Lo que la lluvia del mismo día moja o enfría (suelo, calor latente) se usa del DÍA ANTERIOR: si no, la "importancia"
+    # sería la propia lluvia (circularidad). Revisión 20 nov.
+    X[:, 1:, vi["suelo_ayer"]] = SUELO[:, :-1]; X[:, 0, vi["suelo_ayer"]] = np.nan
+    X[:, 1:, vi["lhf_ayer"]] = LHF[:, :-1]; X[:, 0, vi["lhf_ayer"]] = np.nan
     return ciudades, dias, nombres, X, Y
 
 
@@ -190,6 +198,10 @@ def analizar(ciudades, dias, nombres, X, Y, rnd=np.random.default_rng(7), nboot=
             A = np.array([a for a, _ in filas]); I = np.array([i for _, i in filas])
             y = F[A, I]; ok = V[A, I]; Zr = Z[A, I, :]; yr = anio[I]
             tr = ok & (yr <= ENTRENA[1]); te = ok & (yr >= PRUEBA[0])
+            if y[ok].mean() < 0.02:   # Galápagos de junio a diciembre: casi nunca hay día fuerte (garúa); no alcanza
+                out["regiones"].setdefault(reg, {})[temporada] = {"filas": int(ok.sum()), "tasa_dia_fuerte": round(float(y[ok].mean()), 3),
+                                                                   "nota": "muy pocos días fuertes: no se analiza"}
+                continue
             R = {"filas": int(ok.sum()), "dias": int(len(set(I[ok]))), "tasa_dia_fuerte": round(float(y[ok].mean()), 3), "variables": {}, "grupos": {}}
             # 1) cada variable: AUC fuera de muestra (signo aprendido en entrenamiento), IC90 por años, p por permutación de años
             ps = []
