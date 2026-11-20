@@ -293,6 +293,12 @@ def parte_rejilla(tipo, minutos):
     sigan en la cola los retoma la próxima corrida."""
     c, t0, hay = cliente(), time.time(), existentes()
     pend = [(a, t, m) for a, t, m in pedazos(tipo) if f"r/g_{a}_{t}.json.gz" not in hay]
+    try:   # lo que ya cubre ARCO-ERA5 lo baja serie_arco.py sin cola: al CDS solo se le piden los meses recientes
+        from serie_arco import fin_arco
+        fa = fin_arco(); pend = [(a, t, m) for a, t, m in pend if date(a + (m[-1] == 12), m[-1] % 12 + 1, 1) > fa + timedelta(1)]
+        print(f"{tipo}: ARCO cubre hasta {fa}; al CDS solo lo posterior", flush=True)
+    except Exception as e:
+        print("ARCO no respondió; se piden todos al CDS:", str(e)[:120], flush=True)
     conj = pedido_de(*pend[0])[0] if pend else None
     print(f"{tipo}: faltan {len(pend)} pedazos; {EN_COLA} a la vez", flush=True)
     activos, fallidos, rech = {}, set(), {}   # rel -> (remoto, anio, tag, meses); rech: rechazos por pedazo

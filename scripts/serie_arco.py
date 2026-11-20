@@ -4,7 +4,7 @@ ARCO no trae humedad relativa ni divergencia en niveles: la HR se calcula de q y
 y la divergencia con diferencias centradas de u y v en la malla de 0,25°. Termina ~5 meses atrás (valid_time_stop): lo más
 reciente sigue viniendo del CDS.
 Uso: python3 scripts/serie_arco.py s 1982 1 [--dias N] [--salida f.json]   (un pedazo, para probar)\n     python3 scripts/serie_arco.py lote p 3 20 300   (tarea 3 de 20, hasta 300 min; guarda en la rama serie-r)"""
-import argparse, json, math, os, sys, time, urllib.request
+import argparse, json, math, os, subprocess, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
@@ -12,7 +12,7 @@ import numcodecs
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from serie_r import AREA, LATS_81, NIVELES, PUNTOS, RHO, existentes, fin_datos, guardar, pedazos   # noqa: E402
+from serie_r import AREA, DATOS, LATS_81, NIVELES, PUNTOS, RHO, existentes, fin_datos, guardar, pedazos   # noqa: E402
 AREA_N, AREA_O, AREA_S, AREA_E = AREA
 
 BASE = "https://storage.googleapis.com/gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
@@ -159,7 +159,8 @@ def lote(tipo, n, de, minutos, hilos):
     for a, t, m in mios:
         if time.time() - t0 > minutos * 60: print("  se acabó el tiempo; sigue la próxima corrida", flush=True); break
         rel = f"r/g_{a}_{t}.json.gz"
-        if rel in existentes(): continue          # lo bajó otra tarea (o el CDS) mientras tanto
+        subprocess.run(["git", "fetch", "-q", "origin", "serie-r"], cwd=DATOS, capture_output=True)
+        if rel in existentes(): continue          # lo bajó otra tarea (o el CDS, que trae r y d reales) mientras tanto
         t1 = time.time()
         try:
             r = pedazo(tipo, a, int(t[1:]), hilos=hilos)
