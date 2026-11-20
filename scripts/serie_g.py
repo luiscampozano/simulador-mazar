@@ -123,7 +123,7 @@ def cargar():
             i = di.get(k)
             if i is None: continue
             for k2 in ("td2", "t2_max", "sol_man", "blh_max"):
-                if v.get(k2) is not None: X[a, i, vi[k2]] = v[k2]
+                if k2 in vi and v.get(k2) is not None: X[a, i, vi[k2]] = v[k2]
             if v.get("lhf") is not None: LHF[a, i] = v["lhf"]
             if v.get("msl") is not None and ("msl_anticiclon", i) in comun:
                 X[a, i, vi["grad_anticiclon"]] = comun[("msl_anticiclon", i)] - v["msl"]
