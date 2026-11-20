@@ -4070,6 +4070,19 @@ CANDIDATOS["sin_autoajuste_sesgo65_dia3"] = {
                  "sigue muy pesimista (−3,3 y −5,4 m), así que vale medirlo."}
 
 
+def c_sin_autoajuste_sesgo50_dia5(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, lambda P_, c_, m_: _sesgo_plazo(P_, c_, m_, 0.5, desde=4))
+
+
+CANDIDATOS["sin_autoajuste_sesgo50_dia5"] = {
+    "f": c_sin_autoajuste_sesgo50_dia5, "promocion": "luis", "origen": "Gemini 2026-11-19",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 5",
+    "hipotesis": "Sin autoajuste y la mitad del sesgo por plazo desde el índice 4: igual a sin_autoajuste hasta el día 4 (+17,7 % a 1 día, "
+                 "162 casos, al 20 nov) y corrige el pesimismo de largo plazo que lo deja en 'empeora a largo plazo' (−7,3 % a 7 días, "
+                 "−31 % a 14). El día 5 ya recibe parte de la corrección (+17 cm el 20 nov; a 5 días sin_autoajuste 0,550 vs 0,557 m del "
+                 "titular). Revisor 20 nov: armado con piezas existentes (misma memoria que el código de Gemini). Si se promueve, el robot "
+                 "calcula la memoria después de aplicar_titular (habría que tocar robot.py)."}
+
 # ---------------------------------------------------------------- Cerebro de Mazar 19 nov (aprobación permanente de Luis, 7 nov)
 _OR_C19 = "cerebro 2026-11-19"
 
@@ -4249,3 +4262,125 @@ _cand_3nov("lideres_autoajuste_largo", c_lideres_autoajuste_largo, "Líderes: ba
            "Cerebro de Mazar 19 nov: lideres_4 con sin_autoajuste_y_autoajuste_largo (el mejor a 1 día con > 100 casos: +23,3 %, 132) "
            "en vez de sin_autoajuste_sesgo50_largo; el factor de autoajuste es lo más ligado al signo del error (−0,85). Sin piezas "
            "de madrugada (mazar_noche_dia0_eta −386 %).", origen=_OR_C19)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 20 nov (aprobación permanente de Luis, 7 nov)
+_OR_C20 = "cerebro 2026-11-20"
+_RIOS_SIN_EMBALSE = ("San Francisco", "Agoyán", "Minas San Francisco", "Delsitanisagua")
+
+
+def c_puente_sabado_domingo(P, ctx, mod):
+    """Idea 'puente_sabado_domingo' (cerebro 20 nov): el sábado que sigue a un viernes de descanso nacional (días 0–14) Mazar
+    turbina como un domingo. Ajuste por el reparo del retador (Carbon, 20 nov: 'fijar 777 MWh ignora a Coca'): el MWh del
+    domingo se corrige por Coca medida, como feriado_domingo_coca_medida (_objetivo_domingo_coca). El viernes anterior se
+    reconoce con manual.feriados (día 0, cuyo viernes ya pasó) o con ctx.feriados (días 1–14)."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy_dt = _ts_dt(ts).date(); hoy = hoy_dt.isoformat()
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    fer_man = set((manual.get("feriados") or {}).keys())
+    dias = []
+    for k in range(15):
+        if (ctx.get("diaSemana0", 1) + k) % 7 != 6:          # sábado (0 = domingo)
+            continue
+        if k == 0:
+            vie = (hoy_dt - timedelta(days=1)).isoformat() in fer_man
+        else:
+            vie = _es_feriado_futuro(ctx, k - 1)
+        if vie:
+            dias.append(k)
+    if not dias:
+        return P, ctx, {"memoria": list(ctx.get("memoria") or []), "dias_objetivo": []}
+    mwh, info = _objetivo_domingo_coca(ctx, mod, hoy)
+    if mwh is None:
+        return None
+    r = _fijar_mazar(ctx, mod, {k: mwh for k in dias})
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, dict(info, memoria=m, dias_objetivo=det)
+
+
+def c_rios_sin_embalse_cenace(P, ctx, mod):
+    """Idea 'rios_sin_embalse_cenace' (cerebro 20 nov, pieza): días 0–1, suma a 'otras' d = (San Francisco + Agoyán + Minas San
+    Francisco + Delsitanisagua, media Cenace de hoy desde las 00:00, mínimo 6 h) − la base que usa el titular para esas
+    centrales (el último día con ≥ 20 h, como otras_rios en el robot), si |d| ≥ 100 MW; el día 1 la mitad. Se aplica en la
+    parte de 'otras' que sigue a su río (ctx.otrasRios): Δserie = d ÷ (other × frac). Reparo del retador (20 nov): 'mover
+    otras de hoy se cancela en demanda'; se mide igual."""
+    ts = mod.get("_ts")
+    otr = ctx.get("otrasRios") or {}
+    other = float(P.get("other") or 0)
+    frac = float(otr.get("frac") or 0); se = list(otr.get("serie") or [])
+    if not ts or other <= 0 or frac <= 0 or len(se) < 3:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    pl = (_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}
+    x = pl.get(hoy) or {}
+    h = float(x.get("horas") or 0)
+    if h < 6:
+        return None
+    base = next((p for d, p in sorted(pl.items(), reverse=True) if float(p.get("horas") or 0) >= 20), None)
+    if not base:
+        return None
+    mw_hoy = sum(float(x.get(n) or 0) for n in _RIOS_SIN_EMBALSE) / h
+    mw_base = sum(float(base.get(n) or 0) for n in _RIOS_SIN_EMBALSE) / float(base["horas"])
+    d = mw_hoy - mw_base
+    info = {"mw_hoy": round(mw_hoy, 1), "horas_hoy": h, "mw_base": round(mw_base, 1), "d_mw": round(d, 1)}
+    if abs(d) < 100:
+        return P, ctx, dict(info, otrasRios=otr, aplicado=False)
+    k = other * frac
+    se[0] = round(se[0] + d / k, 4); se[1] = round(se[1] + 0.5 * d / k, 4)
+    ctx["otrasRios"] = {"frac": frac, "serie": se}
+    return P, ctx, dict(info, otrasRios=ctx["otrasRios"], aplicado=True)
+
+
+def c_mazar_media_2d_media(P, ctx, mod):
+    """mazar_media_2d corregido por el reparo del retador (Carbon, 20 nov: 'su base mazar_media_2d pierde −13 % con el bug de
+    caudal instantáneo'): días 0–1 laborales = MWh medio de los 2 últimos laborales del Celec, llevado con _fijar_mazar (turbinado
+    MEDIO de cada día del titular, como los candidatos del 19 nov), no con el caudal del instante t = k."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    hoy = _ts_dt(ts).date().isoformat()
+    dias = _laborales_previos(hoy, manual, 2)
+    if len(dias) < 2:
+        return None
+    mwh = sum(float(x["maz"]) for _, x in dias) / 2.0
+    obj = {k: mwh for k in (0, 1) if (ctx.get("diaSemana0", 1) + k) % 7 not in (0, 6) and not _es_feriado_futuro(ctx, k)}
+    if not obj:
+        return P, ctx, {"memoria": list(ctx.get("memoria") or []), "dias_objetivo": []}
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "mazar_media_mwh": round(mwh, 1), "dias_base": [d for d, _ in dias], "dias_objetivo": det}
+
+
+c_mazar_media_2d_media_eta = _con_eta(c_mazar_media_2d_media)
+
+
+def c_media2d_eta_autoajuste_largo(P, ctx, mod):
+    """Idea 'media2d_eta_autoajuste_largo' (cerebro 20 nov): mazar_media_2d_eta + sin_autoajuste_y_autoajuste_largo, con la
+    pieza de 48 h corregida (turbinado medio del día, reparo del retador)."""
+    return _combinar(P, ctx, mod, c_mazar_media_2d_media_eta, c_sin_autoajuste_y_autoajuste_largo)
+
+
+_cand_3nov("puente_sabado_domingo", c_puente_sabado_domingo, "Puente: el sábado tras un viernes feriado, Mazar como domingo (con Coca medida)",
+           "Cerebro de Mazar 20 nov (espera +3 % a 1 día): el titular pone ~1.600 MWh el sábado 21 y ~1.250 el domingo 22; los "
+           "domingos midieron 248–777 MWh. Tres puentes en seis semanas (21 nov, 26 dic, 2 ene). Por el reparo del retador, el MWh "
+           "del domingo se corrige por Coca medida (como feriado_domingo_coca_medida), no se fija en 777.", origen=_OR_C20)
+_cand_3nov("rios_sin_embalse_cenace", c_rios_sin_embalse_cenace, "Ríos sin embalse medidos hoy en Cenace (días 0–1)",
+           "Cerebro de Mazar 20 nov (pieza, espera +5 % a 1 día): el 19 nov San Francisco, Agoyán, Minas San Francisco y "
+           "Delsitanisagua subieron 262 MW y Paute bajó 210 (causa del investigador). Si la media de hoy en Cenace (≥ 6 h) se aparta "
+           "≥ 100 MW de la base del titular, se suma a 'otras' el día 0 y la mitad el día 1. Reparo del retador: puede cancelarse "
+           "en la demanda; se mide.", origen=_OR_C20)
+_cand_3nov("mazar_media_2d_eta_media", c_mazar_media_2d_media_eta, "Mazar 48 h = media de 2 laborales (turbinado medio, eficiencia medida)",
+           "Pieza corregida de mazar_media_2d_eta por el reparo del retador (20 nov): la base usaba el caudal del instante t = k "
+           "(bug ya corregido el 19 nov en los candidatos que fijan MWh). Mide si la corrección cambia el +17,6 % de "
+           "mazar_media_2d_eta (44 casos).", origen=_OR_C20 + " (reparo del retador)")
+_cand_3nov("media2d_eta_autoajuste_largo", c_media2d_eta_autoajuste_largo, "Mazar 48 h media de 2 laborales + sin autoajuste corto y autoajuste largo",
+           "Cerebro de Mazar 20 nov (combinación de 2, espera +10 % a 1 día): sin_autoajuste_y_autoajuste_largo (+19,9 %, 156 casos) "
+           "+ la pieza corregida mazar_media_2d_eta_media (aún sin casos; su versión sin corregir lleva +17,6 %, 44 casos); la mejora "
+           "esperada no está respaldada hasta que la pieza corregida sume días. Tocan piezas distintas (turbinado de 48 h y tendencia).", origen=_OR_C20)
