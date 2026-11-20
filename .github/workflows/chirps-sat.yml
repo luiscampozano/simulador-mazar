@@ -9,6 +9,7 @@ on:
         default: '["1998 2000", "2001 2003", "2004 2006", "2007 2009", "2010 2012", "2013 2015", "2016 2018", "2019 2021", "2022 2024", "2025 2026"]'
 permissions:
   contents: write
+concurrency: { group: chirps-sat, cancel-in-progress: false }
 jobs:
   bajar:
     runs-on: ubuntu-latest
@@ -21,8 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m pip install --quiet rasterio
-      - env: { CHIRPS_PROD: sat }
-        run: python3 scripts/chirps_diario.py ${{ matrix.tramo }} parte.json
+      - env: { CHIRPS_PROD: sat, TRAMO: "${{ matrix.tramo }}" }
+        run: |
+          [[ "$TRAMO" =~ ^[0-9]{4}\ [0-9]{4}$ ]] || { echo "tramo inválido: $TRAMO"; exit 1; }
+          python3 scripts/chirps_diario.py $TRAMO parte.json
       - uses: actions/upload-artifact@v4
         with: { name: "parte-${{ strategy.job-index }}", path: parte.json }
   unir:
@@ -35,28 +38,31 @@ jobs:
         with: { path: partes }
       - name: Unir y guardar
         run: |
-          python3 - <<'PY'
+          # la unión se hace sobre el main del momento de guardar (no sobre la copia del inicio del run)
+          cat > /tmp/unir.py <<'PY'
           import json, glob, os
           todo, faltan = {}, []
           if os.path.exists("historial/chirps_sat_diario.json"):   # unir con lo ya bajado (reintento de tramos)
               v = json.load(open("historial/chirps_sat_diario.json")); faltan = list(v.get("faltan") or [])
               for c, s in v["ciudades"].items(): todo.setdefault(c, {}).update(s)
-          bajados = set()
-          for f in sorted(glob.glob("partes/*/parte.json")):
+          bajados, partes = set(), sorted(glob.glob("partes/*/parte.json"))
+          for f in partes:
               d = json.load(open(f)); faltan += d["faltan"]
               bajados |= {k for s in d["ciudades"].values() for k in s}
               for c, s in d["ciudades"].items(): todo.setdefault(c, {}).update(s)
-          os.makedirs("historial", exist_ok=True)
           faltan = sorted(set(faltan) - bajados)
+          os.makedirs("historial", exist_ok=True)
           json.dump({"fuente": "CHIRPS v3.0 diario (sat: reparto con IMERG), Climate Hazards Center UCSB", "faltan": faltan,
-                     "ciudades": {c: dict(sorted(s.items())) for c, s in todo.items()}}, open("/tmp/chirps_sat.json", "w"), separators=(",", ":"))
-          print({c: len(s) for c, s in list(todo.items())[:3]}, "faltan", len(faltan))
+                     "ciudades": {c: dict(sorted(s.items())) for c, s in todo.items()}}, open("historial/chirps_sat_diario.json", "w"), separators=(",", ":"))
+          print("partes:", len(partes), {c: len(s) for c, s in list(todo.items())[:3]}, "faltan", len(faltan))
           PY
+          echo "tramos pedidos: $TRAMOS"
           git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch -q origin main && git checkout -q -f -B h origin/main
-            cp /tmp/chirps_sat.json historial/chirps_sat_diario.json
+            python3 /tmp/unir.py
             git add historial/chirps_sat_diario.json && git commit -q -m "Historial diario CHIRPS satélite [skip ci]" || exit 0
             git push -q origin h:main && exit 0; sleep $((RANDOM % 15 + 5))
           done
           exit 1
+        env: { TRAMOS: "${{ inputs.tramos }}" }

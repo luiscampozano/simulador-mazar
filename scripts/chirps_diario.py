@@ -19,9 +19,11 @@ while d <= min(date(y1, 12, 31), date.today() - timedelta(days=30)):
     for i in range(4):
         try:
             urllib.request.urlretrieve(U.format(y=d.year, m=d.month, d=d.day), f)
+            dia = {}
             with rasterio.open(f) as r:
                 for (n, _), v in zip(P, r.sample([(lo, la) for _, (la, lo) in P])):
-                    x = float(v[0]); out[n][d.isoformat()] = round(x, 1) if x >= 0 else None
+                    x = float(v[0]); dia[n] = round(x, 1) if x >= 0 else None
+            for n, x in dia.items(): out[n][d.isoformat()] = x   # el día entra completo o no entra
             ok = True; break
         except Exception as e:
             if "404" in str(e): break
