@@ -1,0 +1,7 @@
+{
+ "fecha": "2026-11-21",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.281,
+ "estado": "respuesta sin JSON",
+ "crudo": "```json\n{\n \"propuestas\": [\n  {\n   \"codigo\": \"def c_paute_sin_ajuste_sesgo50_largo(P, ctx, mod):\\n    s = mod.get('serieMazarBruta')\\n    if not s:\\n        return None\\n    ctx['serieMazar'] = list(s)\\n    ph = (mod.get('aciertos') or {}).get('por_horizonte') or {}\\n    pts = [(0, 0.0)]\\n    for h, v in ph.items():\\n        if (v.get('n') or 0) >= 30 and v.get('sesgo_m') is not None:\\n            pts.append((int(h), float(v['sesgo_m'])))\\n    pts.sort()\\n    if len(pts) < 3:\\n        return None\\n    c = mod.get('curva_mazar') or {'a': 3.6595, 'b': 0.1"
+}
