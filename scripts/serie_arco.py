@@ -89,7 +89,9 @@ NIV_I = ["1000", "975", "950", "925", "900", "850"]   # tipo "i" (Luis 20 nov): 
 
 def pedazo_i(anio, k, dias=None, hilos=16):
     """Capa baja (1000–850 hPa) a las 07 h (12 UTC, sufijo _m) y 13 h (18 UTC, _d) de Ecuador: temperatura (°C) y humedad
-    relativa (%) por nivel. Sirve para ver la inversión térmica ("tapa") que deja el anticiclón del Pacífico en verano."""
+    relativa (%) por nivel. Sirve para ver la inversión térmica ("tapa") que deja el anticiclón del Pacífico en verano.
+    Ojo: en la Sierra estos niveles quedan bajo el terreno (ERA5 los extrapola): usar solo Costa y Amazonía.
+    t850_d y hr850_d coinciden con las del pedazo p (mismo nivel y hora)."""
     meses = ([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])[k - 1]
     d0 = date(anio, meses[0], 1); d1 = date(anio + (meses[-1] == 12), meses[-1] % 12 + 1, 1)
     fechas = [d0 + timedelta(n) for n in range((d1 - d0).days)][:dias]
@@ -112,7 +114,7 @@ def pedazo_i(anio, k, dias=None, hilos=16):
             for a, n in enumerate(NIV_I):
                 t, q = float(G["t"][a][i, j]), float(G["q"][a][i, j])
                 if t == t: out.setdefault(d, {}).setdefault(kk, {})[f"t{n}{suf}"] = round(t - 273.15, 2)
-                if t == t and q == q: out[d][kk][f"hr{n}{suf}"] = round(float(hr(q, t, int(n) * 100.0)), 1)
+                if t == t and q == q: out[d][kk][f"hr{n}{suf}"] = round(float(hr(q, t, int(n) * 100.0)), 2)
     return {"anio": anio, "pedazo": f"i{k}", "meses": meses,
             "fuente": "ERA5 vía ARCO-ERA5 (Google Cloud; Copernicus C3S, CC-BY 4.0), celda más cercana",
             "horas": "i: 12 UTC (_m, 07 h) y 18 UTC (_d, 13 h); niveles 1000–850 hPa", "dias": dict(sorted(out.items()))}
@@ -206,7 +208,7 @@ def lote(tipo, n, de, minutos, hilos):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "lote":    # lote <s|p> <n> <de> <minutos>
+    if sys.argv[1] == "lote":    # lote <s|p|i> <n> <de> <minutos>
         lote(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), float(sys.argv[5]), int(os.environ.get("ARCO_HILOS", "16")))
         sys.exit(0)
     ap = argparse.ArgumentParser()
