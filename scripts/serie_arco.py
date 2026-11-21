@@ -84,7 +84,42 @@ def div(u, v, i, j, i0=0):
     return float(dudx + dvdy)
 
 
+NIV_I = ["1000", "975", "950", "925", "900", "850"]   # tipo "i" (Luis 20 nov): la "tapa" o inversión baja del verano
+
+
+def pedazo_i(anio, k, dias=None, hilos=16):
+    """Capa baja (1000–850 hPa) a las 07 h (12 UTC, sufijo _m) y 13 h (18 UTC, _d) de Ecuador: temperatura (°C) y humedad
+    relativa (%) por nivel. Sirve para ver la inversión térmica ("tapa") que deja el anticiclón del Pacífico en verano."""
+    meses = ([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])[k - 1]
+    d0 = date(anio, meses[0], 1); d1 = date(anio + (meses[-1] == 12), meses[-1] % 12 + 1, 1)
+    fechas = [d0 + timedelta(n) for n in range((d1 - d0).days)][:dias]
+    L = niveles(); lv = [L.index(int(n)) for n in NIV_I]
+    out = {}
+    def una(t):
+        hora, v = t
+        return hora, v, campo(PRES[v], hora, True)[lv, I0:I1, J0:J1].copy()
+    horas = [datetime(f.year, f.month, f.day, h) for f in fechas for h in (12, 18)]
+    with ThreadPoolExecutor(hilos) as ex:
+        F = {}
+        for hora, v, a in ex.map(una, [(h, v) for h in horas for v in ("t", "q")]): F.setdefault(hora, {})[v] = a
+    for hora in horas:
+        G = F.pop(hora, None)
+        if not G or "t" not in G or "q" not in G: continue
+        d, suf = dia_local(hora), ("_m" if hora.hour == 12 else "_d")
+        if not d.startswith(str(anio)): continue
+        for kk, (i, j) in CELDAS.items():
+            i, j = i - I0, j - J0
+            for a, n in enumerate(NIV_I):
+                t, q = float(G["t"][a][i, j]), float(G["q"][a][i, j])
+                if t == t: out.setdefault(d, {}).setdefault(kk, {})[f"t{n}{suf}"] = round(t - 273.15, 2)
+                if t == t and q == q: out[d][kk][f"hr{n}{suf}"] = round(float(hr(q, t, int(n) * 100.0)), 1)
+    return {"anio": anio, "pedazo": f"i{k}", "meses": meses,
+            "fuente": "ERA5 vía ARCO-ERA5 (Google Cloud; Copernicus C3S, CC-BY 4.0), celda más cercana",
+            "horas": "i: 12 UTC (_m, 07 h) y 18 UTC (_d, 13 h); niveles 1000–850 hPa", "dias": dict(sorted(out.items()))}
+
+
 def pedazo(tipo, anio, k, dias=None, hilos=16):
+    if tipo == "i": return pedazo_i(anio, k, dias, hilos)
     grupos = ([1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]) if tipo == "s" else ([1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12])
     meses = grupos[k - 1]
     d0 = date(anio, meses[0], 1)
@@ -175,7 +210,7 @@ if __name__ == "__main__":
         lote(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), float(sys.argv[5]), int(os.environ.get("ARCO_HILOS", "16")))
         sys.exit(0)
     ap = argparse.ArgumentParser()
-    ap.add_argument("tipo", choices=["s", "p"]); ap.add_argument("anio", type=int); ap.add_argument("k", type=int)
+    ap.add_argument("tipo", choices=["s", "p", "i"]); ap.add_argument("anio", type=int); ap.add_argument("k", type=int)
     ap.add_argument("--dias", type=int); ap.add_argument("--hilos", type=int, default=16); ap.add_argument("--salida")
     a = ap.parse_args(); t0 = time.time()
     r = pedazo(a.tipo, a.anio, a.k, a.dias, a.hilos)

@@ -29,6 +29,13 @@ jobs:
           - { tipo: p, n: 5, de: 8 }
           - { tipo: p, n: 6, de: 8 }
           - { tipo: p, n: 7, de: 8 }
+          # tipo i (Luis 20 nov): capa baja 1000–850 hPa a las 07 h y 13 h, para la "tapa" (inversión) del verano
+          - { tipo: i, n: 0, de: 6 }
+          - { tipo: i, n: 1, de: 6 }
+          - { tipo: i, n: 2, de: 6 }
+          - { tipo: i, n: 3, de: 6 }
+          - { tipo: i, n: 4, de: 6 }
+          - { tipo: i, n: 5, de: 6 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
