@@ -4384,3 +4384,93 @@ _cand_3nov("media2d_eta_autoajuste_largo", c_media2d_eta_autoajuste_largo, "Maza
            "Cerebro de Mazar 20 nov (combinación de 2, espera +10 % a 1 día): sin_autoajuste_y_autoajuste_largo (+19,9 %, 156 casos) "
            "+ la pieza corregida mazar_media_2d_eta_media (aún sin casos; su versión sin corregir lleva +17,6 %, 44 casos); la mejora "
            "esperada no está respaldada hasta que la pieza corregida sume días. Tocan piezas distintas (turbinado de 48 h y tendencia).", origen=_OR_C20)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar 21 nov (aprobación permanente de Luis, 7 nov)
+_OR_C21 = "cerebro 2026-11-21"
+
+
+def _feriados_conocidos(manual):
+    """Feriados nacionales pasados (lista fija del laboratorio) + los del manual (pasados y futuros)."""
+    return {"2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-05-01", "2026-05-25", "2026-08-10",
+            "2026-10-09"} | set(((manual or {}).get("feriados") or {}).keys()) | FERIADOS_LAB
+
+
+def _laborales_sin_vispera(hoy, manual, n=3, atras=21):
+    """Los n últimos laborales completos del Celec ANTERIORES a hoy (_laborales_previos) que no son víspera de feriado
+    (el día siguiente no es feriado nacional conocido)."""
+    fer = _feriados_conocidos(manual)
+    out = []
+    for d, x in _laborales_previos(hoy, manual, 3 * n + 3, atras=atras):
+        sig = (datetime.fromisoformat(d) + timedelta(days=1)).date().isoformat()
+        if sig in fer: continue
+        out.append((d, x))
+        if len(out) >= n: break
+    return out
+
+
+def _dias_tras_puente(ctx, hoy, manual, kmax=15):
+    """Días k (0..kmax-1) que son el PRIMER laboral (lunes a viernes, no feriado) después de un tramo no laboral (fin de
+    semana y/o feriados) que contiene al menos un feriado nacional. Pasado: manual + lista fija; futuro: ctx.feriados."""
+    fer = _feriados_conocidos(manual)
+    d0 = datetime.fromisoformat(hoy).date(); dia0 = ctx.get("diaSemana0", 1) % 7   # 0 = domingo
+    def es_fer(k):
+        return (k >= 0 and _es_feriado_futuro(ctx, k)) or (d0 + timedelta(days=k)).isoformat() in fer
+    def laboral(k):
+        return (dia0 + k) % 7 not in (0, 6) and not es_fer(k)
+    out = []
+    for k in range(kmax):
+        if not laboral(k): continue
+        j, hubo = k - 1, False
+        while j >= k - 5 and not laboral(j):
+            hubo = hubo or es_fer(j); j -= 1
+        if hubo and j < k - 1: out.append(k)
+    return out
+
+
+def c_lunes_tras_puente_celec(P, ctx, mod):
+    """Idea 'lunes_tras_puente_celec' (cerebro 21 nov): el primer laboral después de un feriado nacional o puente (días 0–14),
+    Mazar turbina la media Celec de los 3 últimos laborales que no sean víspera de feriado (hoy 16–18 nov: 2.223,5 MWh),
+    con el turbinado MEDIO del día del titular (_fijar_mazar). Por el reparo del retador (Carbon, 21 nov: con la eficiencia del
+    titular 2.223,5 MWh dan 74,9 m³/s, menos que los 79,4 ya cargados), la conversión MWh → m³/s va con la eficiencia
+    medida (_con_eta, abajo): sin eficiencia medida (< 5 días) no corre. Si no hay ese día en el horizonte, el titular sin
+    cambios. Solo excluye la víspera inmediata del feriado (revisor 21 nov)."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    dias = _dias_tras_puente(ctx, hoy, manual)
+    if not dias:
+        return P, ctx, {"memoria": list(ctx.get("memoria") or []), "dias_objetivo": []}
+    lab = _laborales_sin_vispera(hoy, manual, 3)
+    if len(lab) < 3:
+        return None
+    base = sum(float(x["maz"]) for _, x in lab) / 3.0
+    r = _fijar_mazar(ctx, mod, {k: base for k in dias})
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "laboral_mwh": round(base, 1), "laborales": [d for d, _ in lab], "dias_objetivo_lunes": det}
+
+
+c_lunes_tras_puente_celec_eta = _con_eta(c_lunes_tras_puente_celec)
+
+
+def c_puente_completo(P, ctx, mod):
+    """Idea 'puente_completo' (cerebro 21 nov, combinación de 3): feriado_como_domingo + puente_sabado_domingo +
+    lunes_tras_puente_celec (con eficiencia medida); cada pieza toca un día distinto del puente. Sin la pieza de Coca en el
+    feriado (el cerebro: ayer restó, +11,8 frente a +16,0 %); el sábado ya va corregido por Coca medida (reparo del retador)."""
+    return _combinar(P, ctx, mod, c_feriado_como_domingo, c_puente_sabado_domingo, c_lunes_tras_puente_celec_eta)
+
+
+_cand_3nov("lunes_tras_puente_celec", c_lunes_tras_puente_celec_eta, "Primer laboral tras un puente: Mazar = media de 3 laborales sin víspera (eficiencia medida)",
+           "Cerebro de Mazar 21 nov (espera +5 % a 1 día): el lunes 23 arranca tras el primer descanso nacional medido (20–22 nov). "
+           "base_laboral_lunes tomaría el 19 nov (1.626 MWh, víspera del feriado) y lunes_laboral_cenace puede quedarse sin "
+           "referencia (serie_cenace guarda ~4 días). Media Celec de los 3 últimos laborales que no son víspera (16–18 nov: "
+           "2.223,5 MWh), con el turbinado medio del día. Reparo del retador: con la eficiencia del titular eso da 74,9 m³/s, menos "
+           "que los 79,4 ya cargados; por eso convierte con la eficiencia medida.", origen=_OR_C21)
+_cand_3nov("puente_completo", c_puente_completo, "Puente completo: feriado como domingo + sábado como domingo + primer laboral medido",
+           "Cerebro de Mazar 21 nov (combinación de 3, espera +8 % a 1 día en días de puente): feriado_como_domingo (+16,0 % el "
+           "primer día) + puente_sabado_domingo + lunes_tras_puente_celec. Sin sumar la pieza de Coca en el feriado (ayer restó). "
+           "Retador: puente_sabado_domingo ya corrige por Coca medida; calendario_medido dio 0,0 % porque no toca el día 0.", origen=_OR_C21)
