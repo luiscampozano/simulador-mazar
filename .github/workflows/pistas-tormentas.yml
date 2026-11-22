@@ -1,0 +1,42 @@
+name: Pistas de tormentas (GOES-19, reconstrucción)
+# Sigue las nubes de tormenta cada 10 min con tobac sobre imágenes públicas de GOES-19 y deja un artefacto por día.
+on:
+  workflow_dispatch:
+    inputs:
+      desde: { description: "Primer día AAAA-MM-DD", required: true }
+      hasta: { description: "Último día AAAA-MM-DD", required: true }
+permissions:
+  contents: read
+jobs:
+  dias:
+    runs-on: ubuntu-latest
+    outputs:
+      lista: ${{ steps.l.outputs.lista }}
+    steps:
+      - id: l
+        env: { D0: "${{ github.event.inputs.desde }}", D1: "${{ github.event.inputs.hasta }}" }
+        run: |
+          python3 -c "
+          import json,os,datetime as d
+          a=d.date.fromisoformat(os.environ['D0']); b=d.date.fromisoformat(os.environ['D1']); assert a<=b and (b-a).days<=45
+          print('lista='+json.dumps([(a+d.timedelta(k)).isoformat() for k in range((b-a).days+1)]))" >> "$GITHUB_OUTPUT"
+  pistas:
+    needs: dias
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        dia: ${{ fromJSON(needs.dias.outputs.lista) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q "tobac==1.6.4" "trackpy==0.7" "xarray==2026.9.0" "pandas==3.1.1" scipy h5py requests
+      - run: python3 scripts/pistas_tormentas.py "${{ matrix.dia }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pistas-${{ matrix.dia }}
+          path: salida/pistas/${{ matrix.dia }}.json
+          retention-days: 7
