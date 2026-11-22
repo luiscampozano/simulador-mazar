@@ -1,0 +1,29 @@
+name: Segura EP (zonas y eventos de inundación)
+# Capas públicas de Segura EP (Gerencia de Gestión de Riesgos, Guayaquil) en ArcGIS Online.
+# Diario (~20 s, repo público, sin costo). Sirve para verificar el orden de lluvia del 3D y la sombra de inundación.
+on:
+  schedule:
+    - cron: "41 13 * * *"     # 08:41 en Ecuador
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: { group: segura-ep, cancel-in-progress: false }
+jobs:
+  bajar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          python3 scripts/segura_ep.py
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          cp -r datos/segura_ep /tmp/segura_ep
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B s origin/main
+            mkdir -p datos/segura_ep && cp /tmp/segura_ep/* datos/segura_ep/ && git add datos/segura_ep
+            git commit -q -m "Segura EP: zonas y eventos [skip ci]" || exit 0
+            git push -q origin s:main && exit 0; sleep 5
+          done
+          exit 1
