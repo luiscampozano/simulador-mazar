@@ -28,9 +28,11 @@ def gemini(texto):
     import urllib.request, urllib.error, time
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key: return None, None
-    cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
-                         "generationConfig": {"temperature": 0.6, "maxOutputTokens": 6000}}).encode()
     for m in GG.modelos(MODELOS):
+        # auditor 22 nov: con Flash (por el tope) las respuestas del 20–22 nov llegaron cortadas a ~600 caracteres (el
+        # razonamiento interno se come los 6.000 tokens de salida) → "respuesta sin JSON". Flash cobra poco por token.
+        cuerpo = json.dumps({"contents": [{"role": "user", "parts": [{"text": texto}]}],
+                             "generationConfig": {"temperature": 0.6, "maxOutputTokens": 24000 if "flash" in m else 6000}}).encode()
         for i in range(3):
             if i: time.sleep(20 * i)
             try:
@@ -39,7 +41,9 @@ def gemini(texto):
                 with urllib.request.urlopen(req, timeout=240) as r:
                     d = json.load(r)
                 GG.anotar("auditor", m, d.get("usageMetadata", {}))
-                return m, "".join(p.get("text", "") for p in d["candidates"][0]["content"]["parts"])
+                c0 = d["candidates"][0]
+                if c0.get("finishReason") not in (None, "STOP"): print(m, "terminó por", c0.get("finishReason"), file=sys.stderr)
+                return m, "".join(p.get("text", "") for p in (c0.get("content") or {}).get("parts") or [])
             except urllib.error.HTTPError as e:
                 print(m, "HTTP", e.code, file=sys.stderr)
                 if e.code not in (500, 503): break

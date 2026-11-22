@@ -3365,6 +3365,30 @@ CANDIDATOS["coca_mitad_autoajuste_comp_largo"] = {
 F_DESGLOSE = os.path.join(DIR, "desglose_7d.json")
 
 
+def _desglose_otras_cortes(P, ctx, k, qc):
+    """'otras' (MW) y cortes (MW) que el robot usa al inicio del día k (misma fórmula que simular() en robot.py, con t = k)."""
+    out = {}
+    q0 = float(P.get("qCoca") or 0)
+    rf = min(1.35, max(0.8, qc / q0)) if q0 > 0 else 1.0
+    otr = ctx.get("otrasRios") or {}
+    se = list(otr.get("serie") or [])
+    if se:
+        sv = float(se[min(k, len(se) - 1)])
+        other = float(P.get("other") or 0) * ((1 - float(otr.get("frac") or 0)) * rf + float(otr.get("frac") or 0) * sv)
+    else:
+        other = float(P.get("other") or 0) * rf
+    out["otras_mw_aprox"] = round(other, 1)
+    plan = ctx.get("cutPlan") or []
+    dia = (ctx.get("diaSemana0", 1) + k) % 7
+    if k < len(plan) and isinstance(plan[k], (int, float)) and not isinstance(plan[k], bool):
+        cut = plan[k]
+    else:
+        cd = ctx.get("cutDias")
+        cut = P.get("cut") if (not cd or cd[dia]) else 0
+    out["cortes_mw"] = round(float(cut or 0), 1)
+    return out
+
+
 def _registrar_desglose(ts, P, ctx, par, d_tit):
     """Registro 'desglose_7d' (cerebro 13 nov): de la primera corrida de 05:00–07:59 de cada día, lo que el titular supone
     para los días 0–7 (el 0 desde el 14 nov): Paute (MW), Coca Codo (MW, aproximado con la serie diaria del río y el factor de paro), turbinado de
@@ -3388,9 +3412,14 @@ def _registrar_desglose(ts, P, ctx, par, d_tit):
         f = float(fac[min(k, len(fac) - 1)]) if fac else 1.0
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * f
         mwh = float(x["qturb"]) * 0.00981 * eta * max(20.0, float(x["cota"]) - amC) * 24
-        filas.append({"dia": k, "fecha": (d0 + timedelta(days=k)).isoformat(), "cota": round(float(x["cota"]), 2), "paute_mw": round(float(x["paute"]), 1),
-                      "coca_mw_aprox": round(ccs, 1), "q_coca_m3s": round(qc, 1), "mazar_turb_m3s": round(float(x["qturb"]), 1),
-                      "mazar_mwh_aprox": round(mwh), "q_entrada_m3s": round(float(x["qin"]), 1)})
+        fila = {"dia": k, "fecha": (d0 + timedelta(days=k)).isoformat(), "cota": round(float(x["cota"]), 2), "paute_mw": round(float(x["paute"]), 1),
+                "coca_mw_aprox": round(ccs, 1), "q_coca_m3s": round(qc, 1), "mazar_turb_m3s": round(float(x["qturb"]), 1),
+                "mazar_mwh_aprox": round(mwh), "q_entrada_m3s": round(float(x["qin"]), 1)}
+        try:   # cerebro 22 nov (registro): 'otras' y cortes por día, como los arma el robot al inicio del día (solo registro)
+            fila.update(_desglose_otras_cortes(P, ctx, k, qc))
+        except Exception:
+            pass
+        filas.append(fila)
     reg[dia] = {"ts": ts, "demanda_mw": P.get("demanda"), "otras_mw": P.get("other"), "termica_mw": P.get("therm"),
                 "importacion_mw": P.get("imp"), "dias": filas}
     _escribir(F_DESGLOSE, dict(sorted(reg.items())[-60:]))
@@ -4474,3 +4503,102 @@ _cand_3nov("puente_completo", c_puente_completo, "Puente completo: feriado como 
            "Cerebro de Mazar 21 nov (combinación de 3, espera +8 % a 1 día en días de puente): feriado_como_domingo (+16,0 % el "
            "primer día) + puente_sabado_domingo + lunes_tras_puente_celec. Sin sumar la pieza de Coca en el feriado (ayer restó). "
            "Retador: puente_sabado_domingo ya corrige por Coca medida; calendario_medido dio 0,0 % porque no toca el día 0.", origen=_OR_C21)
+
+
+# ---------------------------------------------------------------- Cerebro de Mazar e investigador 22 nov (aprobación permanente de Luis, 7 nov)
+_OR_C22 = "cerebro 2026-11-22"
+
+
+def _ultimo_sabado_celec(hoy, manual):
+    """(día, fila Celec) del último sábado ya cerrado (anterior a hoy) con maz, mol y sop, que NO siga a un feriado
+    (un sábado de puente no es la base de un 'sábado normal')."""
+    cel = _leer_json_lab(F_CELEC_DIA) or {}
+    fer = _feriados_conocidos(manual)
+    for d in sorted(cel, reverse=True):
+        if d >= hoy: continue
+        try:
+            dd = datetime.fromisoformat(d)
+        except Exception:
+            continue
+        if dd.weekday() != 5: continue
+        if (dd - timedelta(days=1)).date().isoformat() in fer: continue
+        x = cel[d] or {}
+        if all(isinstance(x.get(k), (int, float)) for k in ("maz", "mol", "sop")):
+            return d, x
+        return None, None   # el último sábado normal no tiene dato completo: no se busca uno más viejo
+    return None, None
+
+
+def c_sabado_tras_feriado(P, ctx, mod):
+    """Idea 'sabado_tras_feriado' del investigador (22 nov): el sábado que sigue a un viernes feriado nacional (días 0–14), Mazar
+    turbina el MWh del último SÁBADO normal del Celec (no el de domingo, como puente_sabado_domingo), corregido por Coca medida
+    igual que _objetivo_domingo_coca: Paute = Paute de ese sábado + (Coca de ese sábado − Coca del último día cerrado) y Mazar
+    escala con Paute. Lo demás, titular. Sin ese sábado en el horizonte no corre (revisor 22 nov)."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy_dt = _ts_dt(ts).date(); hoy = hoy_dt.isoformat()
+    manual = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    fer = _feriados_conocidos(manual)
+    dias = []
+    for k in range(15):
+        if (ctx.get("diaSemana0", 1) + k) % 7 != 6:          # sábado (0 = domingo)
+            continue
+        vie = (hoy_dt - timedelta(days=1)).isoformat() in fer if k == 0 else _es_feriado_futuro(ctx, k - 1)
+        if vie:
+            dias.append(k)
+    if not dias:
+        return None   # revisor 22 nov: sin ese sábado en el horizonte no corre (si copiara al titular, la permanencia lo retiraría antes del 26 dic)
+    d, x = _ultimo_sabado_celec(hoy, manual)
+    if not d:
+        return None
+    ayer = (hoy_dt - timedelta(days=1)).isoformat()
+    c_sab, c_ult = _coca_real_mw(d), _coca_real_mw(ayer)
+    if c_sab is None or c_ult is None:
+        return None
+    p_sab = (float(x["maz"]) + float(x["mol"]) + float(x["sop"])) / 24.0
+    if p_sab <= 0:
+        return None
+    p_nuevo = max(0.0, p_sab + (c_sab - c_ult))
+    mwh = float(x["maz"]) * p_nuevo / p_sab
+    r = _fijar_mazar(ctx, mod, {k: mwh for k in dias})
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "sabado_ref": d, "paute_sab_mw": round(p_sab, 1), "coca_sab_mw": c_sab, "coca_ultimo_mw": c_ult,
+                    "mazar_mwh": round(mwh, 1), "dias_objetivo": det}
+
+
+def _coca_subida_desde_dia8(P, ctx, mod):
+    """coca_subida_medida solo desde el valor 9 de la serie (perfil_py interpola entre k y k+1, así el día 7 queda como el
+    titular; revisor 22 nov): en los días 1–7 el turbinado de Mazar ya lo fija calendario_medido contra el
+    turbinado del titular, y bajar ahí el Coca subiría otra vez a Mazar (doble conteo; revisor 22 nov)."""
+    s0 = list(ctx.get("serieCoca") or [])
+    r = c_coca_subida_medida(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c = r
+    nueva = [s0[d] if d <= 8 and d < len(s0) else x for d, x in enumerate(ctx["serieCoca"])]
+    ctx["serieCoca"] = nueva
+    return P, ctx, dict(c, serieCoca=nueva)
+
+
+def c_semana_seca_medida(P, ctx, mod):
+    """Idea 'semana_seca_medida' (cerebro 22 nov, 3 piezas): calendario_medido (Mazar días 1–7 según el calendario medido) +
+    Paute con el factor observado recortado a [0, 1] (paute_obs_tope1) + coca_subida_medida solo desde el día 9. Revisor 22 nov:
+    con el Coca medido también en los días 1–7, Paute cubría más y Mazar turbinaba objetivo + esa subida (≈ 3.350 MWh el
+    viernes): doble conteo; en esos días el calendario ya quita la promesa de Coca. Estricta: con el Coca en crecida no corre."""
+    return _combinar(P, ctx, mod, c_calendario_medido, c_paute_obs_tope1, _coca_subida_desde_dia8)
+
+
+_cand_3nov("sabado_tras_feriado", c_sabado_tras_feriado, "Sábado tras un viernes feriado: Mazar como el último sábado normal (Coca medida)",
+           "Investigador 22 nov (corrida del feriado 20 nov 20:00, error 1,06 m): el sábado 21 Mazar hizo 1.686 MWh, como un sábado "
+           "normal (14 nov: 1.640), no como domingo (puente_sabado_domingo fijó 1.021 y va −17,6 %). Base = último sábado del Celec "
+           "que no siguió a un feriado, corregido por Coca medida; todo lo demás igual. Próximos casos: sábado 26 dic y 2 ene. Espera "
+           "+2 % a 1 día, medido solo en esas corridas (los demás días no corre). Revisor 22 nov: la corrección por Coca habría "
+           "dado ~2.028 MWh para el 21 nov (real 1.686; el sábado 14 sin corregir, 1.640): puede ir en contra.", origen="investigador 2026-11-22")
+_cand_3nov("semana_seca_medida", c_semana_seca_medida, "Semana seca medida: calendario medido + solo la subida que de verdad llega (Paute y Coca)",
+           "Cerebro de Mazar 22 nov (3 piezas, espera +10 % a 7 días): la fecha crítica depende a la vez del turbinado laboral, de la "
+           "lluvia que llega (Paute con el factor observado, hoy 0,43) y del Coca; cada pieza sola deja viva la subida del 27–29 nov. "
+           "A 1 día perderá, como subidas_medidas (−11,7 %). El retador no la objetó. Revisor 22 nov: el Coca medido solo desde el día 9 "
+           "(en los días 1–7 el calendario ya fija a Mazar; si no, se contaba dos veces).", origen=_OR_C22)
