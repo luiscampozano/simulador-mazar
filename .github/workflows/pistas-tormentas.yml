@@ -1,12 +1,18 @@
-name: Pistas de tormentas (GOES-19, reconstrucción)
-# Sigue las nubes de tormenta cada 10 min con tobac sobre imágenes públicas de GOES-19 y deja un artefacto por día.
+name: Pistas de tormentas (GOES-19)
+# Sigue las nubes de tormenta cada 10 min con tobac sobre imágenes públicas de GOES-19 y guarda las posiciones en
+# datos/pistas/<día>.json (día de tormenta 06:00 → 06:00 hora de Ecuador). Todos los días el de ayer; a mano, un rango.
 on:
+  schedule:
+    - cron: "10 12 * * *"   # 07:10 en Ecuador, con el día de tormenta ya cerrado
   workflow_dispatch:
     inputs:
-      desde: { description: "Primer día AAAA-MM-DD", required: true }
-      hasta: { description: "Último día AAAA-MM-DD", required: true }
+      desde: { description: "Primer día AAAA-MM-DD (vacío = ayer)", required: false }
+      hasta: { description: "Último día AAAA-MM-DD (vacío = ayer)", required: false }
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: pistas-tormentas
+  cancel-in-progress: false
 jobs:
   dias:
     runs-on: ubuntu-latest
@@ -18,7 +24,8 @@ jobs:
         run: |
           python3 -c "
           import json,os,datetime as d
-          a=d.date.fromisoformat(os.environ['D0']); b=d.date.fromisoformat(os.environ['D1']); assert a<=b and (b-a).days<=45
+          ayer=(d.datetime.now(d.timezone.utc)-d.timedelta(hours=5)).date()-d.timedelta(1)
+          a=d.date.fromisoformat(os.environ.get('D0') or ayer.isoformat()); b=d.date.fromisoformat(os.environ.get('D1') or os.environ.get('D0') or ayer.isoformat()); assert a<=b<=ayer and (b-a).days<=45
           print('lista='+json.dumps([(a+d.timedelta(k)).isoformat() for k in range((b-a).days+1)]))" >> "$GITHUB_OUTPUT"
   pistas:
     needs: dias
@@ -40,3 +47,21 @@ jobs:
           name: pistas-${{ matrix.dia }}
           path: salida/pistas/${{ matrix.dia }}.json
           retention-days: 7
+  guardar:
+    needs: pistas
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: "pistas-*", path: /tmp/pistas, merge-multiple: true }
+      - run: |
+          ls /tmp/pistas/*.json >/dev/null 2>&1 || { echo "sin pistas"; exit 0; }
+          git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main && git checkout -q -f -B p origin/main
+            mkdir -p datos/pistas && cp /tmp/pistas/*.json datos/pistas/ && git add datos/pistas
+            git commit -q -m "Pistas de tormentas [skip ci]" || exit 0
+            git push -q origin p:main && exit 0; sleep 5
+          done
+          exit 1
