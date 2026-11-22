@@ -1,0 +1,7 @@
+{
+ "fecha": "2026-11-22",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.46,
+ "estado": "respuesta sin JSON",
+ "crudo": "```json\n{\n \"propuestas\": [\n  {\n   \"codigo\": \"def c_coca_transicion_dia3(P, ctx, mod):\\n    s_tit = ctx.get(\\\"serieCoca\\\")\\n    s_rio = mod.get(\\\"serieCocaRio\\\")\\n    if not s_tit or not s_rio:\\n        return None\\n    n = min(len(s_tit), len(s_rio))\\n    if n < 4:\\n        return None\\n    nueva = list(s_tit)\\n    for d in range(n):\\n        if d <= 1:\\n            nueva[d] = s_tit[d]\\n        elif d == 2:\\n            nueva[d] = round(0.5 * s_tit[d] + 0.5 * s_rio[d], 4)\\n        else:\\n            nueva[d] = s_rio[d]\\n    ctx[\\\"serieCoca\\\"] = nueva\\n    return P, ctx, {\\\"serie"
+}
