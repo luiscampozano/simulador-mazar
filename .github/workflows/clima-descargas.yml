@@ -3,8 +3,8 @@
 name: Clima · descargas públicas
 on:
   schedule:
-    - cron: "27 */6 * * *"    # instrumentos del mar + SYNOP (cada 6 h)
-    - cron: "43 13 * * *"     # El Niño a fondo (08:43 en Ecuador)
+    - cron: "27 * * * *"      # instrumentos del mar + SYNOP. Cada hora (22 nov): GitHub se salta corridas y el SYNOP de las 07:00 se quedaba sin bajar; repo público, sin costo
+    - cron: "57 13 * * *"     # El Niño a fondo (08:57 en Ecuador)
   workflow_dispatch:
     inputs:
       cual: { description: "instrumentos | enso | todo", default: "todo" }
@@ -18,14 +18,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Traer lo guardado (rama datos-clima)
         run: |
-          git fetch -q --depth 1 origin datos-clima && git --work-tree=clima_datos checkout FETCH_HEAD -- registro || echo "rama nueva"
+          r=0; git ls-remote --exit-code -q origin datos-clima >/dev/null || r=$?
+          if [ $r -eq 0 ]; then git fetch -q --depth 1 origin datos-clima && git --work-tree=clima_datos checkout FETCH_HEAD -- registro
+          elif [ $r -eq 2 ]; then echo "rama nueva"
+          else echo "no se pudo leer datos-clima (red); no se guarda para no borrar lo anterior"; exit 1; fi
           mkdir -p clima_datos/registro
       - name: Qué toca
         id: q
         run: |
           c="${{ inputs.cual }}"; s="${{ github.event.schedule }}"
-          if [ "$c" = "instrumentos" ] || [ "$s" = "27 */6 * * *" ] || [ "$c" = "todo" ] || [ -z "$c$s" ]; then echo "ins=1" >> $GITHUB_OUTPUT; fi
-          if [ "$c" = "enso" ] || [ "$s" = "43 13 * * *" ] || [ "$c" = "todo" ]; then echo "enso=1" >> $GITHUB_OUTPUT; fi
+          if [ "$c" = "instrumentos" ] || [ "$s" = "27 * * * *" ] || [ "$c" = "todo" ] || [ -z "$c$s" ]; then echo "ins=1" >> $GITHUB_OUTPUT; fi
+          if [ "$c" = "enso" ] || [ "$s" = "57 13 * * *" ] || [ "$c" = "todo" ]; then echo "enso=1" >> $GITHUB_OUTPUT; fi
       - name: Instrumentos del mar y SYNOP
         if: steps.q.outputs.ins == '1'
         continue-on-error: true
