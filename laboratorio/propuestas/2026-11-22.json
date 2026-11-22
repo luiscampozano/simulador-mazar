@@ -1,7 +1,91 @@
 {
  "fecha": "2026-11-22",
  "modelo": "gemini-3.8-flash",
- "gasto_mes_usd": 6.46,
- "estado": "respuesta sin JSON",
- "crudo": "```json\n{\n \"propuestas\": [\n  {\n   \"codigo\": \"def c_coca_transicion_dia3(P, ctx, mod):\\n    s_tit = ctx.get(\\\"serieCoca\\\")\\n    s_rio = mod.get(\\\"serieCocaRio\\\")\\n    if not s_tit or not s_rio:\\n        return None\\n    n = min(len(s_tit), len(s_rio))\\n    if n < 4:\\n        return None\\n    nueva = list(s_tit)\\n    for d in range(n):\\n        if d <= 1:\\n            nueva[d] = s_tit[d]\\n        elif d == 2:\\n            nueva[d] = round(0.5 * s_tit[d] + 0.5 * s_rio[d], 4)\\n        else:\\n            nueva[d] = s_rio[d]\\n    ctx[\\\"serieCoca\\\"] = nueva\\n    return P, ctx, {\\\"serie"
+ "gasto_mes_usd": 6.559,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "fin_semana_paute_75",
+    "nombre": "Descuento de fin de semana en Paute al 75 %",
+    "hipotesis": "Reducir un 25 % el descuento de demanda de sábado y domingo en Paute (factor 0,75 a los valores negativos de deltaDia) evita sobrestimar la cota en fines de semana sin alterar los días laborales.",
+    "promocion": "auto",
+    "por_que": "El titular traslada el patrón de demanda nacional a Paute con caídas de hasta ~350 MW en domingo y ~150 MW en sábado, pero en estiaje Paute modula menos que otras plantas y Mazar sigue turbinando. El sábado 21 nov esto produjo errores optimistas de +0,57 m a 1 día en 12 corridas seguidas. Atenuar el bajón exclusivamente los días sábado y domingo corrige este desvío recurrente de fin de semana.",
+    "codigo": "def c_fin_semana_paute_75(P, ctx, mod):\n    dd = ctx.get(\"deltaDia\")\n    if not dd or len(dd) < 7:\n        return None\n    nuevo_dd = list(dd)\n    cambio = False\n    for idx in (0, 6):\n        val = float(nuevo_dd[idx])\n        if val < 0.0:\n            nuevo_dd[idx] = round(val * 0.75, 1)\n            cambio = True\n    if not cambio:\n        return None\n    ctx[\"deltaDia\"] = nuevo_dd\n    return P, ctx, {\"deltaDia\": nuevo_dd}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.61,
+     2120.92,
+     2125.46
+    ],
+    "candidato_1_7_14": [
+     2119.49,
+     2120.77,
+     2125.18
+    ],
+    "cambios_mod": [
+     "deltaDia"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "coca_crecida_decae_48h",
+    "nombre": "Atenuación rápida de crecidas en río Coca",
+    "hipotesis": "Amortiguar las subidas pronosticadas por GloFAS en el río Coca a partir del día 2 con un decaimiento de 48 h reduce la sobrestimación de energía de Coca Codo a 3–7 días.",
+    "promocion": "auto",
+    "por_que": "Las crecidas del río Coca son torrenciales y drenan en 24 a 48 h debido a la pendiente de su cuenca alta, mientras que GloFAS retiene colas de caudal alto hasta por 10 días (w=1.0 hasta día 10 en el robot). Esto hace creer al modelo que Coca Codo cubrirá más carga a mediano plazo, subestimando el turbinado requerido en Mazar y causando el fuerte sesgo negativo de -1,06 m a 7 días. Amortiguar las subidas a partir del segundo día reproduce mejor la hidrodinámica real de montaña.",
+    "codigo": "def c_coca_crecida_decae_48h(P, ctx, mod):\n    s = ctx.get(\"serieCoca\")\n    if not s or len(s) < 3:\n        return None\n    nueva = list(s)\n    cambio = False\n    for k in range(2, len(nueva)):\n        val = float(nueva[k])\n        if val > 1.0:\n            amort = 1.0 + (val - 1.0) * math.exp(-0.35 * (k - 1))\n            nueva[k] = round(amort, 4)\n            cambio = True\n    if not cambio:\n        return None\n    ctx[\"serieCoca\"] = nueva\n    return P, ctx, {\"serieCoca\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.61,
+     2120.92,
+     2125.46
+    ],
+    "candidato_1_7_14": [
+     2119.61,
+     2119.57,
+     2120.9
+    ],
+    "cambios_mod": [
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_fin_semana_75",
+    "nombre": "Sin autoajuste y fin de semana atenuado al 75 %",
+    "hipotesis": "Combinar ajuste=1.0 con la atenuación del 25 % en el descuento de sábado y domingo une la ganancia entre semana de sin_autoajuste con el control de errores en días de descanso.",
+    "promocion": "auto",
+    "por_que": "sin_autoajuste es uno de los mejores candidatos a 1 día (mediana 31,1 cm frente a 34,8 cm del titular y error medio 0,42 m vs 0,44 m), pero sufre cuando ocurren distorsiones en fines de semana o feriados. Combinar la supresión del autoajuste (que suele venir desfasado del régimen reciente) con el ajuste de deltaDia en fines de semana ataca simultáneamente las dos principales causas de error a 1 día reportadas en el marcador del 22 nov.",
+    "codigo": "def c_sin_autoajuste_fin_semana_75(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    cambios = {\"ajuste\": 1.0}\n    dd = ctx.get(\"deltaDia\")\n    if dd and len(dd) >= 7:\n        nuevo_dd = list(dd)\n        for idx in (0, 6):\n            val = float(nuevo_dd[idx])\n            if val < 0.0:\n                nuevo_dd[idx] = round(val * 0.75, 1)\n        ctx[\"deltaDia\"] = nuevo_dd\n        cambios[\"deltaDia\"] = nuevo_dd\n    return P, ctx, cambios"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2119.61,
+     2120.92,
+     2125.46
+    ],
+    "candidato_1_7_14": [
+     2119.48,
+     2120.68,
+     2125.09
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "deltaDia"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-22"
 }

@@ -672,6 +672,65 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_fin_semana_paute_75(P, ctx, mod):
+    dd = ctx.get("deltaDia")
+    if not dd or len(dd) < 7:
+        return None
+    nuevo_dd = list(dd)
+    cambio = False
+    for idx in (0, 6):
+        val = float(nuevo_dd[idx])
+        if val < 0.0:
+            nuevo_dd[idx] = round(val * 0.75, 1)
+            cambio = True
+    if not cambio:
+        return None
+    ctx["deltaDia"] = nuevo_dd
+    return P, ctx, {"deltaDia": nuevo_dd}
+
+
+CANDIDATOS["fin_semana_paute_75"] = {"f": c_fin_semana_paute_75, "promocion": "auto", "origen": "Gemini 2026-11-22", "nombre": "Descuento de fin de semana en Paute al 75 %", "hipotesis": "Reducir un 25 % el descuento de demanda de sábado y domingo en Paute (factor 0,75 a los valores negativos de deltaDia) evita sobrestimar la cota en fines de semana sin alterar los días laborales."}
+
+
+def c_coca_crecida_decae_48h(P, ctx, mod):
+    s = ctx.get("serieCoca")
+    if not s or len(s) < 3:
+        return None
+    nueva = list(s)
+    cambio = False
+    for k in range(2, len(nueva)):
+        val = float(nueva[k])
+        if val > 1.0:
+            amort = 1.0 + (val - 1.0) * math.exp(-0.35 * (k - 1))
+            nueva[k] = round(amort, 4)
+            cambio = True
+    if not cambio:
+        return None
+    ctx["serieCoca"] = nueva
+    return P, ctx, {"serieCoca": nueva}
+
+
+CANDIDATOS["coca_crecida_decae_48h"] = {"f": c_coca_crecida_decae_48h, "promocion": "auto", "origen": "Gemini 2026-11-22", "nombre": "Atenuación rápida de crecidas en río Coca", "hipotesis": "Amortiguar las subidas pronosticadas por GloFAS en el río Coca a partir del día 2 con un decaimiento de 48 h reduce la sobrestimación de energía de Coca Codo a 3–7 días."}
+
+
+def c_sin_autoajuste_fin_semana_75(P, ctx, mod):
+    ctx["ajuste"] = 1.0
+    cambios = {"ajuste": 1.0}
+    dd = ctx.get("deltaDia")
+    if dd and len(dd) >= 7:
+        nuevo_dd = list(dd)
+        for idx in (0, 6):
+            val = float(nuevo_dd[idx])
+            if val < 0.0:
+                nuevo_dd[idx] = round(val * 0.75, 1)
+        ctx["deltaDia"] = nuevo_dd
+        cambios["deltaDia"] = nuevo_dd
+    return P, ctx, cambios
+
+
+CANDIDATOS["sin_autoajuste_fin_semana_75"] = {"f": c_sin_autoajuste_fin_semana_75, "promocion": "auto", "origen": "Gemini 2026-11-22", "nombre": "Sin autoajuste y fin de semana atenuado al 75 %", "hipotesis": "Combinar ajuste=1.0 con la atenuación del 25 % en el descuento de sábado y domingo une la ganancia entre semana de sin_autoajuste con el control de errores en días de descanso."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
