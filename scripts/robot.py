@@ -496,6 +496,7 @@ def simular_py(P, ctx, par, horizonte=60, pasos=False):
     # Solo laboratorio (Luis, 9 nov; el titular no usa estas claves): aporte fijo de los ríos entre Mazar y Amaluza
     # (m³/s) y "domingo parado" (Mazar cerrado domingos/feriados mientras Amaluza tenga agua; al día siguiente Mazar la repone).
     inter_fijo = ctx.get("interFijo")
+    peso_rf_otras = ctx.get("otrasPesoRf")   # solo laboratorio (cerebro 23 nov): None = como el titular
     dom = ctx.get("domingoParado") or None
     deuda = float((dom or {}).get("deuda0") or 0.0); pago_ritmo = deuda
 
@@ -526,12 +527,14 @@ def simular_py(P, ctx, par, horizonte=60, pasos=False):
         demanda = P["demanda"] + ctx["deltaDia"][dd] - cut
         ccs = min(5 * qc, 1200) * (0.5 if qc > 450 else 1) * fac_at(t)
         otr = ctx.get("otrasRios")
+        # Solo laboratorio (cerebro 23 nov; el titular no usa esta clave): peso del río Coca en las "otras" sin serie propia
+        rf_otras = rf if peso_rf_otras is None else 1 + peso_rf_otras * (rf - 1)
         if otr and otr.get("serie"):
             se = otr["serie"]; i = int(math.floor(t))
             sv = se[-1] if i >= len(se) - 1 else se[i] + (se[i + 1] - se[i]) * (t - i)
-            other = P["other"] * ((1 - otr["frac"]) * rf + otr["frac"] * sv)
+            other = P["other"] * ((1 - otr["frac"]) * rf_otras + otr["frac"] * sv)
         else:
-            other = P["other"] * rf
+            other = P["other"] * rf_otras
         req = demanda - ccs - other - P["therm"] - P["imp"]
         cota_ahora = 2115 + xo(V)
         kmz = 0.00981 * eta * max(20.0, cota_ahora - amC)

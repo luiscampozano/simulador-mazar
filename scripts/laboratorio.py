@@ -4602,3 +4602,53 @@ _cand_3nov("semana_seca_medida", c_semana_seca_medida, "Semana seca medida: cale
            "lluvia que llega (Paute con el factor observado, hoy 0,43) y del Coca; cada pieza sola deja viva la subida del 27–29 nov. "
            "A 1 día perderá, como subidas_medidas (−11,7 %). El retador no la objetó. Revisor 22 nov: el Coca medido solo desde el día 9 "
            "(en los días 1–7 el calendario ya fija a Mazar; si no, se contaba dos veces).", origen=_OR_C22)
+
+
+# ---- Auditor 23 nov: Gemini 23 nov (aprobado por el Claude independiente) e ideas del cerebro de Mazar 23 nov
+# (aprobación permanente de Luis, 7 nov).
+def c_sin_autoajuste_coca_dia7(P, ctx, mod):
+    s_rio = mod.get("serieCocaRio")
+    s_tit = ctx.get("serieCoca")
+    if not s_rio or not s_tit:
+        return None
+    ctx["ajuste"] = 1.0
+    n = min(len(s_tit), len(s_rio))
+    nueva_coca = list(s_tit)
+    for i in range(n):
+        if i >= 6:
+            w = 0.5 if i == 6 else 1.0
+            nueva_coca[i] = round((1.0 - w) * s_tit[i] + w * s_rio[i], 4)
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"ajuste": 1.0, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["sin_autoajuste_coca_dia7"] = {"f": c_sin_autoajuste_coca_dia7, "promocion": "auto", "origen": "Gemini 2026-11-23", "nombre": "Sin autoajuste y Coca real desde día 7", "hipotesis": "Eliminar el autoajuste conserva las mejoras de corto y mediano plazo (1–7 días) mientras que aplicar el río Coca real (mezcla a la mitad en el índice 6, entero desde el 7) neutraliza el pesimismo a 10 y 14 días. A 1–5 días es idéntico a sin_autoajuste (revisor 23 nov): su valor es medir 10–14 días."}
+
+
+def c_otras_resto_sin_coca(P, ctx, mod):
+    """Cerebro de Mazar 23 nov ('otras_resto_tercio') con el reparo del retador: la parte de las 'otras' centrales sin serie
+    propia deja de seguir al río Coca (peso 0 en vez de 1 / 3); los cuatro ríos con GloFAS siguen como el titular."""
+    if ctx.get("otrasPesoRf") is not None:
+        return None
+    if not (ctx.get("otrasRios") or {}).get("serie"):   # revisor 23 nov: sin la serie de los cuatro ríos dejaría todo plano
+        return None
+    ctx["otrasPesoRf"] = 0.0
+    return P, ctx, {"otras_peso_rf": 0.0}
+
+
+def c_tres_promesas(P, ctx, mod):
+    """Cerebro de Mazar 23 nov ('tres_promesas'): subidas_medidas (Paute con factor observado [0, 1] + coca_subida_medida) +
+    otras_resto_sin_coca. Turbinado según el despacho del titular."""
+    return _combinar(P, ctx, mod, c_coca_subida_medida, c_paute_obs_tope1, c_otras_resto_sin_coca)
+
+
+_OR_C23 = "cerebro 2026-11-23"
+_cand_3nov("otras_resto_sin_coca", c_otras_resto_sin_coca, "Otras centrales sin serie propia: ya no siguen al río Coca",
+           "Cerebro de Mazar 23 nov (otras_resto_tercio, espera +8 % a 7 días): hoy las 'otras' sin serie propia (~1.139 MW) suben y "
+           "bajan con el Coca (rf entre 0,8 y 1,35); el cerebro proponía un tercio de esa relación. El retador objetó que esas "
+           "centrales (Pacífico/sur) no se mueven con el Coca: se programa con peso 0 (quedan planas); los cuatro ríos con GloFAS "
+           "no cambian. Distinto de otros_rios_planos (retirado), que quitaba la serie de los cuatro ríos.", origen=_OR_C23)
+_cand_3nov("tres_promesas", c_tres_promesas, "Tres promesas medidas: Paute y Coca con lo que llega + otras sin Coca",
+           "Cerebro de Mazar 23 nov (espera +10 % a 7 días): caudal, Coca y 'otras' suben con la misma lluvia prevista y juntas apagan "
+           "Mazar tres días. = subidas_medidas + otras_resto_sin_coca (pieza ajustada al reparo del retador). No se une a "
+           "calendario_medido (anula la pieza) ni a agua_paute_con_viento (empuja al revés).", origen=_OR_C23)
