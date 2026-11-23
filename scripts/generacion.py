@@ -338,18 +338,62 @@ def mazar_horas(horas=48):
             "normal_coca": prom(co), "anios_coca": sorted({k[:4] for k in rio if int(k[5:7]) == mes}), "mes": mes}
 
 
-def corregir_rios(rios, reales):
-    """GloFAS no acierta igual en todos los ríos: en cada uno se mide cuánto es lo real frente a lo que dice
-    (días con caudal medido, hasta 14) y se corrige su pronóstico con ese factor."""
+def corregir_rios(rios, reales, tau=5.0, hoy=None):
+    """GloFAS no acierta igual en todos los ríos ni todos los días. Corrección ANCLADA (Luis 23 nov: el 23 nov el
+    factor fijo de 14 días daba 217 m³/s en el Coca con 144 medidos): el día 0 usa el error reciente de GloFAS
+    (lo medido/GloFAS del último día con dato) y ese error se diluye hacia el factor de 14 días
+    con los días de anticipación (e^(−días/tau)). Los días pasados se corrigen con su propio error del día.
+    La corrección anterior (factor fijo de 14 días) queda en *_c14 y ambas se registran en sombra."""
+    import math
     for r in rios:
         med = dict(reales.get(r["clave"]) or [])
-        pares = [(med[d], r["q"][i]) for i, d in enumerate(r["dias"]) if d in med and med[d] and r["q"][i]][-14:]
-        if len(pares) >= 3:
-            k = sum(a for a, _ in pares) / sum(b for _, b in pares)
-            r["ratio"] = round(k, 3); r["ratio_dias"] = len(pares)
-            for c in ("q", "med", "p25", "p75", "min", "max"):
-                if r.get(c): r[c + "_c"] = [None if v is None else round(v * k, 1) for v in r[c]]
+        idx = [i for i, d in enumerate(r["dias"]) if d in med and med[d] and r["q"][i]]
+        pares = [(med[r["dias"][i]], r["q"][i]) for i in idx][-14:]
+        if len(pares) < 3:
+            continue
+        k14 = sum(a for a, _ in pares) / sum(b for _, b in pares)
+        # ancla: el último día medido, aunque sea hoy (el caudal es un PROMEDIO, no una suma: el de hoy parcial ya vale;
+        # backtest 15–22 nov: anclar en ayer empeoraba el Coca a 1 día de 16 % a 23 %); su error decae con los días
+        i_ult = idx[-1]
+        rec = med[r["dias"][i_ult]] / r["q"][i_ult]
+        k = []
+        for i in range(len(r["dias"])):
+            if i <= i_ult:
+                d = r["dias"][i]
+                k.append(med[d] / r["q"][i] if d in med and med[d] and r["q"][i] else k14)
+            else:
+                w = math.exp(-(i - i_ult) / tau)
+                k.append(w * rec + (1 - w) * k14)
+        r["ratio"] = round(k14, 3); r["ratio_dias"] = len(pares); r["ratio_reciente"] = round(rec, 3)
+        for c in ("q", "med", "p25", "p75", "min", "max"):
+            if r.get(c):
+                r[c + "_c14"] = [None if v is None else round(v * k14, 1) for v in r[c]]
+                r[c + "_c"] = [None if v is None else round(v * k[i], 1) for i, v in enumerate(r[c])]
     return rios
+
+
+def sombra_correccion(rios, reales, hoy, archivo=os.path.join("registro", "rios_correccion_sombra.json")):
+    """Prueba en sombra (Luis 23 nov): cada día se guardan, UNA vez, los pronósticos a 1–7 días de las dos
+    correcciones (anclada y factor fijo de 14 días) y luego lo que midió Celec. Juez: error absoluto medio por plazo."""
+    S = _leer(archivo, {})
+    for r in rios:
+        if "q_c14" not in r:
+            continue
+        R = S.setdefault(r["clave"], {})
+        if hoy in r["dias"] and hoy not in R:
+            i = r["dias"].index(hoy)
+            R[hoy] = {"anclada": r["q_c"][i + 1:i + 8], "fijo14": r["q_c14"][i + 1:i + 8], "glofas": r["q"][i + 1:i + 8]}
+        med = dict(reales.get(r["clave"]) or [])
+        for emit in sorted(R)[:-365]:
+            del R[emit]
+        for emit, v in R.items():   # se fusiona: lo medido que ya salió de la ventana de 45 días no se borra
+            viejo = v.get("medido") or [None] * 7
+            nuevo = [med.get((datetime.fromisoformat(emit) + timedelta(days=k)).date().isoformat()) for k in range(1, 8)]
+            v["medido"] = [n if n is not None else o for n, o in zip(nuevo, viejo)]
+    try:
+        json.dump(S, open(archivo, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        print("sombra ríos:", e)
 
 
 # ------------------------------------------------------------------ principal
@@ -399,7 +443,8 @@ def actualizar(ahora, get, url_cenace, log=print):
         "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),
         "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }
-    out["rios"] = corregir_rios(out["rios"], out["rios_reales"])
+    out["rios"] = corregir_rios(out["rios"], out["rios_reales"], hoy=hoy_d.isoformat())
+    sombra_correccion(out["rios"], out["rios_reales"], hoy_d.isoformat())
     # Luis 6 nov: "resto" de hidroeléctricas = total hidro del balance diario − las 8 que Cenace publica por central.
     # Se guarda por día para comparar con el modelo sombra otras_hidro_rios (Daule-Peripa, Toachi, Baba…).
     try:
