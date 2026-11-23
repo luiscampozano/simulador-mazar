@@ -672,6 +672,47 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_sin_autoajuste_coca_dia7(P, ctx, mod):
+    s_rio = mod.get("serieCocaRio")
+    s_tit = ctx.get("serieCoca")
+    if not s_rio or not s_tit:
+        return None
+    ctx["ajuste"] = 1.0
+    n = min(len(s_tit), len(s_rio))
+    nueva_coca = list(s_tit)
+    for i in range(n):
+        if i >= 6:
+            w = 0.5 if i == 6 else 1.0
+            nueva_coca[i] = round((1.0 - w) * s_tit[i] + w * s_rio[i], 4)
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"ajuste": 1.0, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["sin_autoajuste_coca_dia7"] = {"f": c_sin_autoajuste_coca_dia7, "promocion": "auto", "origen": "Gemini 2026-11-23", "nombre": "Sin autoajuste y Coca real desde día 7", "hipotesis": "Eliminar el autoajuste conserva las mejoras de corto y mediano plazo (1–7 días) mientras que aplicar el río Coca real únicamente desde el día 7 neutraliza el pesimismo severo a 10 y 14 días sin meter ruido a corto plazo."}
+
+
+def c_corrige_error_dia0_solo(P, ctx, mod):
+    ac = mod.get("aciertos") or {}
+    rec = [x for x in (ac.get("recientes_1d") or []) if isinstance(x.get("err"), (int, float))]
+    if len(rec) < 3:
+        return None
+    ult = rec[-4:]
+    e = sum(x["err"] for x in ult) / len(ult)
+    if abs(e) < 0.05:
+        return None
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    dvdz = c["a"] + c["b"] * max(0.0, float(ctx.get("cota") or 2115.0) - 2115.0)
+    q0 = max(-50.0, min(50.0, -e * dvdz / 0.0864))
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), 1)
+    out = [round((base[i] if i < len(base) else 0.0) + (q0 if i == 0 else 0.0), 2) for i in range(n)]
+    ctx["memoria"] = out
+    return P, ctx, {"memoria": out}
+
+
+CANDIDATOS["corrige_error_dia0_solo"] = {"f": c_corrige_error_dia0_solo, "promocion": "luis", "origen": "Gemini 2026-11-23", "nombre": "Corrección de error reciente solo en día 0", "hipotesis": "Inyectar la corrección por error reciente de 1 día exclusivamente en el día 0 absorbe los desfases operativos inmediatos sin distorsionar ni sobrecorregir los días 2 a 14."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})

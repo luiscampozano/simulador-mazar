@@ -1,0 +1,75 @@
+{
+ "fecha": "2026-11-23",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.697,
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_dia7",
+    "nombre": "Sin autoajuste y Coca real desde día 7",
+    "hipotesis": "Eliminar el autoajuste conserva las mejoras de corto y mediano plazo (1–7 días) mientras que aplicar el río Coca real únicamente desde el día 7 neutraliza el pesimismo severo a 10 y 14 días sin meter ruido a corto plazo.",
+    "promocion": "auto",
+    "por_que": "En el marcador del 23 nov, sin_autoajuste supera ampliamente al titular en 1d (mediana 0,309 vs 0,343 m), 2d (0,476 vs 0,551 m), 3d (0,336 vs 0,415 m) y 7d (1,275 vs 1,559 m), pero reprueba la permanencia a 14d por exceso de pesimismo (error 6,265 m, sesgo −6,265 m). Por su parte, coca_rio_real reduce el error a 14d a 4,205 m (14 % mejor que el titular), pero empeora los días 1–3 por el ruido diario de GloFAS. Empalmar el río real recién desde el día 7 protege el corto plazo y sostiene la cota al horizonte final.",
+    "codigo": "def c_sin_autoajuste_coca_dia7(P, ctx, mod):\n    s_rio = mod.get(\"serieCocaRio\")\n    s_tit = ctx.get(\"serieCoca\")\n    if not s_rio or not s_tit:\n        return None\n    ctx[\"ajuste\"] = 1.0\n    n = min(len(s_tit), len(s_rio))\n    nueva_coca = list(s_tit)\n    for i in range(n):\n        if i >= 6:\n            w = 0.5 if i == 6 else 1.0\n            nueva_coca[i] = round((1.0 - w) * s_tit[i] + w * s_rio[i], 4)\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2118.16,
+     2119.4,
+     2121.72
+    ],
+    "candidato_1_7_14": [
+     2118.13,
+     2119.18,
+     2120.19
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia7",
+    "nombre": "Sin autoajuste y mitad de sesgo desde día 7",
+    "hipotesis": "Mantener sin autoajuste los días 0 a 6 garantiza ganar en todos los horizontes hasta 7 días, y descontar el 50 % del sesgo por plazo a partir del día 7 evita el colapso pesimista de 10 a 14 días.",
+    "promocion": "luis",
+    "por_que": "sin_autoajuste gana en error medio y mediana a 1, 2, 3, 5 y 7 días, fallando únicamente a 10d (3,076 vs 2,530 m) y 14d (6,265 vs 4,900 m) por su sesgo acumulado de −6,26 m. Variantes como sin_autoajuste_sesgo50_largo corrigieron sesgo desde el día 2 generando sobrecorrección optimista a 3 días. Restringir el caudal de sesgo estrictamente al índice d >= 6 deja los primeros 6 días 100 % idénticos a sin_autoajuste y remueve la caída a 10–14 días.",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia7(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return P, ctx, {\"ajuste\": 1.0}\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx.get(\"cota\") or 2115.0) - 2115.0)\n    k = dvdz / 0.0864\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    base = list(ctx.get(\"memoria\") or [])\n    corr = [0.0 if d < 6 else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)) for d in range(60)]\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_error_dia0_solo",
+    "nombre": "Corrección de error reciente solo en día 0",
+    "hipotesis": "Inyectar la corrección por error reciente de 1 día exclusivamente en el día 0 absorbe los desfases operativos inmediatos sin distorsionar ni sobrecorregir los días 2 a 14.",
+    "promocion": "luis",
+    "por_que": "En datos.json, las últimas 8 corridas muestran un error a 1 día que creció monotónicamente de +0,04 m a +0,64 m por el despacho imprevisto del lunes tras el feriado. Modelos anteriores como corrige_error_3 y corrige_tendencia_mitad mejoraban a 1 día pero perdían hasta 22 % a 2 días porque su decaimiento exponencial arrastraba caudal a los días siguientes. Limitar el caudal compensatorio al índice 0 corrige el día 1 de inmediato y no altera las tasas de vaciado de mediano plazo.",
+    "codigo": "def c_corrige_error_dia0_solo(P, ctx, mod):\n    ac = mod.get(\"aciertos\") or {}\n    rec = [x for x in (ac.get(\"recientes_1d\") or []) if isinstance(x.get(\"err\"), (int, float))]\n    if len(rec) < 3:\n        return None\n    ult = rec[-4:]\n    e = sum(x[\"err\"] for x in ult) / len(ult)\n    if abs(e) < 0.05:\n        return None\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx.get(\"cota\") or 2115.0) - 2115.0)\n    q0 = max(-50.0, min(50.0, -e * dvdz / 0.0864))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), 1)\n    out = [round((base[i] if i < len(base) else 0.0) + (q0 if i == 0 else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"memoria\": out}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2118.16,
+     2119.4,
+     2121.72
+    ],
+    "candidato_1_7_14": [
+     2117.64,
+     2118.89,
+     2121.24
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-23"
+}
