@@ -338,7 +338,7 @@ def mazar_horas(horas=48):
             "normal_coca": prom(co), "anios_coca": sorted({k[:4] for k in rio if int(k[5:7]) == mes}), "mes": mes}
 
 
-def corregir_rios(rios, reales, tau=5.0, hoy=None):
+def corregir_rios(rios, reales, tau=5.0, hoy=None, simulador=None):
     """GloFAS no acierta igual en todos los ríos ni todos los días. Corrección ANCLADA (Luis 23 nov: el 23 nov el
     factor fijo de 14 días daba 217 m³/s en el Coca con 144 medidos): el día 0 usa el error reciente de GloFAS
     (lo medido/GloFAS del último día con dato) y ese error se diluye hacia el factor de 14 días
@@ -365,6 +365,16 @@ def corregir_rios(rios, reales, tau=5.0, hoy=None):
                 w = math.exp(-(i - i_ult) / tau)
                 k.append(w * rec + (1 - w) * k14)
         r["ratio"] = round(k14, 3); r["ratio_dias"] = len(pares); r["ratio_reciente"] = round(rec, 3)
+        # Coca: la gráfica dibuja EXACTAMENTE la proyección del simulador (nivel real de Celec × cambio que pronostica
+        # GloFAS, con su ajuste aprendido); backtest 15–22 nov: el mejor de los tres métodos en el Coca (15/17/52 % a 1/3/7 d)
+        sim = (simulador or {}).get(r["clave"])
+        if sim and hoy and hoy in r["dias"] and sim.get("fecha") == hoy and sim.get("q"):
+            i0 = r["dias"].index(hoy)
+            for j, qs in enumerate(sim["q"]):
+                i = i0 + j
+                if i < len(k) and j >= 1 and qs and r["q"][i]:
+                    k[i] = qs / r["q"][i]
+            r["metodo_c"] = "simulador"
         for c in ("q", "med", "p25", "p75", "min", "max"):
             if r.get(c):
                 r[c + "_c14"] = [None if v is None else round(v * k14, 1) for v in r[c]]
@@ -373,8 +383,8 @@ def corregir_rios(rios, reales, tau=5.0, hoy=None):
 
 
 def sombra_correccion(rios, reales, hoy, archivo=os.path.join("registro", "rios_correccion_sombra.json")):
-    """Prueba en sombra (Luis 23 nov): cada día se guardan, UNA vez, los pronósticos a 1–7 días de las dos
-    correcciones (anclada y factor fijo de 14 días) y luego lo que midió Celec. Juez: error absoluto medio por plazo."""
+    """Prueba en sombra (Luis 23 nov): cada día se guardan, UNA vez, los pronósticos a 1–7 días de lo publicado
+    ("metodo": simulador o anclada; entradas viejas sin "metodo" = anclada) y del factor fijo de 14 días y luego lo que midió Celec. Juez: error absoluto medio por plazo."""
     S = _leer(archivo, {})
     for r in rios:
         if "q_c14" not in r:
@@ -382,7 +392,7 @@ def sombra_correccion(rios, reales, hoy, archivo=os.path.join("registro", "rios_
         R = S.setdefault(r["clave"], {})
         if hoy in r["dias"] and hoy not in R:
             i = r["dias"].index(hoy)
-            R[hoy] = {"anclada": r["q_c"][i + 1:i + 8], "fijo14": r["q_c14"][i + 1:i + 8], "glofas": r["q"][i + 1:i + 8]}
+            R[hoy] = {"metodo": r.get("metodo_c", "anclada"), "publicado": r["q_c"][i + 1:i + 8], "fijo14": r["q_c14"][i + 1:i + 8], "glofas": r["q"][i + 1:i + 8]}
         med = dict(reales.get(r["clave"]) or [])
         for emit in sorted(R)[:-365]:
             del R[emit]
@@ -443,7 +453,9 @@ def actualizar(ahora, get, url_cenace, log=print):
         "ccs_crecida": ((datos.get("modelo") or {}).get("ccs_crecida") or {}).get("tabla"),
         "otras_rios": (datos.get("modelo") or {}).get("otras_rios_info"),
     }
-    out["rios"] = corregir_rios(out["rios"], out["rios_reales"], hoy=hoy_d.isoformat())
+    _m = (datos.get("modelo") or {})
+    _sim = {"coca": {"fecha": _m.get("serie_fecha"), "q": (_m.get("coca_rio") or {}).get("q_dias")}}
+    out["rios"] = corregir_rios(out["rios"], out["rios_reales"], hoy=hoy_d.isoformat(), simulador=_sim)
     sombra_correccion(out["rios"], out["rios_reales"], hoy_d.isoformat())
     # Luis 6 nov: "resto" de hidroeléctricas = total hidro del balance diario − las 8 que Cenace publica por central.
     # Se guarda por día para comparar con el modelo sombra otras_hidro_rios (Daule-Peripa, Toachi, Baba…).

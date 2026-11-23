@@ -1693,11 +1693,12 @@ def bloque_modelo(datos, hoy, ahora, fis, notas, fuentes):
                     qd = [(base[-1] if d > len(base) else qd[d]) for d in range(len(serieC_rio))]
                     serieC = [1.0] + [round(ccs_mw_rio(qd[d] * serieC_rio[d]) / g24, 4) for d in range(1, len(serieC_rio))]
                     q_coca_dia = [qd[d] * serieC_rio[d] for d in range(len(serieC_rio))]
+                    mod_q_coca = [round(x, 1) for x in q_coca_dia[:31]]   # Luis 23 nov: la gráfica del Coca muestra esto mismo
                     mod["serieCoca"] = serieC
                     mod["serieCocaRio"] = [round(x, 4) for x in serieC_rio]
                     mod["coca_rio"] = {"q24": round(q24, 1), "mw24": round(g24), "k": CCS_K, "e": CCS_E, "tope": CCS_CAP, **info,
                                        "mw_1d": round(ccs_mw_rio(qd[1] * serieC_rio[1])), "mw_3d": round(ccs_mw_rio(qd[3] * serieC_rio[3])),
-                                       "mw_7d": round(ccs_mw_rio(qd[7] * serieC_rio[7]))}
+                                       "mw_7d": round(ccs_mw_rio(qd[7] * serieC_rio[7])), "q_dias": mod_q_coca}
                     log(f"Río Coca real: ahora {info['ahora']:.0f} m³/s, 72 h {info['q72']:.0f}, nivel normal (mediana 7 días) {info['mediana7']:.0f}" + (" (crecida súbita)" if info["crecida"] else "")
                         + f" → Coca Codo {g24:.0f} MW (24 h); día 1 {mod['coca_rio']['mw_1d']} MW, día 3 {mod['coca_rio']['mw_3d']} MW, "
                           f"día 7 {mod['coca_rio']['mw_7d']} MW")
