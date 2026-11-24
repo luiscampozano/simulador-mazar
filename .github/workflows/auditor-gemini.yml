@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency: { group: auditor-gemini, cancel-in-progress: false }
 jobs:
   proponer:
     runs-on: ubuntu-latest

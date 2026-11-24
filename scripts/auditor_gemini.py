@@ -150,13 +150,19 @@ def procesar(hoy, modelo, resp, extra=None):
     s = open(os.path.join(RAIZ, "scripts", "laboratorio.py"), encoding="utf-8").read()
     vistos, aceptadas = set(L.CANDIDATOS), []
     for p in props[:3]:
+        if not isinstance(p, dict):
+            reg["propuestas"].append({"propuesta": str(p)[:500], "estado": "no es un objeto"}); continue
         cid = p.get("id"); r = {"propuesta": p}
+        if cid is not None and not isinstance(cid, str): cid = None
         if not cid:
             r["estado"] = "sin id"
         elif cid in vistos:
             r["estado"] = "ya existe"
         else:
-            err = validar(cid, p.get("codigo", ""))
+            try:
+                err = validar(cid, p.get("codigo", ""))
+            except Exception as e:   # revisor 24 nov: código con error de sintaxis no debe tumbar el script (en modo lote lo atascaba)
+                err = f"no se pudo analizar: {e}"
             if err:
                 r["estado"] = "rechazada por validación: " + err
             else:
@@ -223,12 +229,14 @@ def recoger():
         p = json.load(open(F_LOTE, encoding="utf-8"))
     except Exception:
         return None
+    edad_h = (datetime.now(EC) - datetime.fromisoformat(p["enviado"])).total_seconds() / 3600
     try:
         d = _api(p["nombre"])
-    except Exception as e:
-        print("lote: no se pudo consultar", p.get("nombre"), e, file=sys.stderr); return p
+    except Exception as e:   # revisor 24 nov: un error permanente (404, clave) no debe atascar el auditor
+        print("lote: no se pudo consultar", p.get("nombre"), e, file=sys.stderr)
+        if edad_h <= 26: return p
+        d = {"state": f"ERROR_CONSULTA: {str(e)[:120]}"}
     est = str(_buscar(d, "state") or "")
-    edad_h = (datetime.now(EC) - datetime.fromisoformat(p["enviado"])).total_seconds() / 3600
     extra = {"lote": {"nombre": p["nombre"], "enviado": p["enviado"], "recogido": datetime.now(EC).isoformat(timespec="minutes"), "estado_lote": est}}
     if "SUCCEEDED" in est:
         rs = _respuestas(d); r0 = (rs[0] if rs else {}) or {}
@@ -237,11 +245,25 @@ def recoger():
         c0 = (resp_obj.get("candidates") or [{}])[0]
         texto = "".join(x.get("text", "") for x in (c0.get("content") or {}).get("parts") or [])
         if r0.get("error"): extra["lote"]["error"] = r0["error"]
-        os.remove(F_LOTE); procesar(p["fecha"], p["modelo"], texto or None, extra); return None
-    if any(x in est for x in ("FAILED", "CANCELLED", "EXPIRED")) or edad_h > 26:
+        os.remove(F_LOTE); _procesar_seguro(p, texto or None, extra); return None
+    if any(x in est for x in ("FAILED", "CANCELLED", "EXPIRED", "ERROR_CONSULTA")) or edad_h > 26:
         os.remove(F_LOTE)
-        procesar(p["fecha"], p["modelo"], None, extra | {"estado_extra": f"lote {est or 'sin estado'} ({edad_h:.0f} h)"}); return None
+        if edad_h > 26 and "ERROR" not in est:
+            try: _api(p["nombre"] + ":cancel", {})   # que no termine y se cobre sin quedar anotado
+            except Exception: pass
+        _procesar_seguro(p, None, extra | {"estado_extra": f"lote {est or 'sin estado'} ({edad_h:.0f} h)"}); return None
     print(f"lote {p['nombre']}: {est or 'sin estado'} ({edad_h:.1f} h); se recoge en la próxima corrida"); return p
+
+
+def _procesar_seguro(p, texto, extra):
+    """Pase lo que pase, queda un registro de propuesta y el lote no se vuelve a recoger."""
+    try:
+        procesar(p["fecha"], p["modelo"], texto, extra)
+    except Exception as e:
+        out = os.path.join(RAIZ, "laboratorio", "propuestas", p["fecha"] + datetime.now(EC).strftime("-%H%M") + ".json")
+        json.dump({"fecha": p["fecha"], "modelo": p["modelo"], **extra, "estado": f"error al procesar: {str(e)[:300]}",
+                   "crudo": (texto or "")[:3000]}, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        print("lote: error al procesar", e, file=sys.stderr)
 
 
 def enviar():
@@ -258,6 +280,8 @@ def enviar():
          "metadata": {"key": "auditor"}}]}}}}
     d = _api(f"models/{m}:batchGenerateContent", cuerpo)
     nombre = d.get("name") or _buscar(d, "name")
+    if not isinstance(nombre, str) or not nombre.startswith("batches/"):
+        print("lote: la respuesta no trae el nombre del lote; no se guarda", json.dumps(d)[:300], file=sys.stderr); return
     json.dump({"nombre": nombre, "modelo": m, "fecha": hoy, "enviado": datetime.now(EC).isoformat(timespec="minutes")},
               open(F_LOTE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("lote enviado:", nombre, m)
