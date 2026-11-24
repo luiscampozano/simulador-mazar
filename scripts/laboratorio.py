@@ -672,6 +672,34 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_acotado_otras_sin_coca(P, ctx, mod):
+    cambios = {}
+    aj = float(ctx.get("ajuste") or 1.0)
+    if aj > 1.0:
+        ctx["ajuste"] = 1.0
+        cambios["ajuste"] = 1.0
+    ctx["otrasPesoRf"] = 0.0
+    cambios["otrasPesoRf"] = 0.0
+    return P, ctx, cambios
+
+
+CANDIDATOS["acotado_otras_sin_coca"] = {"f": c_acotado_otras_sin_coca, "promocion": "luis", "origen": "Gemini 2026-11-24", "nombre": "Autoajuste <= 1 y otras hidroeléctricas sin Coca", "hipotesis": "Acotar el autoajuste a <= 1,0 para no acelerar la bajada y desvincular las otras hidroeléctricas del río Coca (peso 0) reduce el error a 1-3 días sin introducir pesimismo a mediano plazo."}
+
+
+def c_paute_bruto_dia1(P, ctx, mod):
+    bruta = mod.get("serieMazarBruta")
+    actual = ctx.get("serieMazar")
+    if not bruta or not actual or len(bruta) < 2 or len(actual) < 2:
+        return None
+    nueva = list(actual)
+    nueva[1] = bruta[1]
+    ctx["serieMazar"] = nueva
+    return P, ctx, {"serieMazar": nueva}
+
+
+CANDIDATOS["paute_bruto_dia1"] = {"f": c_paute_bruto_dia1, "promocion": "auto", "origen": "Gemini 2026-11-24", "nombre": "Paute bruto solo en día 1", "hipotesis": "Aplicar la lluvia pronosticada sin descuento en el Paute únicamente en el día 1 y conservar la serie calibrada del titular desde el día 2 reduce el error a 1 día hacia los 5 cm sin sobrestimar a mediano y largo plazo."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})

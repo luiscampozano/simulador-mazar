@@ -1,0 +1,80 @@
+{
+ "fecha": "2026-11-24",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.765,
+ "lote": {
+  "nombre": "batches/q892gh7rerspr76zl907djm3dem0e395wqu3",
+  "enviado": "2026-11-24T14:39-05:00",
+  "recogido": "2026-11-24T18:56-05:00",
+  "estado_lote": "BATCH_STATE_SUCCEEDED"
+ },
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "acotado_otras_sin_coca",
+    "nombre": "Autoajuste <= 1 y otras hidroeléctricas sin Coca",
+    "hipotesis": "Acotar el autoajuste a <= 1,0 para no acelerar la bajada y desvincular las otras hidroeléctricas del río Coca (peso 0) reduce el error a 1-3 días sin introducir pesimismo a mediano plazo.",
+    "promocion": "luis",
+    "por_que": "El autoajuste mayor a 1,0 acelera artificialmente la bajada proyectada del embalse, incrementando el error en días de descenso controlado. A su vez, hacer que centrales de la vertiente del Pacífico y sur sigan los caudales del río Coca agrega oscilaciones que no corresponden a su cuenca. Combinar el tope en 1,0 para el autoajuste con desacoplamiento de las otras hidroeléctricas remueve dos fuentes de ruido concurrentes.",
+    "codigo": "def c_acotado_otras_sin_coca(P, ctx, mod):\n    cambios = {}\n    aj = float(ctx.get(\"ajuste\") or 1.0)\n    if aj > 1.0:\n        ctx[\"ajuste\"] = 1.0\n        cambios[\"ajuste\"] = 1.0\n    ctx[\"otrasPesoRf\"] = 0.0\n    cambios[\"otrasPesoRf\"] = 0.0\n    return P, ctx, cambios"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2117.75,
+     2119.23,
+     2120.05
+    ],
+    "candidato_1_7_14": [
+     2117.76,
+     2120.83,
+     2123.1
+    ],
+    "cambios_mod": [
+     "otrasPesoRf"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_sesgo50_dia7",
+    "nombre": "Sin autoajuste + mitad de sesgo desde día 7",
+    "hipotesis": "Eliminar el autoajuste en días 0-6 conserva la ventaja del modelo sin autoajuste en 1, 2, 3 y 7 días, y sumar la mitad del sesgo acumulado solo desde el día 7 corrige el pesimismo estructural de 10 y 14 días sin sobrecorregir el corto plazo.",
+    "promocion": "luis",
+    "por_que": "En el marcador sin_autoajuste supera al titular en 1d (0,409 vs 0,418 m), 2d (0,602 vs 0,638 m), 3d (0,605 vs 0,644 m) y 7d (1,604 vs 1,697 m), pero decae en 10d y 14d por la acumulación del sesgo estructural negativo (-4,41 m en titular a 14d). Las variantes anteriores aplicaban sesgo desde los días 2 o 5, donde el titular ya presentaba sesgo positivo (+0,25 m a 3d), generando sobrecorrección. Postergar el sesgo al horizonte del día 7 protege las ganancias de 1 a 7 días y previene el desvío a largo plazo.",
+    "codigo": "def c_sin_autoajuste_sesgo50_dia7(P, ctx, mod):\n    ctx[\"ajuste\"] = 1.0\n    ph = (mod.get(\"aciertos\") or {}).get(\"por_horizonte\") or {}\n    pts = [(0, 0.0)]\n    for h, v in ph.items():\n        if (v.get(\"n\") or 0) >= 30 and v.get(\"sesgo_m\") is not None:\n            pts.append((int(h), float(v[\"sesgo_m\"])))\n    pts.sort()\n    if len(pts) < 3:\n        return P, ctx, {\"ajuste\": 1.0}\n    def s(t):\n        for (h0, v0), (h1, v1) in zip(pts, pts[1:]):\n            if t <= h1:\n                return v0 + (v1 - v0) * (t - h0) / (h1 - h0)\n        return pts[-1][1]\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    cota_val = float(ctx.get(\"cota\") or 2118.0)\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, cota_val - 2115.0)\n    k = dvdz / 0.0864\n    base = list(ctx.get(\"memoria\") or [])\n    corr = [0.0 if d < 7 else max(-80.0, min(80.0, -(s(d + 1) - s(d)) * k * 0.5)) for d in range(60)]\n    n = max(len(base), len(corr))\n    out = [round((base[i] if i < len(base) else 0.0) + (corr[i] if i < len(corr) else 0.0), 2) for i in range(n)]\n    ctx[\"memoria\"] = out\n    return P, ctx, {\"ajuste\": 1.0, \"memoria\": out}"
+   },
+   "estado": "rechazada por validación: función no permitida: s"
+  },
+  {
+   "propuesta": {
+    "id": "paute_bruto_dia1",
+    "nombre": "Paute bruto solo en día 1",
+    "hipotesis": "Aplicar la lluvia pronosticada sin descuento en el Paute únicamente en el día 1 y conservar la serie calibrada del titular desde el día 2 reduce el error a 1 día hacia los 5 cm sin sobrestimar a mediano y largo plazo.",
+    "promocion": "auto",
+    "por_que": "Durante las pruebas de paute_sin_ajuste la mediana del error a 1 día se redujo a 8,9 cm (frente a 27,5 cm del titular), pero el modelo acumuló error a 5 y 7 días por exceso de caudal en días secos consecutivos. Aplicar el caudal sin factor de ajuste exclusivamente en el índice 1 (próximas 24 horas) aprovecha la alta fiabilidad del pronóstico de corto plazo sin distorsionar el perfil hidrológico a 5-14 días.",
+    "codigo": "def c_paute_bruto_dia1(P, ctx, mod):\n    bruta = mod.get(\"serieMazarBruta\")\n    actual = ctx.get(\"serieMazar\")\n    if not bruta or not actual or len(bruta) < 2 or len(actual) < 2:\n        return None\n    nueva = list(actual)\n    nueva[1] = bruta[1]\n    ctx[\"serieMazar\"] = nueva\n    return P, ctx, {\"serieMazar\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2117.75,
+     2119.23,
+     2120.05
+    ],
+    "candidato_1_7_14": [
+     2117.8,
+     2119.34,
+     2120.16
+    ],
+    "cambios_mod": [
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "2 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-24-acotado_otras_sin_coca"
+}
