@@ -4,7 +4,11 @@ del robot, y propone UNA función candidata. El script la valida (sin importacio
 cálculo sobre copias de P/ctx), la prueba con los datos de hoy y, si pasa, la deja lista en el repo para que el
 workflow la suba a una rama candidato/gemini-<fecha>-<id>. Claude (auditor de las 14:36) la revisa con un Claude
 independiente y la integra solo si los dos están de acuerdo. Nunca cambia el titular.
-Salida: laboratorio/propuestas/AAAA-MM-DD.json (propuesta, validación y prueba) y, si pasa, el cambio en laboratorio.py."""
+Salida: laboratorio/propuestas/AAAA-MM-DD.json (propuesta, validación y prueba) y, si pasa, el cambio en laboratorio.py.
+
+Modo lote (Luis 23 nov, "opción 2"): `--lote` usa la Batch API de Gemini (mitad de precio, entrega en minutos u horas,
+máximo 24 h). Cada corrida primero RECOGE el lote pendiente (laboratorio/lote_gemini.json) y, si no hay pendiente ni
+propuesta de hoy, ENVÍA el de hoy. Sin --lote funciona como antes (llamada directa)."""
 import ast, json, os, re, sys
 from datetime import datetime, timedelta, timezone
 
@@ -96,8 +100,7 @@ def probar(cid, codigo):
             "cambios_mod": sorted(r[2].keys())}
 
 
-def main():
-    hoy = datetime.now(EC).date().isoformat()
+def armar_texto():
     import laboratorio as L
     existentes = "\n".join(f"- {k}: {c.get('hipotesis', '')}" for k, c in sorted(L.CANDIDATOS.items()))
     texto = (leer("laboratorio/GEMINI.md") + "\n\n# TU PAPEL HOY: SEGUNDO AUDITOR (PROPONES, NO REVISAS)\n"
@@ -119,8 +122,18 @@ def main():
              + "\n\n# datos.json → modelo.aciertos\n" + json.dumps((json.load(open(os.path.join(RAIZ, "datos.json"), encoding="utf-8")).get("modelo") or {}).get("aciertos"), ensure_ascii=False)[:6000]
              + "\n\n# scripts/laboratorio.py\n```python\n" + leer("scripts/laboratorio.py", 45000) + "\n```\n\n# scripts/robot.py (cómo se arman P y ctx)\n```python\n"
              + leer("scripts/robot.py", 90000) + "\n```")
-    modelo, resp = gemini(texto)
-    reg = {"fecha": hoy, "modelo": modelo, "gasto_mes_usd": round(GG.gasto_mes(), 3)}
+    return texto
+
+
+def main():
+    hoy = datetime.now(EC).date().isoformat()
+    modelo, resp = gemini(armar_texto())
+    procesar(hoy, modelo, resp)
+
+
+def procesar(hoy, modelo, resp, extra=None):
+    import laboratorio as L
+    reg = {"fecha": hoy, "modelo": modelo, "gasto_mes_usd": round(GG.gasto_mes(), 3), **(extra or {})}
     os.makedirs(os.path.join(RAIZ, "laboratorio", "propuestas"), exist_ok=True)
     out = os.path.join(RAIZ, "laboratorio", "propuestas", hoy + ".json")
     if os.path.exists(out):   # 23 nov: dos corridas el mismo día; la segunda no pisa el registro de la primera
@@ -128,7 +141,7 @@ def main():
     def guardar():
         json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if not resp:
-        reg["estado"] = "gemini no respondió (o tope de gasto)"; guardar(); print(reg); return
+        reg["estado"] = reg.pop("estado_extra", None) or "gemini no respondió (o tope de gasto)"; guardar(); print(reg); return
     try:
         props = json.loads(re.search(r"\{.*\}", resp, re.S).group(0)).get("propuestas") or []
     except Exception:
@@ -171,5 +184,88 @@ def main():
     print(json.dumps(reg, ensure_ascii=False, indent=1)[:5000])
 
 
+# ---------- Modo lote (Batch API) ----------
+F_LOTE = os.path.join(RAIZ, "laboratorio", "lote_gemini.json")
+API = "https://generativelanguage.googleapis.com/v1beta/"
+
+
+def _api(ruta, cuerpo=None):
+    import urllib.request
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    req = urllib.request.Request(API + ruta, data=json.dumps(cuerpo).encode() if cuerpo is not None else None,
+                                 headers={"Content-Type": "application/json", "x-goog-api-key": key})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.load(r)
+
+
+def _buscar(d, clave):
+    """Primer valor de `clave` en el JSON (la documentación no es clara en qué nivel vienen state e inlinedResponses)."""
+    if isinstance(d, dict):
+        if clave in d: return d[clave]
+        for v in d.values():
+            x = _buscar(v, clave)
+            if x is not None: return x
+    elif isinstance(d, list):
+        for v in d:
+            x = _buscar(v, clave)
+            if x is not None: return x
+    return None
+
+
+def _respuestas(d):
+    r = _buscar(d, "inlinedResponses")
+    while isinstance(r, dict) and "inlinedResponses" in r: r = r["inlinedResponses"]
+    return r if isinstance(r, list) else []
+
+
+def recoger():
+    try:
+        p = json.load(open(F_LOTE, encoding="utf-8"))
+    except Exception:
+        return None
+    try:
+        d = _api(p["nombre"])
+    except Exception as e:
+        print("lote: no se pudo consultar", p.get("nombre"), e, file=sys.stderr); return p
+    est = str(_buscar(d, "state") or "")
+    edad_h = (datetime.now(EC) - datetime.fromisoformat(p["enviado"])).total_seconds() / 3600
+    extra = {"lote": {"nombre": p["nombre"], "enviado": p["enviado"], "recogido": datetime.now(EC).isoformat(timespec="minutes"), "estado_lote": est}}
+    if "SUCCEEDED" in est:
+        rs = _respuestas(d); r0 = (rs[0] if rs else {}) or {}
+        resp_obj = r0.get("response") or {}
+        if resp_obj.get("usageMetadata"): GG.anotar("auditor_lote", p["modelo"], resp_obj["usageMetadata"], factor=0.5)
+        c0 = (resp_obj.get("candidates") or [{}])[0]
+        texto = "".join(x.get("text", "") for x in (c0.get("content") or {}).get("parts") or [])
+        if r0.get("error"): extra["lote"]["error"] = r0["error"]
+        os.remove(F_LOTE); procesar(p["fecha"], p["modelo"], texto or None, extra); return None
+    if any(x in est for x in ("FAILED", "CANCELLED", "EXPIRED")) or edad_h > 26:
+        os.remove(F_LOTE)
+        procesar(p["fecha"], p["modelo"], None, extra | {"estado_extra": f"lote {est or 'sin estado'} ({edad_h:.0f} h)"}); return None
+    print(f"lote {p['nombre']}: {est or 'sin estado'} ({edad_h:.1f} h); se recoge en la próxima corrida"); return p
+
+
+def enviar():
+    hoy = datetime.now(EC).date().isoformat()
+    if os.path.exists(os.path.join(RAIZ, "laboratorio", "propuestas", hoy + ".json")):
+        print("ya hay propuesta de hoy"); return
+    if not os.environ.get("GEMINI_API_KEY", "").strip(): print("sin GEMINI_API_KEY"); return
+    ms = GG.modelos(MODELOS)
+    if not ms: return
+    m = ms[0]
+    cuerpo = {"batch": {"display_name": f"auditor-mazar-{hoy}", "input_config": {"requests": {"requests": [
+        {"request": {"contents": [{"role": "user", "parts": [{"text": armar_texto()}]}],
+                     "generationConfig": {"temperature": 0.6, "maxOutputTokens": 24000 if "flash" in m else 6000}},
+         "metadata": {"key": "auditor"}}]}}}}
+    d = _api(f"models/{m}:batchGenerateContent", cuerpo)
+    nombre = d.get("name") or _buscar(d, "name")
+    json.dump({"nombre": nombre, "modelo": m, "fecha": hoy, "enviado": datetime.now(EC).isoformat(timespec="minutes")},
+              open(F_LOTE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print("lote enviado:", nombre, m)
+
+
 if __name__ == "__main__":
-    main()
+    if "--lote" in sys.argv:
+        if recoger() is None:
+            enviar()
+    else:
+        main()

@@ -39,9 +39,10 @@ def modelos(lista):
     return list(lista)
 
 
-def anotar(quien, modelo, uso):
+def anotar(quien, modelo, uso, factor=1.0):
+    """factor=0.5 para el modo lote (Batch API: mitad de precio)."""
     pe, ps = PRECIO.get(modelo, (2.0, 10.0))
-    usd = (uso.get("promptTokenCount", 0) * pe + (uso.get("candidatesTokenCount", 0) + uso.get("thoughtsTokenCount", 0)) * ps) / 1e6
+    usd = factor * (uso.get("promptTokenCount", 0) * pe + (uso.get("candidatesTokenCount", 0) + uso.get("thoughtsTokenCount", 0)) * ps) / 1e6
     d = _leer(); m = d.setdefault(_mes(), {"usd": 0.0, "llamadas": 0, "por_quien": {}})
     m["usd"] = round(m["usd"] + usd, 5); m["llamadas"] += 1
     q = m["por_quien"].setdefault(quien, {"usd": 0.0, "llamadas": 0})
