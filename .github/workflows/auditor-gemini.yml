@@ -23,6 +23,7 @@ jobs:
           git config user.name "datalab-robot" && git config user.email "datalab-robot@users.noreply.github.com"
           if [ -f .rama_candidato ]; then
             R=$(cat .rama_candidato); rm .rama_candidato
+            if git ls-remote --exit-code -q origin "refs/heads/$R" >/dev/null; then R="$R-$(TZ=America/Guayaquil date +%H%M)"; fi
             git checkout -q -b "$R"
             git add scripts/laboratorio.py laboratorio/propuestas
             git commit -q -m "Gemini propone candidato ($R) [skip ci]"

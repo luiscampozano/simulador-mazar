@@ -123,6 +123,8 @@ def main():
     reg = {"fecha": hoy, "modelo": modelo, "gasto_mes_usd": round(GG.gasto_mes(), 3)}
     os.makedirs(os.path.join(RAIZ, "laboratorio", "propuestas"), exist_ok=True)
     out = os.path.join(RAIZ, "laboratorio", "propuestas", hoy + ".json")
+    if os.path.exists(out):   # 23 nov: dos corridas el mismo día; la segunda no pisa el registro de la primera
+        out = os.path.join(RAIZ, "laboratorio", "propuestas", hoy + datetime.now(EC).strftime("-%H%M") + ".json")
     def guardar():
         json.dump(reg, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if not resp:
@@ -163,7 +165,7 @@ def main():
     reg["estado"] = f"{len(aceptadas)} de {len(props[:3])} listas para revisión" if props else "sin propuestas hoy"
     if aceptadas:
         open(os.path.join(RAIZ, "scripts", "laboratorio.py"), "w", encoding="utf-8").write(s)
-        reg["rama"] = f"candidato/gemini-{hoy}"
+        reg["rama"] = f"candidato/gemini-{hoy}-{aceptadas[0][:40]}"   # única por candidato (23 nov: chocaba al correr 2 veces el mismo día)
         open(os.path.join(RAIZ, ".rama_candidato"), "w").write(reg["rama"])
     guardar()
     print(json.dumps(reg, ensure_ascii=False, indent=1)[:5000])
