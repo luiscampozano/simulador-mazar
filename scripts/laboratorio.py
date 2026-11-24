@@ -764,6 +764,7 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     try:   # revisor 19 nov: media de los 4 pasos de 6 h de cada día (qturb de t = k es el instante, no el día); lo usa _fijar_mazar
         d_p, _ = simular(_copia(P), _copia(ctx), par, horizonte=_TIT_QT_DIAS + 1, pasos=True)
         mod["_tit_qt15_media"] = [round(sum(float(x["qturb"]) for x in d_p if k <= x["t"] < k + 1 - 1e-9) / 4.0, 2) for k in range(_TIT_QT_DIAS)]
+        mod["_tit_paute15_media"] = [round(sum(float(x["paute"]) for x in d_p if k <= x["t"] < k + 1 - 1e-9) / 4.0, 1) for k in range(_TIT_QT_DIAS)]   # Paute (MW) medio por día del titular (mazar_proporcion_amaluza_baja, cerebro 24 nov)
     except Exception as e:
         log(f"Laboratorio: turbinado medio del titular no disponible: {e}")
     mod["_tit_qin"] = [round((float(d_tit[k]["qin"]) + float(d_tit[k + 1]["qin"])) / 2, 2) for k in range(3)]   # caudal de entrada medio del titular sin memoria, días 0–2 (entrada_noche_mazar0; revisor: media, no el instante)
@@ -4652,3 +4653,138 @@ _cand_3nov("tres_promesas", c_tres_promesas, "Tres promesas medidas: Paute y Coc
            "Cerebro de Mazar 23 nov (espera +10 % a 7 días): caudal, Coca y 'otras' suben con la misma lluvia prevista y juntas apagan "
            "Mazar tres días. = subidas_medidas + otras_resto_sin_coca (pieza ajustada al reparo del retador). No se une a "
            "calendario_medido (anula la pieza) ni a agua_paute_con_viento (empuja al revés).", origen=_OR_C23)
+
+
+# ---- Auditor 24 nov: ideas del laboratorio del reporte de los cerebros de Mazar 24 nov (segunda revisión, Gemini Neon;
+# aprobación permanente de Luis, 7 nov). Las del líder no se programan: mazar_piso_laboral (el retador: el piso de 664 MWh es
+# de otro régimen, cota 2.127,9 y Amaluza 1.976) y memoria_fresca_manana (equivale a memoria_desde_dia3, retirado; ventana
+# elegida mirando los datos); la del investigador (curva cota-volumen) la refutó el retador (la curva cierra 21 días a ≤ 7 cm).
+_OR_C24 = "cerebro 2026-11-24"
+
+
+def c_mazar_proporcion_amaluza_baja(P, ctx, mod):
+    """Gemini Neon 24 nov ('mazar_proporcion_amaluza_baja'): con Amaluza bajo 1.971,0 m (cota de la corrida, sin futuro), en los
+    días 1–7 con Paute del titular < 500 MW, Mazar genera al menos 0,22 × ese Paute (con Amaluza vacía Mazar sostiene a Molino:
+    24 nov 63 de 300 MW). Con Paute ≥ 500 MW no se toca (el titular da ~0,08–0,10 y 0,22 duplicaría a Mazar).
+    Solo sube el turbinado donde el titular queda por debajo; vía memoria, como _fijar_mazar. Si no aplica, = titular."""
+    am = ctx.get("amaluzaCota")
+    if not isinstance(am, (int, float)):
+        return None
+    if am >= 1971.0:
+        return P, ctx, {"aplicado": False, "amaluza_m": round(float(am), 2)}
+    qt = mod.get("_tit_qt15_media"); pa = mod.get("_tit_paute15_media"); k_mw = _kmz(ctx, mod)
+    if not qt or not pa or not k_mw:
+        return None
+    obj = {}
+    for k in range(1, 8):
+        if k >= len(qt) or k >= len(pa):
+            break
+        if float(pa[k]) >= 500.0:   # Gemini: "corrige días con Paute en 172–487 MW"; con Paute alto el titular ya da ~0,08–0,10
+            continue                 # y 0,22 duplicaría a Mazar (auditor 24 nov, prueba fuera de línea)
+        piso = 0.22 * max(0.0, float(pa[k]))
+        if float(qt[k]) * k_mw < piso:
+            obj[k] = piso * 24.0
+    if not obj:
+        return P, ctx, {"aplicado": False, "amaluza_m": round(float(am), 2)}
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    mem, det = r
+    return P, ctx, {"memoria": mem, "aplicado": True, "amaluza_m": round(float(am), 2), "piso_mazar": det}
+
+
+def c_otras_rios_anclado_6h(P, ctx, mod):
+    """Gemini Neon 24 nov ('otras_rios_anclado_6h'): si San Francisco + Agoyán + Minas San Francisco + Delsitanisagua de hoy
+    (media Cenace desde las 00:00, ≥ 6 h) caen > 15 % frente al último día con ≥ 20 h, el día 0 de la serie de los ríos parte de
+    esa media y en los días 1–3 la serie no pasa de 1,15 × esa partida (GloFAS prometía rel_7d 2,78 en Jubones). Distinto de
+    rios_sin_embalse_cenace (mueve los días 0–1 con |d| ≥ 100 MW en los dos sentidos y no acota la subida)."""
+    ts = mod.get("_ts")
+    otr = ctx.get("otrasRios") or {}
+    other = float(P.get("other") or 0)
+    frac = float(otr.get("frac") or 0); se = list(otr.get("serie") or [])
+    if not ts or other <= 0 or frac <= 0 or len(se) < 4:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    pl = (_leer_json_lab("serie_cenace.json") or {}).get("plantas") or {}
+    x = pl.get(hoy) or {}
+    h = float(x.get("horas") or 0)
+    if h < 6:
+        return None
+    # revisor 24 nov: la base del titular (otras_rios del robot) es el último día con ≥ 20 h INCLUIDO hoy; si ya es hoy, el
+    # titular parte de lo medido y no se vuelve a restar la caída (solo el tope de los días 1–3, contra el día cerrado anterior)
+    base_d, base = next(((d, p) for d, p in sorted(pl.items(), reverse=True) if float(p.get("horas") or 0) >= 20), (None, None))
+    ayer = next((p for d, p in sorted(pl.items(), reverse=True) if d < hoy and float(p.get("horas") or 0) >= 20), None)
+    if not base or not ayer:
+        return None
+    mw_hoy = sum(float(x.get(n) or 0) for n in _RIOS_SIN_EMBALSE) / h
+    mw_ayer = sum(float(ayer.get(n) or 0) for n in _RIOS_SIN_EMBALSE) / float(ayer["horas"])
+    mw_base = sum(float(base.get(n) or 0) for n in _RIOS_SIN_EMBALSE) / float(base["horas"])
+    if mw_ayer <= 0:
+        return None
+    caida = mw_hoy / mw_ayer - 1.0
+    info = {"mw_hoy": round(mw_hoy, 1), "horas_hoy": h, "mw_ayer": round(mw_ayer, 1), "cambio": round(caida, 3), "base_es_hoy": base_d == hoy}
+    if caida > -0.15:
+        return P, ctx, dict(info, aplicado=False)
+    k = other * frac
+    a0 = max(0.0, se[0] + (0.0 if base_d == hoy else (mw_hoy - mw_base) / k))
+    se[0] = round(a0, 4)
+    for i in (1, 2, 3):
+        se[i] = round(min(float(se[i]), 1.15 * a0), 4)
+    ctx["otrasRios"] = {"frac": frac, "serie": se}
+    return P, ctx, dict(info, otrasRios=ctx["otrasRios"], aplicado=True)
+
+
+def c_termica_cenace_3d(P, ctx, mod):
+    """Gemini Neon 24 nov ('termica_cenace_3d'): la térmica del titular sale de las medias horas de Cenace de las últimas 24 h
+    (t + r, hoy ~1.220 MW); el balance diario de Cenace (registro/generacion.json: vapor + gas + diésel + motores + otros) da
+    ~1.030–1.070 MW. Usa la media de los 3 últimos días cerrados del balance. Ojo: la demanda sigue saliendo de las medias horas,
+    así que bajar la térmica sube lo que pide Paute (puede ir en contra de lo que esperaba Gemini; se mide igual). Revisor 24 nov: el
+    titular incluye las renovables (r, ~16–27 MW de media diaria) y el balance casi no (otros 6–17 MW): ~20 de los ~185 MW de diferencia son eso."""
+    ts = mod.get("_ts")
+    if not ts:
+        return None
+    hoy = _ts_dt(ts).date().isoformat()
+    bal = ((_leer_json_lab(os.path.join("registro", "generacion.json")) or {}).get("balance")) or {}
+    vals = []
+    lim = (_ts_dt(ts).date() - timedelta(days=3)).isoformat()   # revisor 24 nov: el balance debe estar al día
+    for d in sorted(bal, reverse=True):
+        if d >= hoy:
+            continue
+        if not vals and d < lim:
+            return None
+        v = bal[d] or {}
+        try:
+            vals.append(sum(float(v.get(c) or 0) for c in ("vapor", "gas", "diesel", "motores", "otros")))
+        except Exception:
+            continue
+        if len(vals) == 3:
+            break
+    if len(vals) < 3 or min(vals) < 300:
+        return None
+    t3 = max(700.0, min(1700.0, sum(vals) / 3.0))
+    t0 = float(P.get("therm") or 0)
+    P["therm"] = round(t3)
+    return P, ctx, {"therm": P["therm"], "therm_titular": round(t0)}
+
+
+def c_combo_amaluza_rios_termica(P, ctx, mod):
+    """Gemini Neon 24 nov ('combo_amaluza_rios_termica', 3 piezas): mazar_proporcion_amaluza_baja + otras_rios_anclado_6h +
+    termica_cenace_3d. El piso de Mazar se calcula con el Paute del titular (antes de las otras dos piezas)."""
+    return _combinar(P, ctx, mod, c_mazar_proporcion_amaluza_baja, c_otras_rios_anclado_6h, c_termica_cenace_3d)
+
+
+_cand_3nov("mazar_proporcion_amaluza_baja", c_mazar_proporcion_amaluza_baja, "Amaluza vacía: Mazar al menos 22 % de Paute",
+           "Gemini Neon 24 nov (espera +12 % a 3 días): con Amaluza en su piso (1.969,85 m) Mazar sostiene a Molino (esta madrugada "
+           "63 MW de 300 de Paute) y no puede caer a 64 MWh aunque Paute baje; el titular lo apaga el miércoles. Si Amaluza < 1.971 m, "
+           "días 1–7 con Paute del titular < 500 MW: Mazar ≥ 0,22 × ese Paute. Responde al reparo del retador Opus ('el piso de Mazar lo fija el déficit de "
+           "Amaluza') en vez del piso fijo de 664 MWh.", origen=_OR_C24)
+_cand_3nov("otras_rios_anclado_6h", c_otras_rios_anclado_6h, "Ríos sin embalse: partir de lo medido hoy y no creer subidas > 15 % (días 1–3)",
+           "Gemini Neon 24 nov (espera +10 % a 3 días): hoy los 4 ríos sin embalse cayeron de 557 a ~430 MW (−23 % con 14,5 h) mientras GloFAS "
+           "promete subirlos (Jubones rel_7d 2,78) y eso desplaza 338 MW de Paute el miércoles. Si caen > 15 % frente a ayer, el día 0 "
+           "parte de la media de hoy y los días 1–3 se acotan a 1,15 × esa partida.", origen=_OR_C24)
+_cand_3nov("termica_cenace_3d", c_termica_cenace_3d, "Térmica del balance diario de Cenace (3 días)",
+           "Gemini Neon 24 nov (pieza): la térmica del titular (~1.220 MW, medias horas de Cenace) está ~190 MW sobre el balance "
+           "diario (1.021–1.072 MW en 9 días). Usa la media de 3 días cerrados del balance. La demanda no cambia: más Paute.", origen=_OR_C24)
+_cand_3nov("combo_amaluza_rios_termica", c_combo_amaluza_rios_termica, "Amaluza + ríos anclados + térmica del balance",
+           "Gemini Neon 24 nov (3 piezas, espera +15 % a 3 y 7 días y en fecha_critica): mazar_proporcion_amaluza_baja + "
+           "otras_rios_anclado_6h + termica_cenace_3d.", origen=_OR_C24)
