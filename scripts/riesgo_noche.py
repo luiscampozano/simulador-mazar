@@ -13,7 +13,8 @@ no estaba vendiendo. Esta señal mira, una vez al día entre las 16:00 y las 18:
 Nivel: 0–1 señales = bajo, 2 = medio, 3–4 = alto. Umbrales CONGELADOS el 2026-11-25; no se ajustan solos.
 No se muestra en la página ni avisa a nadie: se guarda en registro/riesgo_noche.json y al día siguiente se verifica con
 la demanda del Cenace si hubo alivio de carga (una caída ≥ 350 MW en media hora entre 19:00 y 23:30 y, a las 21:30,
-≥ 400 MW menos que la noche anterior a la misma hora). Se evalúa con ≥ 20 noches (contar NOCHES).
+≥ 400 MW menos que la noche anterior a la misma hora; se verifica cuando ya está el dato de las 23:30, hasta 3 días
+después). Se evalúa con ≥ 20 noches (contar NOCHES).
 """
 import json, os, statistics
 from datetime import datetime, timedelta, timezone
@@ -64,6 +65,7 @@ def predecir(ahora):
     n = sum(1 for v in s.values() if v)
     return {"hecha": ahora.isoformat(timespec="minutes"), "antes_del_evento": ahora.hour < 19, "congelado": CONGELADO,
             "senales": s, "n": n, "nivel": "alto" if n >= 3 else "medio" if n == 2 else "bajo",
+            "datos_de": {"coca": ks[-1] if ks else None, "cenace": max([k for k in P if k <= ahora.strftime("%Y-%m-%dT%H:%M")], default=None)},
             "valores": {"rio_coca_m3s": q, "rio_da_mw": None if q is None else round(rio_mw(q)), "exceso_coca_3h_mw": ex,
                         "amaluza_m": amal, "pico_anoche_mw": pico, "colombia_ultima_hora_mw": ult}}
 
@@ -71,11 +73,14 @@ def predecir(ahora):
 def verificar(dia, P):
     """¿Hubo alivio de carga esa noche? Necesita la demanda de esa noche y de la anterior (generacion.json guarda ~3 días)."""
     serie = sorted((k[11:16], v[0]) for k, v in P.items() if k.startswith(dia) and "19:00" <= k[11:16] <= "23:30")
+    if not serie or serie[-1][0] != "23:30":   # revisor: esperar a tener la noche completa
+        return None
+    mins = lambda h: int(h[:2]) * 60 + int(h[3:])
     previo = (datetime.fromisoformat(dia) - timedelta(days=1)).date().isoformat()
     a2130, p2130 = P.get(dia + "T21:30"), P.get(previo + "T21:30")
     if len(serie) < 8 or not a2130 or not p2130:
         return None
-    caida = max((a[1] - b[1] for a, b in zip(serie, serie[1:])), default=0)
+    caida = max((a[1] - b[1] for a, b in zip(serie, serie[1:]) if mins(b[0]) - mins(a[0]) == 30), default=0)   # solo pares a 30 min
     vs_ayer = p2130[0] - a2130[0]
     return {"caida_max_30min_mw": round(caida), "menos_que_ayer_2130_mw": round(vs_ayer),
             "alivio_de_carga": bool(caida >= U["caida_30min"] and vs_ayer >= U["caida_vs_ayer_2130"])}
@@ -84,6 +89,7 @@ def verificar(dia, P):
 def main(ahora=None):
     ahora = ahora or datetime.now(EC)
     R = leer(F, {}) or {}
+    if not isinstance(R, dict): R = {}   # revisor: un archivo dañado no debe apagar la señal para siempre
     hoy = ahora.date().isoformat()
     if hoy not in R and 16 <= ahora.hour < 18:
         R[hoy] = {"prediccion": predecir(ahora)}
@@ -93,10 +99,16 @@ def main(ahora=None):
         if dia < hoy and "verificacion" not in r:
             v = verificar(dia, P)
             if v:
+                cd = ((leer("datos.json", {}) or {}).get("manual") or {})
+                v["corte_programado_mw"] = ((cd.get("cortes_registro") or {}).get(dia, (cd.get("cortes_plan") or {}).get(dia)))   # para separar racionamientos
                 r["verificacion"] = v
     os.makedirs("registro", exist_ok=True)
-    json.dump(dict(sorted(R.items())[-400:]), open(F + ".tmp", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    os.replace(F + ".tmp", F)
+    try:
+        with open(F + ".tmp", "w", encoding="utf-8") as fo:
+            json.dump(dict(sorted(R.items())[-400:]), fo, ensure_ascii=False, indent=1)
+        os.replace(F + ".tmp", F)
+    finally:
+        if os.path.exists(F + ".tmp"): os.remove(F + ".tmp")
 
 
 if __name__ == "__main__":
