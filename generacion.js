@@ -104,7 +104,7 @@
       <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Cota de Mazar hora a hora</h3><div class="g-sub">Nivel del embalse (Celec Sur). El mínimo operativo es <b>2.115 m</b>: ahí Mazar tiene que parar. La franja de 2.116 a 2.115 m es la zona crítica (2.116 m es nuestro margen de alerta).</div></div>${selRango("rios")}</div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-real);border-radius:50%;width:8px;height:8px"></i>cota de cada hora</span><span><i class="s" style="background:var(--g-crit);opacity:.3"></i>zona crítica (2.116–2.115 m)</span><span><i style="background:var(--g-crit);height:3px"></i><b>2.115 m, mínimo operativo</b></span></div>
       <div class="g-lbl" id="g-cota-t"></div><div class="g-chart"><svg id="g-cota" role="img" aria-label="Cota de Mazar hora a hora"></svg></div></div>
-      <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>${selRango("cc")}</div>
       <div id="g-cc-alerta"></div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span></div>
       <div class="g-chart"><svg id="g-cc" role="img" aria-label="Coca Codo: generación hora a hora"></svg></div>
@@ -112,7 +112,7 @@
       <div class="g-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">
       ${[["mq", "Lo que entra a Mazar hora a hora", "Caudal de entrada al embalse de Mazar.", "var(--g-real)"],
          ["mc", "Cuenca del Paute hora a hora", "Todo el río Paute hasta Amaluza (Mazar + los ríos que se le unen después).", "var(--g-col)"],
-         ["mk", "Río Coca hora a hora", "El río que mueve a Coca Codo Sinclair.", "var(--g-ok)"]].map(([id, t, s, c]) => `<div class="g-box g-col"><div><h3 class="g-h3">${t}</h3><div class="g-sub">${s}</div></div>
+         ["mk", "Río Coca hora a hora", "El río que mueve a Coca Codo Sinclair.", "var(--g-ok)"]].map(([id, t, s, c]) => `<div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">${t}</h3><div class="g-sub">${s}</div></div>${selRango(id)}</div>
       <div class="g-legend"><span><i class="s" style="background:${c};border-radius:50%;width:8px;height:8px"></i>dato de cada hora (Celec)</span><span><i style="background:${c};height:3px"></i>promedio de 6 h</span><span><i class="d" style="border-top-color:var(--g-warn)"></i>lo normal del mes</span></div>
       <div class="g-lbl" id="g-${id}-t"></div><div class="g-chart"><svg id="g-${id}" role="img" aria-label="${t}"></svg></div></div>`).join("")}
       </div>
