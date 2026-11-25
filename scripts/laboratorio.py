@@ -4662,7 +4662,7 @@ _cand_3nov("tres_promesas", c_tres_promesas, "Tres promesas medidas: Paute y Coc
 _OR_C24 = "cerebro 2026-11-24"
 
 
-def c_mazar_proporcion_amaluza_baja(P, ctx, mod):
+def _mazar_proporcion_amaluza(P, ctx, mod, umbral=1971.0):
     """Gemini Neon 24 nov ('mazar_proporcion_amaluza_baja'): con Amaluza bajo 1.971,0 m (cota de la corrida, sin futuro), en los
     días 1–7 con Paute del titular < 500 MW, Mazar genera al menos 0,22 × ese Paute (con Amaluza vacía Mazar sostiene a Molino:
     24 nov 63 de 300 MW). Con Paute ≥ 500 MW no se toca (el titular da ~0,08–0,10 y 0,22 duplicaría a Mazar).
@@ -4670,7 +4670,7 @@ def c_mazar_proporcion_amaluza_baja(P, ctx, mod):
     am = ctx.get("amaluzaCota")
     if not isinstance(am, (int, float)):
         return None
-    if am >= 1971.0:
+    if am >= umbral:
         return P, ctx, {"aplicado": False, "amaluza_m": round(float(am), 2)}
     qt = mod.get("_tit_qt15_media"); pa = mod.get("_tit_paute15_media"); k_mw = _kmz(ctx, mod)
     if not qt or not pa or not k_mw:
@@ -4691,6 +4691,11 @@ def c_mazar_proporcion_amaluza_baja(P, ctx, mod):
         return None
     mem, det = r
     return P, ctx, {"memoria": mem, "aplicado": True, "amaluza_m": round(float(am), 2), "piso_mazar": det}
+
+
+def c_mazar_proporcion_amaluza_baja(P, ctx, mod):
+    """Pieza del 24 nov con su umbral original (Amaluza < 1.971,0 m)."""
+    return _mazar_proporcion_amaluza(P, ctx, mod, 1971.0)
 
 
 def c_otras_rios_anclado_6h(P, ctx, mod):
@@ -4788,3 +4793,104 @@ _cand_3nov("termica_cenace_3d", c_termica_cenace_3d, "Térmica del balance diari
 _cand_3nov("combo_amaluza_rios_termica", c_combo_amaluza_rios_termica, "Amaluza + ríos anclados + térmica del balance",
            "Gemini Neon 24 nov (3 piezas, espera +15 % a 3 y 7 días y en fecha_critica): mazar_proporcion_amaluza_baja + "
            "otras_rios_anclado_6h + termica_cenace_3d.", origen=_OR_C24)
+
+
+# ---- Auditor 25 nov: ideas del laboratorio del reporte de los cerebros de Mazar 25 nov (líder Fable, retador Opus, segunda
+# revisión Gemini Neon; aprobación permanente de Luis, 7 nov). Se programan las versiones que recogen los reparos:
+# eta_laboral_coca_dia3 (Gemini: Coca medido desde el día 3 para no tocar el plazo de 1 día; mazar_media_2d ya solo actúa en
+# laborales), coca_dia0_recesion_mediana (Gemini, en vez de coca_dia0_ahora del líder: con 'ahora' el 24 nov habría clavado
+# 1.200 MW y Coca Codo dio 980) y mazar_proporcion_amaluza_1972 (Gemini: umbral de la Ficha 5).
+_OR_C25 = "cerebro 2026-11-25"
+
+
+def _coca_subida_desde_dia3(P, ctx, mod):
+    """coca_subida_medida solo desde el valor 4 de la serie (perfil_py interpola entre k y k+1: los días 0–2 quedan como el
+    titular y el día 3 empieza a acercarse a la subida medida)."""
+    s0 = list(ctx.get("serieCoca") or [])
+    r = c_coca_subida_medida(P, ctx, mod)
+    if not r:
+        return None
+    P, ctx, c = r
+    nueva = [s0[d] if d <= 3 and d < len(s0) else x for d, x in enumerate(ctx["serieCoca"])]
+    ctx["serieCoca"] = nueva
+    return P, ctx, dict(c, serieCoca=nueva)
+
+
+def c_eta_laboral_coca_dia3(P, ctx, mod):
+    """Cerebro de Mazar 25 nov ('eta_coca_medida' del líder, en la versión de Gemini Neon 'eta_laboral_coca_dia3'):
+    mazar_media_2d_eta en los días 0–1 (solo laborales: los fines de semana y feriados ya quedan como el titular) + la subida
+    medida del Coca solo desde el día 3. Estricta. La pieza del Coca va primero (no toca los días 0–2)."""
+    return _combinar(P, ctx, mod, _coca_subida_desde_dia3, c_mazar_media_2d_eta)
+
+
+def c_coca_dia0_recesion_mediana(P, ctx, mod):
+    """Gemini Neon 25 nov ('coca_dia0_recesion_mediana'): si el río Coca de las últimas 2 h (coca_rio.ahora) está por debajo
+    de 0,75 × su media de 24 h (recesión tras un pico), el día 0 usa el río 0,5 × ahora + 0,5 × mediana de 7 días, pasado a MW
+    con la misma fórmula del robot y el mismo rendimiento que el titular (qCoca × MW_nuevo ÷ MW_24h). Solo cambia el punto de
+    partida de la serie (día 0 → día 1 del titular); los días 1+ = titular. Solo baja: si no es menor, = titular."""
+    cr = mod.get("coca_rio") or {}
+    try:
+        ahora, q24, m7, mw24 = (float(cr[k]) for k in ("ahora", "q24", "mediana7", "mw24"))
+        k_, e_, cap = float(cr.get("k") or 5.25), float(cr.get("e") or 21.0), float(cr.get("tope") or 1200.0)
+    except Exception:
+        return None
+    s = list(ctx.get("serieCoca") or [])
+    q0 = float(P.get("qCoca") or 0)
+    if q24 <= 0 or mw24 <= 0 or q0 <= 0 or len(s) < 2:
+        return None
+    info = {"rio_ahora": round(ahora, 1), "rio_q24": round(q24, 1), "rio_mediana7": round(m7, 1)}
+    if ahora >= 0.75 * q24:
+        return P, ctx, dict(info, aplicado=False)
+    q_nuevo = 0.5 * ahora + 0.5 * m7
+    mw_nuevo = max(0.0, min(cap, k_ * (q_nuevo - e_)))
+    q1 = max(80.0, min(450.0, q0 * mw_nuevo / mw24))
+    s0_nuevo = round(q1 / q0 * float(s[0]), 4)
+    if s0_nuevo >= float(s[0]):
+        return P, ctx, dict(info, aplicado=False)
+    # auditor 25 nov (prueba fuera de línea): no se toca P["qCoca"] (las 'otras' siguen al Coca con rf = qc / qCoca y subirían
+    # en todo el horizonte); solo el punto de partida de la serie: el día 0 va de ese caudal al del titular en el día 1. Revisor
+    # 25 nov: se acepta el acople del titular: en el día 0 las 'otras' también bajan con el Coca (rf, piso 0,8; con el río en
+    # 140 m³/s ≈ −0,30 de los −0,65 m a 1 día). Es el mismo acople que usa el titular cuando el Coca baja.
+    nueva = [s0_nuevo] + [float(x) for x in s[1:]]
+    ctx["serieCoca"] = nueva
+    return P, ctx, dict(info, aplicado=True, qCoca_dia0=round(q1, 1), qCoca_titular=int(q0), rio_dia0=round(q_nuevo, 1), serieCoca=nueva)
+
+
+def c_mazar_proporcion_amaluza_1972(P, ctx, mod):
+    """Gemini Neon 25 nov ('amaluza_baja_1972_combo', pieza): mazar_proporcion_amaluza_baja con el umbral de Amaluza en 1.972,0 m
+    (límite de la Ficha 5; el 24 nov con 1.971,54 m Mazar sostuvo 18 % de Molino y la pieza de 1.971,0 no se activó)."""
+    return _mazar_proporcion_amaluza(P, ctx, mod, 1972.0)
+
+
+_cand_3nov("eta_laboral_coca_dia3", c_eta_laboral_coca_dia3, "Mazar 48 h con eficiencia medida + Coca medido desde el día 3",
+           "Cerebro de Mazar 25 nov (líder: eta_coca_medida, espera +8 % a 1 día y +40 % a 7). Reparos: el retador dice que el +73,5 % "
+           "de coca_subida_medida a 7 días sale de 3 días en que el Coca no llegó y a 3 días pierde; Gemini Neon, que con la memoria de 48 h "
+           "el Coca desde el día 2 contamina el plazo de 1 día y propuso eta_laboral_coca_dia3: Coca medido solo desde el día 3. "
+           "mazar_media_2d_eta ya solo actúa en días laborales.", origen=_OR_C25)
+_cand_3nov("coca_dia0_recesion_mediana", c_coca_dia0_recesion_mediana, "Coca en recesión: día 0 entre el río de ahora y su mediana de 7 días",
+           "Gemini Neon 25 nov (espera +6 % a 1 día), en lugar de coca_dia0_ahora del líder (Gemini: con el río de ahora el 24 nov habría "
+           "fijado 1.200 MW y Coca Codo dio 980; el líder confundió q24 con el caudal amortiguado). Si el río de las últimas 2 h < 0,75 × "
+           "su media de 24 h, el día 0 parte de 0,5 × ahora + 0,5 × mediana de 7 días (mismo rendimiento que el titular) y va al caudal "
+           "del titular en el día 1; días 1+ = titular. Como en el titular, las 'otras' siguen al Coca en el día 0 (revisor: con el río en "
+           "140 m³/s, ~−0,30 de los −0,65 m a 1 día vienen de ese acople).",
+           origen=_OR_C25)
+_cand_3nov("mazar_proporcion_amaluza_1972", c_mazar_proporcion_amaluza_1972, "Amaluza baja (< 1.972 m): Mazar al menos 22 % de Paute",
+           "Gemini Neon 25 nov (amaluza_baja_1972_combo, espera +12 % a 3 y 7 días): la pieza del 24 nov con umbral 1.972,0 m (Ficha 5) "
+           "en vez de 1.971,0. Ojo: el umbral se movió después de ver que el 24 nov (1.971,54 m) no se activó; vale lo que mida desde hoy. "
+           "La versión combinada (con ríos anclados y térmica) no se programa hoy (tope de 6 por día).", origen=_OR_C25)
+
+
+# ---- Auditor 25 nov: segundo auditor Gemini 24 nov (rama candidato/gemini-2026-11-24-acotado_otras_sin_coca; Claude
+# independiente). acotado_otras_sin_coca: APROBADO CON CAMBIOS (armado con las dos piezas existentes, que traen sus protecciones:
+# sin la serie de los cuatro ríos no corre). paute_bruto_dia1: RECHAZADO (perfil_py interpola: cambia t ∈ (0, 2), no solo el día 1;
+# variante débil de paute_sin_ajuste, retirado el 19 nov con +0,8 % a 1 día).
+def c_acotado_otras_sin_coca(P, ctx, mod):
+    """Gemini 24 nov: autoajuste_acotado_1 (ajuste ≤ 1) + otras_resto_sin_coca (las 'otras' sin serie propia no siguen al Coca)."""
+    return _combinar(P, ctx, mod, c_autoajuste_acotado_1, c_otras_resto_sin_coca)
+
+
+CANDIDATOS["acotado_otras_sin_coca"] = {"f": c_acotado_otras_sin_coca, "promocion": "luis", "origen": "Gemini 2026-11-24",
+    "nombre": "Autoajuste ≤ 1 y otras hidroeléctricas sin Coca",
+    "hipotesis": "Acotar el autoajuste a ≤ 1,0 y desvincular del río Coca las 'otras' centrales sin serie propia quita dos fuentes de "
+                 "ruido a la vez. Revisor 25 nov: es la suma de autoajuste_acotado_1 y otras_resto_sin_coca; lo esperable es a 7 días "
+                 "(otras_resto_sin_coca apuntaba a +8 % a 7), no a 1–3; la parte acotada solo actúa en corridas con ajuste > 1."}
