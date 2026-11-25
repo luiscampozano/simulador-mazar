@@ -2020,6 +2020,9 @@ def main():
     # --- Cortes (fijados por Claude a partir de las noticias)
     cut = manual.get("cut", hoy.get("cut", 300))
     hoy["cut"] = int(clamp(cut, 0, 700))
+    # Luis 25 nov: el sitio azul mostraba "cortes 300 MW" (el valor de referencia "cut"); el corte REAL de hoy sale del
+    # registro/plan día por día (hoy, 24–26 nov: desconexión AV1 = 140 MW; los días sin plan, 0)
+    hoy["cut_hoy"] = int(round(corte_del_dia(manual, hoy["cut"], ahora.date())))
 
     # --- Celec: cota y caudal de entrada
     cota_t = cota_24 = q24 = t_cota = None

@@ -40,6 +40,12 @@ jobs:
         if: github.event_name != 'push'
         run: python3 scripts/robot.py
 
+      - name: Riesgo de corte esta noche (en sombra; Luis 25 nov)
+        if: github.event_name != 'push'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: python3 scripts/riesgo_noche.py
+
       - name: Guardar cambios
         if: github.event_name != 'push'
         run: |
