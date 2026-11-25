@@ -33,11 +33,15 @@ jobs:
               print("")
           PY
           disparar() { gh api -X POST "repos/${{ github.repository }}/actions/workflows/robot-cota.yml/dispatches" -f ref=main && echo "robot disparado $(date -u +%H:%M) UTC ($1)"; }
-          fin=$(( $(date +%s) + 340*60 )); ultima_celec=$(python3 /tmp/ultima.py); hora_disparo=""
+          # Luis 25 nov: el cron de "Demanda por distribuidora" solo corría ~3 veces al día; el reloj lo dispara cada media hora
+          dist() { gh api -X POST "repos/${{ github.repository }}/actions/workflows/distribuidoras.yml/dispatches" -f ref=main && echo "distribuidoras $(date -u +%H:%M) UTC"; }
+          fin=$(( $(date +%s) + 340*60 )); ultima_celec=$(python3 /tmp/ultima.py); hora_disparo=""; media_dist=""
           echo "Celec al empezar: $ultima_celec"
           while [ $(date +%s) -lt $fin ]; do
             sleep 300
             c=$(python3 /tmp/ultima.py); h=$(date -u +%Y%m%d%H); m=$((10#$(date -u +%M)))
+            md="$h$(( m >= 30 ? 1 : 0 ))"; mm=$(( m % 30 ))
+            if [ "$md" != "$media_dist" ] && [ $mm -ge 4 ]; then dist || true; media_dist=$md; fi
             if [ -n "$c" ] && [ "$c" != "$ultima_celec" ]; then
               disparar "nueva cota de Celec: $c"; ultima_celec=$c; hora_disparo=$h
             elif [ "$hora_disparo" != "$h" ] && [ $m -ge 55 ]; then

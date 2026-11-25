@@ -311,7 +311,7 @@ def rios_reales(datos, hoy_d):
     return out
 
 
-def coca_horas(horas=48):
+def coca_horas(horas=72):
     """Coca Codo hora a hora: caudal del río y MW generados (caudal turbinado por unidad × 8 unidades × 5,25 MW por m³/s)."""
     rio = _leer(os.path.join("registro", "coca_rio.json"), {})
     tur = _leer(os.path.join("registro", "ccs_turbinado.json"), {})
@@ -319,7 +319,7 @@ def coca_horas(horas=48):
     return [[k, rio[k], round(tur[k] * 8 * 5.25) if k in tur else None] for k in ks]
 
 
-def mazar_horas(horas=48):
+def mazar_horas(horas=72):
     """Luis 19 nov: caudal que entra a Mazar hora a hora (Celec 30538, lo guarda el robot) y lo normal del mes (2010–hoy)."""
     q = _leer(os.path.join("registro", "mazar_q_horas.json"), {})
     serie = [[k, q[k]] for k in sorted(q)[-horas:]]
@@ -333,7 +333,8 @@ def mazar_horas(horas=48):
     rio = _leer(os.path.join("registro", "coca_rio.json"), {})               # río Coca hora a hora (Celec 100037, desde oct 2025)
     co = [v for k, v in rio.items() if int(k[5:7]) == mes and isinstance(v, (int, float))]
     prom = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
-    return {"serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]], "coca": [[k, rio[k]] for k in sorted(rio)[-horas:]],
+    ch = _leer(os.path.join("registro", "mazar_cota_horas.json"), {})       # Luis 25 nov: cota hora a hora
+    return {"cota": [[k, ch[k]] for k in sorted(ch)[-horas:]], "serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]], "coca": [[k, rio[k]] for k in sorted(rio)[-horas:]],
             "normal_mes": prom(qs), "normal_cuenca": prom(qc), "anios_cuenca": len({d[:4] for d, v in hc.items() if int(d[5:7]) == mes}),
             "normal_coca": prom(co), "anios_coca": sorted({k[:4] for k in rio if int(k[5:7]) == mes}), "mes": mes}
 
