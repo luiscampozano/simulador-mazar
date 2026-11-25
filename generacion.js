@@ -416,14 +416,15 @@
       const tOf = k => local(k.slice(0, 13) + ":00").getTime(), x0 = tOf(CT[0][0]), x1 = tOf(CT[CT.length - 1][0]) + 36e5;
       const vs = CT.map(x => x[1]), lo = Math.min(2116, ...vs), hi = Math.max(...vs);
       // revisión 25 nov: las marcas deben ser múltiplos del paso (antes arrancaban en x,5 y se rotulaban redondeadas)
-      const y0 = Math.floor(lo - 0.25), y1 = Math.max(y0 + 2, Math.ceil(hi + 0.25)), yt = [];
-      for (let v = y0; v <= y1; v++) yt.push(v);
+      const st = [1, 2, 5, 10].find(p => (hi - lo + 0.5) / p <= 6) || 10;   // como mucho ~6 marcas
+      const y0 = Math.floor((lo - 0.25) / st) * st, y1 = Math.max(y0 + 2 * st, Math.ceil((hi + 0.25) / st) * st), yt = [];
+      for (let v = y0; v <= y1; v += st) yt.push(v);
       grafico("g-cota", { h: 200, x0, x1, y0, y1, yt, xt: marcasHora(CT.map(x => x[0]), tOf), series: [
         { d: [[x0, 2116], [x1, 2116]], c: "var(--g-crit)", w: 1.4, dash: "6 4" },
         { d: CT.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-real)", w: 2.4, puntos: true, r: 2 }] });
       const u = CT[CT.length - 1], a24 = (MH.cota || []).find(x => x[0] === new Date(tOf(u[0]) - 864e5 - 5 * 36e5).toISOString().slice(0, 13));
       const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null;
-      $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + ` · ${f((u[1] - 2116) * 100)} cm sobre la zona crítica`;
+      $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + (u[1] >= 2116 ? ` · ${f((u[1] - 2116) * 100)} cm sobre la zona crítica` : ` · ${f((2116 - u[1]) * 100)} cm BAJO la zona crítica`);
     }
     horaria("mq", MH.serie, MH.normal_mes, "2010–hoy", "var(--g-real)");
     horaria("mc", MH.cuenca, MH.normal_cuenca, MH.anios_cuenca ? `${MH.anios_cuenca} años` : "", "var(--g-col)");

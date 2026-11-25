@@ -2037,7 +2037,7 @@ def main():
             with open(F_COTA_H, "w", encoding="utf-8") as fo:
                 json.dump({k: ch[k] for k in sorted(ch) if k >= lim_c}, fo, separators=(",", ":"))
         except Exception as e:
-            print("cota hora a hora:", e)
+            log(f"cota hora a hora: {e}")
         serie_q = celec_serie(MRID_CAUDAL, ahora)
         caud = [v for tt, v in serie_q if t_cota - timedelta(hours=24) < tt <= t_cota and 0 <= v < 2000]
         try:   # Luis 19 nov: el caudal de entrada a Mazar hora a hora para la página (últimos 30 días)

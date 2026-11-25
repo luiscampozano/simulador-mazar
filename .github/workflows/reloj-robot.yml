@@ -43,8 +43,8 @@ jobs:
             md="$h$(( m >= 30 ? 1 : 0 ))"; mm=$(( m % 30 ))
             if [ "$md" != "$media_dist" ] && [ $mm -ge 4 ]; then dist || true; media_dist=$md; fi
             if [ -n "$c" ] && [ "$c" != "$ultima_celec" ]; then
-              disparar "nueva cota de Celec: $c"; ultima_celec=$c; hora_disparo=$h
+              disparar "nueva cota de Celec: $c" || true; ultima_celec=$c; hora_disparo=$h
             elif [ "$hora_disparo" != "$h" ] && [ $m -ge 55 ]; then
-              disparar "sin cota nueva esta hora; actualización igual"; hora_disparo=$h
+              disparar "sin cota nueva esta hora; actualización igual" || true; hora_disparo=$h
             fi
           done
