@@ -348,6 +348,7 @@ F_REG = os.path.join("registro", "predicciones.json")
 F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
 F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
+F_COTA_H = os.path.join("registro", "mazar_cota_horas.json")        # cota de Mazar hora a hora (Celec 30031; Luis 25 nov)
 F_PAUTE_QH = os.path.join("registro", "paute_cuenca_horas.json")    # caudal de la cuenca del Paute hora a hora (Celec 24812; Luis 19 nov)
 MRID_CUENCA_PAUTE = 24812
 F_MAZAR_QH = os.path.join("registro", "mazar_q_horas.json")         # caudal de entrada a Mazar hora a hora (Celec 30538; Luis 19 nov)
@@ -2028,6 +2029,15 @@ def main():
         if not 2090 < cota_t < 2160:
             raise ValueError(f"cota fuera de rango: {cota_t}")
         cota_24 = valor_en(cotas, t_cota - timedelta(hours=24))
+        try:   # Luis 25 nov: la cota hora a hora para la página (últimos 30 días)
+            ch = _leer_json(F_COTA_H, {})
+            for tt, v in cotas:
+                if 2090 < v < 2160: ch[tt.strftime("%Y-%m-%dT%H")] = round(v, 2)
+            lim_c = (ahora - timedelta(days=30)).strftime("%Y-%m-%dT%H")
+            with open(F_COTA_H, "w", encoding="utf-8") as fo:
+                json.dump({k: ch[k] for k in sorted(ch) if k >= lim_c}, fo, separators=(",", ":"))
+        except Exception as e:
+            log(f"cota hora a hora: {e}")
         serie_q = celec_serie(MRID_CAUDAL, ahora)
         caud = [v for tt, v in serie_q if t_cota - timedelta(hours=24) < tt <= t_cota and 0 <= v < 2000]
         try:   # Luis 19 nov: el caudal de entrada a Mazar hora a hora para la página (últimos 30 días)

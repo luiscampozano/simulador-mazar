@@ -15,6 +15,18 @@
   const fechaCorta = iso => { const d = new Date(iso + "T12:00:00"); return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`; };
   const local = iso => new Date(iso.length <= 16 && !/[+-]\d\d:\d\d$/.test(iso) ? iso + ":00-05:00" : iso);
   let G = null, cargando = false, dia = null, ultimo = null;
+  // Luis 25 nov: las gráficas hora a hora se ven en 24 h (por defecto) o 72 h; se recuerda en este navegador
+  let RANGO = 24; try { if (localStorage.getItem("g-rango") === "72") RANGO = 72; } catch (e) {}
+  const selRango = id => `<div class="g-seg" role="group" aria-label="Horas que se muestran" data-rango="${id}">${[24, 72].map(h => `<button type="button" data-h="${h}" aria-pressed="${h === RANGO}">${h} h</button>`).join("")}</div>`;
+  function activarRango() {
+    document.querySelectorAll("[data-rango] button").forEach(b => {
+      b.setAttribute("aria-pressed", String(+b.dataset.h === RANGO));
+      b.onclick = () => { RANGO = +b.dataset.h; try { localStorage.setItem("g-rango", String(RANGO)); } catch (e) {} dibujar(ultimo); };
+    });
+  }
+  // marcas del eje de tiempo: cada 6 h en 24 h; en 72 h cada 12 h (solo la fecha en el celular, para que no se encimen)
+  const marcasHora = (claves, tOf) => claves.filter(k => (RANGO <= 24 ? ["00", "06", "12", "18"] : innerWidth < 700 ? ["00"] : ["00", "12"]).includes(k.slice(11, 13)))
+    .map(k => [tOf(k), k.slice(11, 13) === "00" ? fechaCorta(k.slice(0, 10)) : k.slice(11, 13) + ":00"]);
 
   /* ---------- estilos comunes (los colores vienen de cada página) ---------- */
   const css = `.g-col{display:grid;gap:16px;min-width:0}.g-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -50,10 +62,12 @@
     dem: () => `<div style="display:grid;gap:6px;max-width:75ch"><h2 class="${CFG.h2}">Demanda real de electricidad</h2>
       <p class="${CFG.lede}">Cuánta electricidad está usando el país ahora mismo y cada empresa distribuidora (CNEL Guayaquil, Empresa Eléctrica Quito…). Si la demanda cae (lluvia, apagones, feriado, cortes), Paute genera menos y Mazar se recupera más rápido.</p></div>
       <div class="g-kpis" id="g-dem-kpis"></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Demanda nacional hora a hora</h3><div class="g-sub">Cada media hora, seguida (Cenace)</div></div>${selRango("dem")}</div>
+      <div class="g-lbl" id="g-dem-h-t"></div><div class="g-chart"><svg id="g-dem-h" role="img" aria-label="Demanda nacional de las últimas horas"></svg></div></div>
       <div class="g-box g-col"><div><h3 class="g-h3">Demanda nacional hoy, cada media hora</h3><div class="g-sub">Comparada con ayer y anteayer a la misma hora</div></div>
       <div class="g-legend"><span><i style="background:var(--g-real);height:4px"></i>hoy</span><span><i style="background:var(--g-muted)"></i>ayer</span><span><i class="d"></i>anteayer</span></div>
       <div class="g-chart"><svg id="g-dem-dia" role="img" aria-label="Demanda nacional de hoy, ayer y anteayer"></svg></div><p class="g-txt" id="g-dem-txt"></p></div>
-      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Por empresa distribuidora</h3><div class="g-sub" id="g-dist-sub">Lectura del Cenace en este momento</div></div></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Por empresa distribuidora</h3><div class="g-sub" id="g-dist-sub">Lectura del Cenace en este momento</div></div>${selRango("dist")}</div>
       <div id="g-dist" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(128px,1fr))"></div></div>
       <p class="g-note" id="g-dem-nota"></p>`,
     hidro: () => `<div class="g-head"><div style="display:grid;gap:6px;max-width:70ch"><h2 class="${CFG.h2}">Generación hidroeléctrica</h2>
@@ -87,7 +101,9 @@
       <p class="g-note">Fuentes: Cenace, información operativa (cada media hora) e informe de balance energético diario.</p>`,
     rios: () => `<div style="display:grid;gap:6px;max-width:75ch"><h2 class="${CFG.h2}">Ríos y centrales</h2>
       <p class="${CFG.lede}">Cuánta energía pueden dar hoy los ríos y qué está fallando: el caudal de cada río (medido por Celec y pronosticado por GloFAS) junto a lo que genera su central (Cenace). <a href="https://datalabecuador.com/clima/" style="color:var(--g-ok);font-weight:600">Ver el clima completo →</a></p></div>
-      <div class="g-grid" id="g-sem"></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Cota de Mazar hora a hora</h3><div class="g-sub">Nivel del embalse (Celec Sur). El mínimo operativo es <b>2.115 m</b>: ahí Mazar tiene que parar. La franja de 2.116 a 2.115 m es la zona crítica (2.116 m es nuestro margen de alerta).</div></div>${selRango("rios")}</div>
+      <div class="g-legend"><span><i class="s" style="background:var(--g-real);border-radius:50%;width:8px;height:8px"></i>cota de cada hora</span><span><i class="s" style="background:var(--g-crit);opacity:.3"></i>zona crítica (2.116–2.115 m)</span><span><i style="background:var(--g-crit);height:3px"></i><b>2.115 m, mínimo operativo</b></span></div>
+      <div class="g-lbl" id="g-cota-t"></div><div class="g-chart"><svg id="g-cota" role="img" aria-label="Cota de Mazar hora a hora"></svg></div></div>
       <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>
       <div id="g-cc-alerta"></div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span></div>
@@ -344,7 +360,7 @@
     const ult12 = BL.slice(-6), mwDe = (c, bs) => bs.length ? bs.reduce((a, b) => a + c.pl.reduce((x, p) => x + (b.mw[p] || 0), 0), 0) / bs.length : null;
     const CH = (G.coca_horas || []).filter(x => x[2] != null);
     const paro24 = CH.slice(-24).filter(x => x[2] < 100 && x[1] > 150).length;
-    $("g-sem").innerHTML = CENTRALES.map(c => {
+    if ($("g-sem")) $("g-sem").innerHTML = CENTRALES.map(c => {
       const r = RR[c.k] || {}, me = RE[c.k] || [], ih = (r.dias || []).indexOf(hoy);
       const ultMed = me.length && me[me.length - 1][0] >= new Date(Date.now() - 2 * 864e5 - 5 * 36e5).toISOString().slice(0, 10) ? me[me.length - 1] : null;
       const q = ultMed ? ultMed[1] : (ih >= 0 ? (r.q_c || r.q)[ih] : null);
@@ -360,37 +376,58 @@
         <div class="g-fila"><span>De su capacidad (${f(c.cap)} MW)</span><b>${uso == null ? "–" : uso + " %"}</b></div><div class="g-bar"><i style="width:${Math.min(100, uso || 0)}%;background:var(--g-ok)"></i></div></div>`;
     }).join("");
     // Coca Codo hora a hora
-    const CC = (G.coca_horas || []).slice(-36);
+    const CC = (G.coca_horas || []).slice(-RANGO);
     if (CC.length > 3) {
       const tOf = k => local(k.slice(0, 13) + ":00").getTime();
       const x0 = tOf(CC[0][0]), x1 = tOf(CC[CC.length - 1][0]) + 36e5;
       const barras = CC.filter(x => x[2] != null).map(x => [tOf(x[0]) + 3e5, tOf(x[0]) + 33e5, 0, x[2], x[2] < 100 && x[1] > 150 ? "var(--g-crit)" : "var(--g-ok)"]);
       const zonas = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150).map(x => [tOf(x[0]), tOf(x[0]) + 36e5, "var(--g-crit)"]);
-      const xt = CC.filter(x => ["00", "12"].includes(x[0].slice(11, 13))).map(x => [tOf(x[0]), x[0].slice(11, 13) === "00" ? fechaCorta(x[0].slice(0, 10)) : "12:00"]);   // 19 nov: con el día, cada 12 h
+      const xt = marcasHora(CC.map(x => x[0]), tOf);
       grafico("g-cc", { x0, x1, y0: 0, y1: 1300, yt: [0, 260, 520, 780, 1040, 1300], xt, zonas, series: [{ tipo: "barras", d: barras }] });
       const par = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150);
       if (par.length >= 2) {
         let sub = null; CC.forEach((x, i) => { if (i >= 2 && !sub && x[1] >= CC[i - 2][1] * 1.5 && x[1] - CC[i - 2][1] >= 100) sub = [CC[i - 2], x]; });
         const perd = par.reduce((a, x) => a + Math.max(0, Math.min(1200, 5.25 * (x[1] - 21)) - x[2]), 0);
-        $("g-cc-alerta").innerHTML = `<div class="g-alerta">⚠️ <b>Paro de Coca Codo:</b> ${par.length} h sin generar en las últimas 36 h${sub ? `; el río subió de ${f(sub[0][1])} a ${f(sub[1][1])} m³/s en 2 h (${sub[1][0].slice(11, 13)}:00), la señal típica de una crecida con sedimentos` : ""}. Con el río que tenía pudo generar ~${f(Math.round(perd / 100) * 100)} MWh más.</div>`;
+        $("g-cc-alerta").innerHTML = `<div class="g-alerta">⚠️ <b>Paro de Coca Codo:</b> ${par.length} h sin generar en las últimas ${RANGO} h${sub ? `; el río subió de ${f(sub[0][1])} a ${f(sub[1][1])} m³/s en 2 h (${sub[1][0].slice(11, 13)}:00), la señal típica de una crecida con sedimentos` : ""}. Con el río que tenía pudo generar ~${f(Math.round(perd / 100) * 100)} MWh más.</div>`;
       } else $("g-cc-alerta").innerHTML = "";
     }
     // Luis 19 nov: tres gráficas separadas (Mazar, cuenca del Paute, río Coca), 48 h, promedio de 6 h y lo normal del mes
     const MH = G.mazar_horas || {}, MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
     const nomMes = MESES[(MH.mes || 1) - 1];
     function horaria(id, filas, normal, refTxt, col) {
-      const D = (filas || []).filter(x => x[1] != null);
+      const DA = (filas || []).filter(x => x[1] != null), D = DA.slice(-RANGO);
       if (D.length < 4) { $(`g-${id}-t`).textContent = "Se está juntando el dato hora a hora (empezó el 19 nov)."; $(`g-${id}`).style.display = "none"; return; }
       $(`g-${id}`).style.display = "";
-      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = D.map(x => [tOf(x[0]) + 18e5, x[1]]);
-      const m6 = pts.map(p => { const w = pts.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), pts = D.map(x => [tOf(x[0]) + 18e5, x[1]]), todos = DA.map(x => [tOf(x[0]) + 18e5, x[1]]);
+      // el promedio de 6 h usa también las horas anteriores a la ventana (así no arranca "en frío" en la vista de 24 h)
+      const m6 = pts.map(p => { const w = todos.filter(q => q[0] > p[0] - 6 * 36e5 && q[0] <= p[0]); return [p[0], w.reduce((a, q) => a + q[1], 0) / w.length]; });
       const x0 = tOf(D[0][0]), x1 = tOf(D[D.length - 1][0]) + 36e5, top = techo(D.map(x => x[1]).concat(normal ? [normal * 1.08] : []), 10);
-      const xt = D.filter(x => ["00", "12"].includes(x[0].slice(11, 13))).map(x => [tOf(x[0]), x[0].slice(11, 13) === "00" ? fechaCorta(x[0].slice(0, 10)) : "12:00"]);
+      const xt = marcasHora(D.map(x => x[0]), tOf);
       const series = [{ d: pts, c: col, w: 0.01, puntos: true, r: 2.2 }, { d: m6, c: col, w: 2.8 }];
       if (normal) series.push({ d: [[x0, normal], [x1, normal]], c: "var(--g-warn)", w: 1.4, dash: "6 4" });
       grafico(`g-${id}`, { h: 200, x0, x1, y0: 0, y1: top, yt: marcasY(top), xt, series });
       const u = m6[m6.length - 1][1];
       $(`g-${id}-t`).textContent = `Ahora ~${f(u)} m³/s (promedio de 6 h, ${D[D.length - 1][0].slice(11, 13)}:00)` + (normal ? ` · ${f(u / normal * 100)} % de lo normal en ${nomMes} (${f(normal)} m³/s, ${refTxt})` : "");
+    }
+    const CT = (MH.cota || []).filter(x => x[1] != null).slice(-RANGO);
+    if (CT.length < 4) { $("g-cota-t").textContent = "Se está juntando la cota hora a hora (empezó el 25 nov)."; $("g-cota").style.display = "none"; }
+    else {
+      $("g-cota").style.display = "";
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), x0 = tOf(CT[0][0]), x1 = tOf(CT[CT.length - 1][0]) + 36e5;
+      const vs = CT.map(x => x[1]), lo = Math.min(2115, ...vs), hi = Math.max(...vs);
+      // revisión 25 nov: las marcas deben ser múltiplos del paso (antes arrancaban en x,5 y se rotulaban redondeadas)
+      const st = [1, 2, 5, 10].find(p => (hi - lo + 0.5) / p <= 6) || 10;   // como mucho ~6 marcas
+      const y0 = Math.floor((lo - 0.25) / st) * st, y1 = Math.max(y0 + 2 * st, Math.ceil((hi + 0.25) / st) * st), yt = [];
+      for (let v = y0; v <= y1; v += st) yt.push(v);
+      grafico("g-cota", { h: 200, x0, x1, y0, y1, yt, xt: marcasHora(CT.map(x => x[0]), tOf), notas: [[x1, 2115, "2.115 m: mínimo operativo"]], series: [
+        { tipo: "franja", d: [[x0, 2115, 2116], [x1, 2115, 2116]], c: "var(--g-crit)", op: 0.22 },   // Luis 25 nov: zona crítica 2.116–2.115
+        { d: [[x0, 2116], [x1, 2116]], c: "var(--g-crit)", w: 1.2, dash: "5 4" },
+        { d: [[x0, 2115], [x1, 2115]], c: "var(--g-crit)", w: 2.6 },
+        { d: CT.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-real)", w: 2.4, puntos: true, r: 2 }] });
+      const u = CT[CT.length - 1], a24 = (MH.cota || []).find(x => x[0] === new Date(tOf(u[0]) - 864e5 - 5 * 36e5).toISOString().slice(0, 13));
+      const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null;
+      $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + (u[1] >= 2116 ? ` · ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m (${f((u[1] - 2116) * 100)} cm antes de entrar a la zona crítica)`
+        : u[1] >= 2115 ? ` · EN ZONA CRÍTICA: ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m` : ` · ${f((2115 - u[1]) * 100)} cm BAJO el mínimo operativo de 2.115 m`);
     }
     horaria("mq", MH.serie, MH.normal_mes, "2010–hoy", "var(--g-real)");
     horaria("mc", MH.cuenca, MH.normal_cuenca, MH.anios_cuenca ? `${MH.anios_cuenca} años` : "", "var(--g-col)");
@@ -482,6 +519,15 @@
       `<div class="g-box"><div class="g-lbl">Demanda del país, ${hh(hU)}</div><div class="g-big">${f(ult.dem)}<small>MW</small></div>${comp("frente a media hora antes", prev)}${comp("frente a ayer a esta hora", vAyer)}</div>` +
       `<div class="g-box"><div class="g-lbl">Promedio de hoy (hasta ${hh(hU)})</div><div class="g-big">${f(media(hoy))}<small>MW</small></div><div class="g-fila"><span>ayer, mismas horas</span><b>${f(media(ayer.filter(q => q[0] <= hU)))}</b></div></div>` +
       `<div class="g-box"><div class="g-lbl">Máximo de hoy</div><div class="g-big">${f(Math.max(...hoy.map(q => q[1])))}<small>MW</small></div><div class="g-fila"><span>máximo de ayer</span><b>${f(ayer.length ? Math.max(...ayer.map(q => q[1])) : null)}</b></div></div>`;
+    // Luis 25 nov: demanda nacional seguida, últimas 24 o 72 h
+    const PH = P.filter(p => p.t > ult.t - RANGO * 36e5);
+    if (PH.length > 2) {
+      const vals = PH.map(p => p.dem), y0h = Math.floor(Math.min(...vals) / 500) * 500, y1h = Math.ceil(Math.max(...vals) / 500) * 500, yth = [];
+      for (let v = y0h; v <= y1h; v += 500) yth.push(v);
+      grafico("g-dem-h", { x0: PH[0].t, x1: ult.t, y0: y0h, y1: y1h, yt: yth, xt: marcasHora(PH.map(p => p.k), k => local(k).getTime()), series: [{ d: PH.map(p => [p.t, p.dem]), c: "var(--g-real)", w: 2.4 }] });
+      const mx = PH.reduce((a, p) => p.dem > a.dem ? p : a), mn = PH.reduce((a, p) => p.dem < a.dem ? p : a);
+      $("g-dem-h-t").textContent = `Últimas ${RANGO} h · máximo ${f(mx.dem)} MW (${mx.k.slice(11, 16)}${RANGO > 24 ? " del " + fechaCorta(mx.k.slice(0, 10)) : ""}) · mínimo ${f(mn.dem)} MW (${mn.k.slice(11, 16)}${RANGO > 24 ? " del " + fechaCorta(mn.k.slice(0, 10)) : ""})`;
+    }
     const todos = hoy.concat(ayer, ante).map(q => q[1]);
     const y0 = Math.floor(Math.min(...todos) / 500) * 500, y1 = Math.ceil(Math.max(...todos) / 500) * 500;
     const yt = []; for (let v = y0; v <= y1; v += 500) yt.push(v);
@@ -498,7 +544,7 @@
         (ant ? `<div class="g-fila"><span>frente a media hora antes</span><b class="${u.total - ant < 0 ? "g-ok" : "g-ko"}">${u.total - ant > 0 ? "+" : ""}${f(u.total - ant)} MW</b></div>` : "") +
         (enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)) != null ? `<div class="g-fila"><span>frente a ayer a esta hora</span><b>${f(u.total - enHora(ayer, +u.ts.slice(11, 13) + (+u.ts.slice(14, 16) >= 30 ? 0.5 : 0)))} MW</b></div>` : "") + `</div>`;
     }
-    $("g-dem-nota").textContent = "Fuente: Cenace, información operativa (datos preliminares del SCADA, cada media hora). La demanda por empresa se guarda desde el 1 de noviembre de 2026 a las 23:00; con más días se podrá comparar cada empresa con su valor normal.";
+    $("g-dem-nota").textContent = "Fuente: Cenace, información operativa (datos preliminares del SCADA, cada media hora). La demanda por empresa se guarda desde el 1 de noviembre de 2026; desde el 25 de noviembre se lee cada media hora (antes, unas 3 veces al día).";
   }
   function distribuidoras() {
     if (!DIST) {
@@ -508,22 +554,26 @@
     }
     const L = DIST.lecturas || [];
     if (!L.length) { $("g-dist").innerHTML = `<p class="g-note">Todavía no hay lecturas por empresa.</p>`; return; }
-    const u = L[L.length - 1], dia = u.ts.slice(0, 10);
-    const hoyL = L.filter(r => r.ts.slice(0, 10) === dia);
+    const u = L[L.length - 1], tu = new Date(u.ts).getTime();
+    const hoyL = L.filter(r => new Date(r.ts).getTime() > tu - RANGO * 36e5);
+    // Luis 25 nov: comparar con ayer a la misma hora (±45 min), no con la lectura anterior (podía ser de 10 h antes)
+    const ayerL = L.reduce((b, r) => { const dt = Math.abs(new Date(r.ts).getTime() - (tu - 864e5)); return dt <= 45 * 60e3 && (!b || dt < b.dt) ? { r, dt } : b; }, null);
     $("g-dist-sub").textContent = `Lectura del Cenace de las ${u.ts.slice(11, 16)} · total ${f(u.total)} MW (CNEL ${f(u.cnel)} · empresas eléctricas ${f(u.empresas)})`;
     const orden = Object.entries(u.d).sort((a, b) => b[1] - a[1]);
     $("g-dist").innerHTML = orden.map(([n, v], i) => {
       const s = hoyL.map(r => [new Date(r.ts).getTime(), r.d[n]]).filter(q => q[1] != null);
-      const ant = L.length > 1 ? L[L.length - 2].d[n] : null;
+      const ant = ayerL ? ayerL.r.d[n] : null;
       return `<div class="g-box" style="display:grid;gap:6px"><div class="g-lbl" style="padding-right:28px">${esc(NOM_DIST(n))}</div><div class="g-big" style="font-size:24px">${f(v)}<small>MW</small></div>` +
-        (ant != null ? `<div class="g-fila"><span>frente a la lectura anterior</span><b class="${v - ant < 0 ? "g-ok" : v - ant > 0 ? "g-ko" : ""}">${v - ant > 0 ? "+" : ""}${f(v - ant)}</b></div>` : "") +
-        `<div class="g-chart"><svg id="g-dist-${i}" role="img" aria-label="Demanda de ${esc(NOM_DIST(n))} hoy"></svg></div></div>`;
+        (ant != null ? `<div class="g-fila"><span>frente a ayer a esta hora</span><b class="${v - ant < 0 ? "g-ok" : v - ant > 0 ? "g-ko" : ""}">${v - ant > 0 ? "+" : ""}${f(v - ant)}</b></div>` : "") +
+        `<div class="g-chart"><svg id="g-dist-${i}" role="img" aria-label="Demanda de ${esc(NOM_DIST(n))}, últimas ${RANGO} h"></svg></div></div>`;
     }).join("");
     orden.forEach(([n], i) => {
-      const s = hoyL.map(r => [+r.ts.slice(11, 13) + (+r.ts.slice(14, 16)) / 60, r.d[n]]).filter(q => q[1] != null);
+      const s = hoyL.map(r => [new Date(r.ts).getTime(), r.d[n]]).filter(q => q[1] != null);
       if (s.length < 2) { const el = $("g-dist-" + i); if (el) el.parentNode.innerHTML = `<p class="g-note">La curva aparece con más lecturas.</p>`; return; }
-      const top = Math.max(...s.map(q => q[1])) * 1.15;
-      grafico("g-dist-" + i, { h: 90, x0: 0, x1: 24, y0: 0, y1: top, yt: [], xt: [[0, "0h"], [12, "12h"], [24, "24h"]], series: [{ d: s, c: "var(--g-real)", w: 2 }] });
+      const top = Math.max(...s.map(q => q[1])) * 1.15, x1 = tu, x0 = tu - RANGO * 36e5;
+      const st = (RANGO <= 24 ? 6 : 24) * 36e5, xt = [];
+      for (let t = Math.ceil((x0 - 5 * 36e5) / st) * st + 5 * 36e5; t <= x1; t += st) { const k = new Date(t - 5 * 36e5).toISOString(); xt.push([t, RANGO <= 24 ? k.slice(11, 13) + "h" : fechaCorta(k.slice(0, 10)).slice(0, 6)]); }
+      grafico("g-dist-" + i, { h: 90, x0, x1, y0: 0, y1: top, yt: [], xt, series: [{ d: s, c: "var(--g-real)", w: 2 }] });
     });
   }
 
@@ -534,6 +584,7 @@
     ultimo = tab;
     if (!G) { cargar(); return; }
     try { DIBUJA[tab](); } catch (e) { console.error("generacion.js", tab, e); }
+    activarRango();
   }
   const espera = [];
   function cargar() {
