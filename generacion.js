@@ -101,8 +101,8 @@
       <p class="g-note">Fuentes: Cenace, información operativa (cada media hora) e informe de balance energético diario.</p>`,
     rios: () => `<div style="display:grid;gap:6px;max-width:75ch"><h2 class="${CFG.h2}">Ríos y centrales</h2>
       <p class="${CFG.lede}">Cuánta energía pueden dar hoy los ríos y qué está fallando: el caudal de cada río (medido por Celec y pronosticado por GloFAS) junto a lo que genera su central (Cenace). <a href="https://datalabecuador.com/clima/" style="color:var(--g-ok);font-weight:600">Ver el clima completo →</a></p></div>
-      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Cota de Mazar hora a hora</h3><div class="g-sub">Nivel del embalse (Celec Sur). Roja: 2.116 m, zona crítica.</div></div>${selRango("rios")}</div>
-      <div class="g-legend"><span><i class="s" style="background:var(--g-real);border-radius:50%;width:8px;height:8px"></i>cota de cada hora</span><span><i class="d" style="border-top-color:var(--g-crit)"></i>2.116 m, zona crítica</span></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Cota de Mazar hora a hora</h3><div class="g-sub">Nivel del embalse (Celec Sur). El mínimo operativo es <b>2.115 m</b>: ahí Mazar tiene que parar. La franja de 2.116 a 2.115 m es la zona crítica (2.116 m es nuestro margen de alerta).</div></div>${selRango("rios")}</div>
+      <div class="g-legend"><span><i class="s" style="background:var(--g-real);border-radius:50%;width:8px;height:8px"></i>cota de cada hora</span><span><i class="s" style="background:var(--g-crit);opacity:.3"></i>zona crítica (2.116–2.115 m)</span><span><i style="background:var(--g-crit);height:3px"></i><b>2.115 m, mínimo operativo</b></span></div>
       <div class="g-lbl" id="g-cota-t"></div><div class="g-chart"><svg id="g-cota" role="img" aria-label="Cota de Mazar hora a hora"></svg></div></div>
       <div class="g-box g-col"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>
       <div id="g-cc-alerta"></div>
@@ -414,17 +414,20 @@
     else {
       $("g-cota").style.display = "";
       const tOf = k => local(k.slice(0, 13) + ":00").getTime(), x0 = tOf(CT[0][0]), x1 = tOf(CT[CT.length - 1][0]) + 36e5;
-      const vs = CT.map(x => x[1]), lo = Math.min(2116, ...vs), hi = Math.max(...vs);
+      const vs = CT.map(x => x[1]), lo = Math.min(2115, ...vs), hi = Math.max(...vs);
       // revisión 25 nov: las marcas deben ser múltiplos del paso (antes arrancaban en x,5 y se rotulaban redondeadas)
       const st = [1, 2, 5, 10].find(p => (hi - lo + 0.5) / p <= 6) || 10;   // como mucho ~6 marcas
       const y0 = Math.floor((lo - 0.25) / st) * st, y1 = Math.max(y0 + 2 * st, Math.ceil((hi + 0.25) / st) * st), yt = [];
       for (let v = y0; v <= y1; v += st) yt.push(v);
-      grafico("g-cota", { h: 200, x0, x1, y0, y1, yt, xt: marcasHora(CT.map(x => x[0]), tOf), series: [
-        { d: [[x0, 2116], [x1, 2116]], c: "var(--g-crit)", w: 1.4, dash: "6 4" },
+      grafico("g-cota", { h: 200, x0, x1, y0, y1, yt, xt: marcasHora(CT.map(x => x[0]), tOf), notas: [[x1, 2115, "2.115 m: mínimo operativo"]], series: [
+        { tipo: "franja", d: [[x0, 2115, 2116], [x1, 2115, 2116]], c: "var(--g-crit)", op: 0.22 },   // Luis 25 nov: zona crítica 2.116–2.115
+        { d: [[x0, 2116], [x1, 2116]], c: "var(--g-crit)", w: 1.2, dash: "5 4" },
+        { d: [[x0, 2115], [x1, 2115]], c: "var(--g-crit)", w: 2.6 },
         { d: CT.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-real)", w: 2.4, puntos: true, r: 2 }] });
       const u = CT[CT.length - 1], a24 = (MH.cota || []).find(x => x[0] === new Date(tOf(u[0]) - 864e5 - 5 * 36e5).toISOString().slice(0, 13));
       const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null;
-      $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + (u[1] >= 2116 ? ` · ${f((u[1] - 2116) * 100)} cm sobre la zona crítica` : ` · ${f((2116 - u[1]) * 100)} cm BAJO la zona crítica`);
+      $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + (u[1] >= 2116 ? ` · ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m (${f((u[1] - 2116) * 100)} cm antes de entrar a la zona crítica)`
+        : u[1] >= 2115 ? ` · EN ZONA CRÍTICA: ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m` : ` · ${f((2115 - u[1]) * 100)} cm BAJO el mínimo operativo de 2.115 m`);
     }
     horaria("mq", MH.serie, MH.normal_mes, "2010–hoy", "var(--g-real)");
     horaria("mc", MH.cuenca, MH.normal_cuenca, MH.anios_cuenca ? `${MH.anios_cuenca} años` : "", "var(--g-col)");
