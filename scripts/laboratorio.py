@@ -23,6 +23,7 @@ para que la página (modelo.js) haga exactamente el mismo cálculo (paridad sin 
 import json
 import math
 import os
+import statistics
 from datetime import datetime, timedelta
 
 DIR = "laboratorio"
@@ -783,11 +784,15 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
             if not r:
                 continue
             par_c = r[1].pop("_par", None) or par          # un candidato puede cambiar un parámetro calibrado (solo en su copia)
+            sin_piso = bool(r[1].pop("_usar_cotaV", False))   # sin_piso_2115 (cerebro 26 nov): cota virtual, piso 2.106,66 m
             di, _ = simular(r[0], r[1], par_c, horizonte=HORIZ_REGION)
-            tray[cid] = [round(di[h]["cota"], 3) for h in HORIZ]
-            completa[cid] = [round(x["cota"], 2) for x in di]
+            cot = (lambda x: max(2106.66, float(x["cotaV"]))) if sin_piso else (lambda x: x["cota"])
+            tray[cid] = [round(cot(di[h]), 3) for h in HORIZ]
+            completa[cid] = [round(cot(x), 2) for x in di]
         except Exception as e:
             log(f"Laboratorio: {cid} falló: {e}")
+    try: _registrar_piso_censurado(ts, tray, log)   # cerebro 26 nov: verificaciones censuradas por el piso de 2.115 m (solo registro)
+    except Exception as e: log(f"Laboratorio: piso_censurado no se guardó: {e}")
     try: _registrar_fecha_critica(ts, completa)   # cerebro 17 nov: días a 2.116/2.115 m por candidato del Coca (solo registro)
     except Exception as e: log(f"Laboratorio: fecha_critica no se guardó: {e}")
     reg = _leer(F_PRED, {"corridas": []})
@@ -4894,3 +4899,153 @@ CANDIDATOS["acotado_otras_sin_coca"] = {"f": c_acotado_otras_sin_coca, "promocio
     "hipotesis": "Acotar el autoajuste a ≤ 1,0 y desvincular del río Coca las 'otras' centrales sin serie propia quita dos fuentes de "
                  "ruido a la vez. Revisor 25 nov: es la suma de autoajuste_acotado_1 y otras_resto_sin_coca; lo esperable es a 7 días "
                  "(otras_resto_sin_coca apuntaba a +8 % a 7), no a 1–3; la parte acotada solo actúa en corridas con ajuste > 1."}
+
+
+# ---- Auditor 26 nov: ideas de los cerebros del 26 nov (aprobación permanente de Luis, 7 nov; Claude independiente).
+_OR_C26 = "cerebro 2026-11-26"
+_PUNTA_HORAS = (17.0, 22.0)   # corridas en las que actúa (investigador 26 nov)
+
+
+def _tipo_dia(f, fer):
+    """laboral / sábado / descanso (domingo o feriado)."""
+    if f.isoformat() in fer or f.weekday() == 6:
+        return "descanso"
+    return "sabado" if f.weekday() == 5 else "laboral"
+
+
+def _acum_mazar(serie, h):
+    """MWh acumulados de Mazar desde las 00:00 hasta la hora h (interpolación lineal en los puntos de Cenace
+    [horas, {Mazar: MWh}]). None si h queda fuera de lo medido (se tolera 0,6 h al final del día)."""
+    pts = sorted((float(x), float(y["Mazar"])) for x, y in serie
+                 if isinstance(x, (int, float)) and isinstance(y, dict) and isinstance(y.get("Mazar"), (int, float)))
+    if not pts:
+        return None
+    if h <= pts[0][0]:
+        return pts[0][1] * (h / pts[0][0]) if pts[0][0] > 0 and h >= 0 else None
+    for (h1, v1), (h2, v2) in zip(pts, pts[1:]):
+        if h1 <= h <= h2:
+            return v1 + (v2 - v1) * ((h - h1) / (h2 - h1) if h2 > h1 else 0.0)
+    if h - pts[-1][0] > 0.6:
+        return None
+    if len(pts) >= 2 and pts[-1][0] > pts[-2][0]:   # revisor 26 nov: extrapola con la pendiente del último tramo (días que cierran en 23,5 h)
+        pend = (pts[-1][1] - pts[-2][1]) / (pts[-1][0] - pts[-2][0])
+        return pts[-1][1] + max(0.0, pend) * (h - pts[-1][0])
+    return pts[-1][1]
+
+
+def _punta_restante_mw(ts):
+    """Investigador (Fable) 26 nov. MW medios que Mazar turbinaría desde la hora de la corrida hasta las 24:00 de hoy:
+    mediana de esas mismas horas en los últimos 3 días del mismo tipo (Cenace acumulado de registro/generacion_hist.json),
+    escalada por la razón entre los MW de Mazar de las últimas 2 h de hoy y la mediana de esas 2 h en esos días (0,5–1,5).
+    Solo datos anteriores a la corrida. Devuelve (mw, info) o (None, motivo)."""
+    ahora = _ts_dt(ts); hoy = ahora.date()
+    h0 = ahora.hour + ahora.minute / 60.0
+    if not (_PUNTA_HORAS[0] <= h0 <= _PUNTA_HORAS[1]):
+        return None, "fuera de 17–22 h"
+    plantas = (_leer_json_lab(F_GEN_HIST) or {}).get("plantas") or {}
+    man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    fer = set((man.get("feriados") or {}).keys()) | FERIADOS_LAB
+    tipo = _tipo_dia(hoy, fer)
+    ser_hoy = plantas.get(hoy.isoformat()) or []
+    pts_hoy = [float(x) for x, y in ser_hoy if isinstance(x, (int, float)) and float(x) <= h0 + 1e-9
+               and isinstance(y, dict) and isinstance(y.get("Mazar"), (int, float))]
+    if not pts_hoy or max(pts_hoy) < h0 - 0.75 or max(pts_hoy) < 2.5:
+        return None, "Cenace de hoy sin las últimas horas"
+    hu = max(pts_hoy)   # última hora medida de hoy (≤ la corrida)
+    a_hoy, b_hoy = _acum_mazar([p for p in ser_hoy if float(p[0]) <= hu + 1e-9], hu), \
+        _acum_mazar([p for p in ser_hoy if float(p[0]) <= hu + 1e-9], hu - 2.0)
+    if a_hoy is None or b_hoy is None:
+        return None, "Cenace de hoy incompleto"
+    mw_2h_hoy = max(0.0, (a_hoy - b_hoy) / 2.0)
+    resto, ult2 = [], []
+    for k in range(1, 8):
+        f = hoy - timedelta(days=k)
+        if _tipo_dia(f, fer) != tipo:
+            continue
+        s = plantas.get(f.isoformat()) or []
+        e24, eh, eu, eu2 = _acum_mazar(s, 24.0), _acum_mazar(s, h0), _acum_mazar(s, hu), _acum_mazar(s, hu - 2.0)
+        if None in (e24, eh, eu, eu2):
+            continue
+        resto.append(max(0.0, (e24 - eh) / max(0.5, 24.0 - h0))); ult2.append(max(0.0, (eu - eu2) / 2.0))
+        if len(resto) == 3:
+            break
+    if len(resto) < 2:
+        return None, f"menos de 2 días '{tipo}' con Cenace completo"
+    m_resto, m_2h = statistics.median(resto), statistics.median(ult2)
+    razon = 1.0 if m_2h < 5.0 else min(1.5, max(0.5, mw_2h_hoy / m_2h))
+    return m_resto * razon, {"tipo": tipo, "dias": len(resto), "mw_resto_mediana": round(m_resto, 1),
+                             "mw_2h_hoy": round(mw_2h_hoy, 1), "mw_2h_mediana": round(m_2h, 1), "razon": round(razon, 2)}
+
+
+def c_punta_restante_tarde(P, ctx, mod):
+    """Investigador (Fable) 26 nov (versión corregida de mazar_punta_restante del líder: Gemini Neon vio que leía m³/s
+    como MW). En corridas de 17:00 a 22:00, el turbinado de Mazar desde la hora de la corrida hasta las 24:00 sale de
+    _punta_restante_mw; el resto de las próximas 24 h (día 0 del simulador) queda con el caudal del titular. Se aplica
+    vía memoria en el día 0, como mazar_noche_dia0 (con la conversión del titular, reparo del retador del 19 nov)."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    par = mod.get("_par"); qt = mod.get("_tit_qt"); ts = mod.get("_ts")
+    if not par or not qt or not ts:
+        return None
+    mw, info = _punta_restante_mw(ts)
+    if mw is None:
+        return sin_cambio
+    ahora = _ts_dt(ts); h_rest = 24.0 - (ahora.hour + ahora.minute / 60.0)
+    kmz = 0.00981 * par["eficiencia_mazar"] * max(20.0, float(ctx["cota"]) - float(ctx.get("amaluzaCota") or 1975.0))
+    q_punta = mw / kmz
+    qm = mod.get("_tit_qt15_media") or []                      # revisor 26 nov: turbinado medio del día 0 del titular (19 nov)
+    qb = float(qm[0]) if qm and isinstance(qm[0], (int, float)) else float(qt[0])
+    q0 = (q_punta * h_rest + qb * (24.0 - h_rest)) / 24.0      # media de las próximas 24 h
+    corr = [0.0] * 60; corr[0] = -(q0 - qb)
+    m = _sumar_memoria(ctx, corr)
+    return P, ctx, {"memoria": m, "punta_mw": round(mw, 1), "q_punta_m3s": round(q_punta, 2),
+                    "q_dia0_m3s": round(q0, 2), "q_titular_dia0_m3s": round(qb, 2), **info}
+
+
+_cand_3nov("punta_restante_tarde", c_punta_restante_tarde, "Punta de Mazar que le queda al día (corridas 17–22 h)",
+           "Investigador 26 nov (y líder de Mazar, mazar_punta_restante): las corridas de 17 a 21 h fallan del mismo lado (+0,30 a "
+           "+0,43 m el 24 nov) porque el titular reparte el día plano y Mazar sigue a ~120 MW hasta la noche. Aquí, de 17:00 a 22:00, "
+           "el turbinado desde la corrida hasta las 24:00 = mediana de esas horas en los últimos 3 días del mismo tipo (Cenace), "
+           "escalada por los MW de las últimas 2 h frente a esos días (0,5–1,5); el resto del día 0 igual al titular. Con menos de 2 días "
+           "del mismo tipo (hoy el Cenace guarda 4 días) = titular. Corrige el reparo de Gemini Neon: usa MW de Cenace (plantas), no "
+           "mazar_horas (m³/s).", origen=_OR_C26)
+
+
+def c_sin_piso_2115(P, ctx, mod):
+    """Líder de Mazar 26 nov ('sin_piso_2115'): el titular se detiene en 2.115,0 m y hoy titular y candidatos empatan por
+    construcción desde el día 3. Aquí el MISMO cálculo del titular pero la trayectoria sigue bajando: se toma la cota virtual
+    (cotaV de simular_py: Mazar sigue turbinando lo que pide Paute), con piso en 2.106,66 m (mínimo de Celec, 17 abr 2024).
+    Solo cambia qué cota se mide; no cambia datos.json (la página sigue con el piso)."""
+    ctx["_usar_cotaV"] = True
+    return P, ctx, {"piso_m": 2106.66}
+
+
+_cand_3nov("sin_piso_2115", c_sin_piso_2115, "Titular sin el piso de 2.115 m (sigue bajando hasta 2.106,7)",
+           "Líder de Mazar 26 nov: con la cota a ~1,3 m de 2.116 el titular y todos los candidatos valen 2.115,0 desde el día 3 y "
+           "empatan por construcción. Celec registra 2.106,66 m el 17 abr 2024 con Mazar turbinando 900–2.200 MWh/día debajo de 2.115. "
+           "Es el titular con la cota virtual (sin piso) del propio simulador: mide si la cota real sigue bajando o si Cenace raciona "
+           "(si raciona, este pierde). Pregunta para Luis (cerebro): ¿mantener el piso en lo publicado? No cambia la página. NO PROMOVIBLE "
+           "(revisor 26 nov: la página y el titular no leen la cota virtual; solo mide).",
+           origen=_OR_C26)
+CANDIDATOS["sin_piso_2115"]["promocion"] = "solo medición"
+
+
+def _registrar_piso_censurado(ts, tray, log=print):
+    """Líder de Mazar 26 nov ('registro piso_censurado'; solo registro, no cambia el marcador): por corrida, en qué plazos el
+    titular vale 2.115,0 m (piso) y cuántos candidatos también, para leer 'empate'/'pierde' de las próximas semanas.
+    laboratorio/piso_censurado.json, 40 días."""
+    f = os.path.join("laboratorio", "piso_censurado.json")
+    reg = _leer(f, {"corridas": {}})
+    tit = tray.get("titular") or []
+    _NO_CUENTA = ("titular", "anterior", "sin_piso_2115")
+    en_piso = lambda t, i: i < len(t) and isinstance(t[i], (int, float)) and abs(t[i] - 2115.0) <= 0.0005
+    fila = {"titular_en_piso": [h for i, h in enumerate(HORIZ) if en_piso(tit, i)]}
+    fila["candidatos_en_piso"] = {str(h): sum(1 for k, t in tray.items() if k not in _NO_CUENTA and en_piso(t, i))
+                                  for i, h in enumerate(HORIZ)}
+    fila["candidatos"] = sum(1 for k in tray if k not in _NO_CUENTA)
+    reg.setdefault("corridas", {})[ts] = fila
+    lim = (datetime.fromisoformat(ts) - timedelta(days=40)).isoformat()
+    reg["corridas"] = {k: v for k, v in sorted(reg["corridas"].items()) if k >= lim}
+    reg["nota"] = ("Plazos (días) en que el titular de cada corrida vale 2.115,0 m (piso del simulador) y cuántos candidatos "
+                   "también: esas verificaciones están censuradas (empatan por construcción). Solo registro (cerebro 26 nov): el "
+                   "marcador NO las excluye.")
+    _escribir(f, reg, compacto=True)
