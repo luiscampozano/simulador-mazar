@@ -672,6 +672,67 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_coca_real_dia2_otras_desacopladas(P, ctx, mod):
+    s_rio = mod.get("serieCocaRio")
+    s_tit = ctx.get("serieCoca")
+    if not isinstance(s_rio, list) or not isinstance(s_tit, list) or not s_rio or not s_tit:
+        return None
+    n = max(len(s_rio), len(s_tit))
+    nueva = []
+    for i in range(n):
+        v_rio = s_rio[min(i, len(s_rio) - 1)]
+        v_tit = s_tit[min(i, len(s_tit) - 1)]
+        if i <= 1:
+            nueva.append(round(float(v_tit), 4))
+        elif i == 2:
+            nueva.append(round(0.5 * float(v_tit) + 0.5 * float(v_rio), 4))
+        else:
+            nueva.append(round(float(v_rio), 4))
+    ctx["serieCoca"] = nueva
+    ctx["otrasPesoRf"] = 0.0
+    return P, ctx, {"serieCoca": nueva, "otrasPesoRf": 0.0}
+
+
+CANDIDATOS["coca_real_dia2_otras_desacopladas"] = {"f": c_coca_real_dia2_otras_desacopladas, "promocion": "auto", "origen": "Gemini 2026-11-25", "nombre": "Río Coca real desde día 2 y otras desacopladas", "hipotesis": "Mantener el río Coca del titular los días 0–1 y empalmar con el río real desde el día 2 con las 'otras' desvinculadas del Coca conserva el acierto a 1 día y captura la ganancia de mediano y largo plazo."}
+
+
+def c_memoria_amortiguada_dia2(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not isinstance(mem, list) or not mem:
+        return None
+    factores = [0.25, 0.50, 0.75]
+    nueva = []
+    for i, v in enumerate(mem):
+        if v is None:
+            nueva.append(0.0)
+            continue
+        f = factores[i] if i < len(factores) else 1.0
+        nueva.append(round(float(v) * f, 2))
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["memoria_amortiguada_dia2"] = {"f": c_memoria_amortiguada_dia2, "promocion": "luis", "origen": "Gemini 2026-11-25", "nombre": "Memoria amortiguada progresiva", "hipotesis": "Escalar la memoria de 48 h al 25 % el día 0, 50 % el día 1, 75 % el día 2 y 100 % desde el día 3 reduce el error por rezago a 1 día sin alterar la estabilidad a mediano plazo."}
+
+
+def c_paute_subida_suelo_seco(P, ctx, mod):
+    s_maz = ctx.get("serieMazar")
+    if not isinstance(s_maz, list) or len(s_maz) < 3:
+        return None
+    if s_maz[1] <= 1.05 and s_maz[2] <= 1.15:
+        return None
+    nueva = list(s_maz)
+    if nueva[1] > 1.10:
+        nueva[1] = 1.10
+    if nueva[2] > 1.25:
+        nueva[2] = 1.25
+    ctx["serieMazar"] = nueva
+    return P, ctx, {"serieMazar": nueva}
+
+
+CANDIDATOS["paute_subida_suelo_seco"] = {"f": c_paute_subida_suelo_seco, "promocion": "auto", "origen": "Gemini 2026-11-25", "nombre": "Retención inicial en subidas del Paute", "hipotesis": "Acotar la subida del caudal del Paute a ≤ 1,10 el día 1 y ≤ 1,25 el día 2 en la serie relativa simula la retención inicial del suelo seco y reduce el optimismo a 1 y 2 días sin frenar crecidas a partir del día 3."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})

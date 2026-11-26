@@ -1,0 +1,97 @@
+{
+ "fecha": "2026-11-25",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.839,
+ "lote": {
+  "nombre": "batches/q9hthp2i2qwhyw22vcl21063nnmzdg28nn6b",
+  "enviado": "2026-11-25T18:40-05:00",
+  "recogido": "2026-11-25T20:02-05:00",
+  "estado_lote": "BATCH_STATE_SUCCEEDED"
+ },
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "coca_real_dia2_otras_desacopladas",
+    "nombre": "Río Coca real desde día 2 y otras desacopladas",
+    "hipotesis": "Mantener el río Coca del titular los días 0–1 y empalmar con el río real desde el día 2 con las 'otras' desvinculadas del Coca conserva el acierto a 1 día y captura la ganancia de mediano y largo plazo.",
+    "promocion": "auto",
+    "por_que": "El pronóstico del río Coca real (coca_rio_real) reduce el error fuertemente a 5 días (+31 %) y a 14 días (+19 %) en el marcador, pero pierde a 1 día (−15 %) porque altera el día 0 y arrastra artificialmente a las centrales 'otras' que no pertenecen a la cuenca amazónica. Al conservar los días 0–1 del titular, mezclar al 50 % el día 2 y 100 % desde el día 3, junto con fijar otrasPesoRf en 0,0, se preserva la exactitud a corto plazo y se explota la superioridad hidrológica de GloFAS a 5–14 días.",
+    "codigo": "def c_coca_real_dia2_otras_desacopladas(P, ctx, mod):\n    s_rio = mod.get(\"serieCocaRio\")\n    s_tit = ctx.get(\"serieCoca\")\n    if not isinstance(s_rio, list) or not isinstance(s_tit, list) or not s_rio or not s_tit:\n        return None\n    n = max(len(s_rio), len(s_tit))\n    nueva = []\n    for i in range(n):\n        v_rio = s_rio[min(i, len(s_rio) - 1)]\n        v_tit = s_tit[min(i, len(s_tit) - 1)]\n        if i <= 1:\n            nueva.append(round(float(v_tit), 4))\n        elif i == 2:\n            nueva.append(round(0.5 * float(v_tit) + 0.5 * float(v_rio), 4))\n        else:\n            nueva.append(round(float(v_rio), 4))\n    ctx[\"serieCoca\"] = nueva\n    ctx[\"otrasPesoRf\"] = 0.0\n    return P, ctx, {\"serieCoca\": nueva, \"otrasPesoRf\": 0.0}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2117.02,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2117.1,
+     2117.78,
+     2117.61
+    ],
+    "cambios_mod": [
+     "otrasPesoRf",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_amortiguada_dia2",
+    "nombre": "Memoria amortiguada progresiva",
+    "hipotesis": "Escalar la memoria de 48 h al 25 % el día 0, 50 % el día 1, 75 % el día 2 y 100 % desde el día 3 reduce el error por rezago a 1 día sin alterar la estabilidad a mediano plazo.",
+    "promocion": "luis",
+    "por_que": "El titular arrastra un sesgo positivo creciente a 1 día (+0,34 m en la última verificación) debido a que la memoria de 48 h proyecta correcciones de caudal rezagadas. A diferencia de memoria_desde_dia3 (que generaba oscilaciones por devolver el caudal en bloque al día 2), una rampa progresiva lineal (0,25, 0,50, 0,75, 1,00) atenúa tres cuartas partes del arrastre en el día 0 y la mitad en el día 1 sin saltos de discontinuidad, restituyendo el consenso multi-corrida a partir del día 3.",
+    "codigo": "def c_memoria_amortiguada_dia2(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not isinstance(mem, list) or not mem:\n        return None\n    factores = [0.25, 0.50, 0.75]\n    nueva = []\n    for i, v in enumerate(mem):\n        if v is None:\n            nueva.append(0.0)\n            continue\n        f = factores[i] if i < len(factores) else 1.0\n        nueva.append(round(float(v) * f, 2))\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2117.02,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.89,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "paute_subida_suelo_seco",
+    "nombre": "Retención inicial en subidas del Paute",
+    "hipotesis": "Acotar la subida del caudal del Paute a ≤ 1,10 el día 1 y ≤ 1,25 el día 2 en la serie relativa simula la retención inicial del suelo seco y reduce el optimismo a 1 y 2 días sin frenar crecidas a partir del día 3.",
+    "promocion": "auto",
+    "por_que": "Durante condiciones de estiaje, los primeros pulsos de lluvia pronosticados saturan el suelo antes de transformarse en escorrentía hacia Mazar. El modelo titular aplica el factor de ajuste de manera uniforme y genera incrementos súbitos de caudal en las primeras 48 h, explicando la sobreestimación sistemática de la cota observada en verificaciones recientes. Limitar la subida relativa a 1,10 en el día 1 y 1,25 en el día 2 respeta la abstracción hidrológica inicial y permite que los eventos lluviosos sostenidos se expresen con normalidad desde el día 3.",
+    "codigo": "def c_paute_subida_suelo_seco(P, ctx, mod):\n    s_maz = ctx.get(\"serieMazar\")\n    if not isinstance(s_maz, list) or len(s_maz) < 3:\n        return None\n    if s_maz[1] <= 1.05 and s_maz[2] <= 1.15:\n        return None\n    nueva = list(s_maz)\n    if nueva[1] > 1.10:\n        nueva[1] = 1.10\n    if nueva[2] > 1.25:\n        nueva[2] = 1.25\n    ctx[\"serieMazar\"] = nueva\n    return P, ctx, {\"serieMazar\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2117.02,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2117.02,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "serieMazar"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-25-coca_real_dia2_otras_desacopladas"
+}
