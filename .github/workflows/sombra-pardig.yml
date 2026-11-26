@@ -1,0 +1,38 @@
+name: Sombra PARDIG (lluvia del día)
+# Luis 26 nov 2026: compara la lluvia del día de PARDIG-NRT (Google DeepMind / Google Research, CC BY 4.0) con el
+# Inamhi y con nuestra lluvia del día 3D. Solo registra (registro/sombra_pardig.json y registro/pardig/); no cambia
+# la página. PARDIG llega con ~2–8 h de retraso: dos corridas al día y cada una completa los 3 últimos días.
+on:
+  schedule:
+    - cron: "41 14 * * *"   # 09:41 en Ecuador
+    - cron: "37 22 * * *"   # 17:37 en Ecuador
+  workflow_dispatch:
+    inputs:
+      dias: { description: "Días AAAA-MM-DD separados por espacio (vacío = los 3 últimos)", required: false }
+permissions:
+  contents: write
+concurrency:
+  group: sombra-pardig
+  cancel-in-progress: false
+jobs:
+  sombra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q "numpy<3" "zarr>=3,<4" fsspec aiohttp
+      - name: Comparar
+        env: { DIAS: "${{ github.event.inputs.dias }}" }
+        run: python3 scripts/sombra_pardig.py $DIAS
+      - name: Guardar
+        run: |
+          git config user.name "datalab-robot"
+          git config user.email "datalab-robot@users.noreply.github.com"
+          git add registro/sombra_pardig.json registro/pardig
+          git diff --cached --quiet && { echo "Sin cambios"; exit 0; }
+          git commit -m "Sombra PARDIG [skip ci]"
+          for i in 1 2 3; do git pull --rebase -q origin main && git push -q && exit 0; sleep 10; done
+          exit 1
