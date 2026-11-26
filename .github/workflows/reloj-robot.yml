@@ -35,13 +35,32 @@ jobs:
           disparar() { gh api -X POST "repos/${{ github.repository }}/actions/workflows/robot-cota.yml/dispatches" -f ref=main && echo "robot disparado $(date -u +%H:%M) UTC ($1)"; }
           # Luis 25 nov: el cron de "Demanda por distribuidora" solo corría ~3 veces al día; el reloj lo dispara cada media hora
           dist() { gh api -X POST "repos/${{ github.repository }}/actions/workflows/distribuidoras.yml/dispatches" -f ref=main && echo "distribuidoras $(date -u +%H:%M) UTC"; }
-          fin=$(( $(date +%s) + 340*60 )); ultima_celec=$(python3 /tmp/ultima.py); hora_disparo=""; media_dist=""
+          # Luis 26 nov: GitHub atrasa horas la bitácora de las 06:25 (repo privado) y el video "lluvia del día 3D" se quedaba
+          # sin hacer. De 08:00 a 18:59 (Ecuador), una vez por hora: si el 3D de ayer no está en la rama "videos" pero la
+          # página ya muestra la lluvia de ayer, dispara "Videos diarios" (sin día: solo hace los que falten).
+          video3d() {
+            a=$(TZ=America/Guayaquil date -d yesterday +%F); hl=$((10#$(TZ=America/Guayaquil date +%H)))
+            [ $hl -ge 8 ] && [ $hl -le 18 ] || return 0
+            curl -sfI -m 20 "https://raw.githubusercontent.com/${{ github.repository }}/videos/lluvia3d_$a.mp4" >/dev/null && return 0
+            d=$(curl -sf -m 30 "https://datalabecuador.com/3d/d/acumulada.json" | jq -r '.dia // empty' 2>/dev/null)
+            [ "$d" = "$a" ] || { echo "3D de $a: la página aún muestra '$d'"; return 0; }
+            # revisor: no disparar si hay una corrida en cola o en curso, ni más de 2 veces al día (si el 3D falla siempre, no llenar de avisos)
+            r=$(gh api "repos/${{ github.repository }}/actions/workflows/videos-diarios.yml/runs?per_page=20&created=>=$(date -u +%F)" \
+                -q '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null) || return 0
+            [ "${r:-1}" = 0 ] || return 0
+            n=$(gh api "repos/${{ github.repository }}/actions/workflows/videos-diarios.yml/runs?per_page=20&event=workflow_dispatch&created=>=$(date -u +%F)" \
+                -q '[.workflow_runs[] | select(.actor.login == "github-actions[bot]")] | length' 2>/dev/null) || return 0
+            [ "${n:-9}" -lt 2 ] || { echo "3D de $a: ya se disparó $n veces hoy"; return 0; }
+            gh api -X POST "repos/${{ github.repository }}/actions/workflows/videos-diarios.yml/dispatches" -f ref=main && echo "videos disparados $(date -u +%H:%M) UTC (falta el 3D de $a)"
+          }
+          fin=$(( $(date +%s) + 340*60 )); ultima_celec=$(python3 /tmp/ultima.py); hora_disparo=""; media_dist=""; hora_3d=""
           echo "Celec al empezar: $ultima_celec"
           while [ $(date +%s) -lt $fin ]; do
             sleep 300
             c=$(python3 /tmp/ultima.py); h=$(date -u +%Y%m%d%H); m=$((10#$(date -u +%M)))
             md="$h$(( m >= 30 ? 1 : 0 ))"; mm=$(( m % 30 ))
             if [ "$md" != "$media_dist" ] && [ $mm -ge 4 ]; then dist || true; media_dist=$md; fi
+            if [ "$h" != "$hora_3d" ] && [ $m -ge 10 ]; then video3d || true; hora_3d=$h; fi
             if [ -n "$c" ] && [ "$c" != "$ultima_celec" ]; then
               disparar "nueva cota de Celec: $c" || true; ultima_celec=$c; hora_disparo=$h
             elif [ "$hora_disparo" != "$h" ] && [ $m -ge 55 ]; then
