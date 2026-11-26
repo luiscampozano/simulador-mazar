@@ -535,7 +535,7 @@
       series: [{ d: ante, c: "var(--g-muted)", w: 1.2, dash: "4 4" }, { d: ayer, c: "var(--g-muted)", w: 1.6 }, { d: hoy, c: "var(--g-real)", w: 3 }] });
     const dif = vAyer != null ? ult.dem - vAyer : null;
     $("g-dem-txt").textContent = dif == null ? "" : Math.abs(dif) < 100 ? `A las ${hh(hU)} el país consume casi lo mismo que ayer a esta hora.`
-      : `A las ${hh(hU)} el país consume ${f(Math.abs(dif))} MW ${dif < 0 ? "menos" : "más"} que ayer a esta hora${dif < 0 ? ": menos demanda significa que Paute puede guardar agua en Mazar." : "."}`;
+      : `A las ${hh(hU)} el país consume ${f(Math.abs(dif))} MW ${dif < 0 ? "menos" : "más"} que ayer a esta hora.`;   // Luis 26 nov: se quitó "menos demanda significa que Paute puede guardar agua" (no es tan directo)
     distribuidoras();
     const L = (DIST && DIST.lecturas) || [], u = L[L.length - 1];
     if (u && u.total && new Date(u.ts).getTime() > ult.t + 10 * 60000) {
