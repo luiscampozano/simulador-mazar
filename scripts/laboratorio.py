@@ -2629,6 +2629,28 @@ _cand_3nov("temporada_nino_coca", c_temporada_nino_coca, "El Niño costero: río
            origen=_OR11)
 
 
+def c_temporada_nino_paute(P, ctx, mod):
+    """Luis 27 nov 2026 (en sombra): El Niño costero seca la cuenca del Paute. Desde mañana hasta el 28 feb 2027 el
+    caudal esperado de Mazar se toma ×0,8. CONGELADO 2026-11-27 (el factor no se reajusta)."""
+    sm = ctx.get("serieMazar")
+    if not sm: return None
+    fut = _dias_futuros(len(sm))
+    dentro = [k for k, d in enumerate(fut) if k >= 1 and d <= "2027-02-28"]
+    if not dentro: return None
+    sm2 = [round(v * 0.8, 4) if k in dentro else v for k, v in enumerate(sm)]
+    ctx["serieMazar"] = sm2
+    return P, ctx, {"serieMazar": sm2, "dias_temporada": len(dentro)}
+
+
+_cand_3nov("temporada_nino_paute", c_temporada_nino_paute, "El Niño costero: caudal de Mazar ×0,8 hasta feb",
+           "Backtest 11 nov (ERA5 1981–2025): con el mar de El Niño 1+2 en su tercio cálido en oct–nov, la lluvia de dic–feb en "
+           "el Paute fue 7,6 mm/día contra 8,7 en años fríos (r −0,35); en 1997–98 6,6 y en 2015–16 6,0. Oct–nov 2026 es lo más "
+           "cálido desde 1981. Ojo: el caudal de Mazar 2010–2025 no mostró la señal (r 0,04); el motivo real es la verificación del 27 nov: en noviembre el caudal que predice el titular para Mazar sale 1,22× el real "
+           "a 1 día, 1,32× a 3 y 1,28× a 7 (mediana; IC90 a 3 días 0,90–1,68 incluye 1, solo ~3 semanas; puede tener otra causa). Si el exceso sigue, "
+           "tomar el caudal futuro ×0,8 hasta feb 2027 debe bajar el error de cota a 3–14 días. CONGELADO 2026-11-27.",
+           origen="Claude 2026-11-27 (Luis: probar en sombra el ajuste de El Niño para el Paute)")
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
