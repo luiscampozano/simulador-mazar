@@ -23,7 +23,7 @@ jobs:
         with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -q "numpy<3" "h5netcdf>=1.3,<2" "h5py>=3.10,<4" "fsspec>=2024.6" "aiohttp>=3.9,<4"
+      - run: pip install -q "numpy<3" "h5netcdf>=1.3,<2" "h5py>=3.10,<4" "fsspec>=2024.6" "aiohttp>=3.9,<4" "scipy>=1.11,<2" "matplotlib>=3.8,<4"
       - name: Rama de datos
         run: |
           if git ls-remote --exit-code --heads origin fase-nubes >/dev/null; then
@@ -35,12 +35,15 @@ jobs:
       - name: Leer GOES-19
         env: { HORAS: "${{ github.event.inputs.horas || '3' }}", DIR_SALIDA: "_fase_nubes/registro/fase_nubes" }
         run: python3 scripts/fase_nubes.py
+      - name: Mapa para la pestaña Tormentas (en prueba)
+        continue-on-error: true
+        run: python3 scripts/fase_mapa.py _fase_nubes
       - name: Guardar
         working-directory: _fase_nubes
         run: |
           git config user.name "datalab-robot"
           git config user.email "datalab-robot@users.noreply.github.com"
-          git add registro
+          git add registro fase_gye.png fase_gye.json 2>/dev/null || git add registro
           git diff --cached --quiet && { echo "Sin cambios"; exit 0; }
           git commit -q -m "fase de nubes $(date -u +%Y-%m-%dT%H:%M)"
           for i in 1 2 3; do git push -q origin fase-nubes && exit 0; sleep 10; git pull --rebase -q origin fase-nubes || true; done
