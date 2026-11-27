@@ -673,6 +673,67 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_coca_real_desde_dia2(P, ctx, mod):
+    s_tit = ctx.get("serieCoca")
+    s_rio = mod.get("serieCocaRio")
+    if not s_tit or not s_rio or len(s_tit) < 3 or len(s_rio) < 3:
+        return None
+    nueva = list(s_tit)
+    n = min(len(s_tit), len(s_rio))
+    for i in range(2, n):
+        if i == 2:
+            nueva[i] = round(0.5 * float(s_tit[i]) + 0.5 * float(s_rio[i]), 4)
+        else:
+            nueva[i] = round(float(s_rio[i]), 4)
+    ctx["serieCoca"] = nueva
+    return P, ctx, {"serieCoca": nueva}
+
+
+CANDIDATOS["coca_real_desde_dia2"] = {"f": c_coca_real_desde_dia2, "promocion": "auto", "origen": "Gemini 2026-11-26", "nombre": "Río Coca real desde el día 2", "hipotesis": "Usar el pronóstico de caudal real del río Coca (serieCocaRio) únicamente a partir del día 2 mantiene idéntico el día 1 del titular y reduce el sesgo y error medio a 5, 7 y 14 días."}
+
+
+def c_memoria_dia0_suave(P, ctx, mod):
+    mem = ctx.get("memoria")
+    if not isinstance(mem, list) or not mem:
+        return None
+    nueva = list(mem)
+    if len(nueva) > 0 and isinstance(nueva[0], (int, float)) and nueva[0] > 0:
+        nueva[0] = round(nueva[0] * 0.5, 2)
+    if len(nueva) > 1 and isinstance(nueva[1], (int, float)) and nueva[1] > 0:
+        nueva[1] = round(nueva[1] * 0.75, 2)
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["memoria_dia0_suave"] = {"f": c_memoria_dia0_suave, "promocion": "luis", "origen": "Gemini 2026-11-26", "nombre": "Memoria atenuada en día 0", "hipotesis": "Reducir a la mitad el caudal positivo de la memoria de 48 h en el día 0 elimina el rezago optimista a 1 día hacia los 5 cm sin desestabilizar el mediano plazo."}
+
+
+def c_corrige_sesgo_persistente_1d(P, ctx, mod):
+    ac = mod.get("aciertos") or {}
+    rec = [x for x in (ac.get("recientes_1d") or []) if isinstance(x.get("err"), (int, float))]
+    if len(rec) < 4:
+        return None
+    ult = rec[-4:]
+    errs = [x["err"] for x in ult]
+    if not (all(e > 0.10 for e in errs) or all(e < -0.10 for e in errs)):
+        return None
+    e_medio = sum(errs) / 4.0
+    c = mod.get("curva_mazar") or {"a": 3.6595, "b": 0.12497}
+    dvdz = c["a"] + c["b"] * max(0.0, float(ctx.get("cota", 2116.0)) - 2115.0)
+    q0 = -0.5 * e_medio * dvdz / 0.0864
+    q0 = max(-25.0, min(25.0, q0))
+    base = list(ctx.get("memoria") or [])
+    n = max(len(base), 2)
+    nueva = [float(base[i] if i < len(base) else 0.0) for i in range(n)]
+    nueva[0] = round(nueva[0] + q0, 2)
+    nueva[1] = round(nueva[1] + q0 * 0.5, 2)
+    ctx["memoria"] = nueva
+    return P, ctx, {"memoria": nueva}
+
+
+CANDIDATOS["corrige_sesgo_persistente_1d"] = {"f": c_corrige_sesgo_persistente_1d, "promocion": "luis", "origen": "Gemini 2026-11-26", "nombre": "Corrección suave de sesgo persistente a 1 día", "hipotesis": "Corregir el 50 % del sesgo reciente a 1 día solo cuando las últimas 4 verificaciones coinciden en signo acerca el error típico a 5 cm sin perturbar el horizonte de 7 a 14 días."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
