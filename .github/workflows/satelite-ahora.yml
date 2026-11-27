@@ -61,6 +61,9 @@ jobs:
             else
               echo "vuelta fallida $(date -u +%H:%M)"
             fi
+            # 27 nov (Luis: "como es que no marca"): el mapa de fase de nubes (pestaña Tormentas) sigue a cada imagen nueva;
+            # su cron de 30 min queda de respaldo porque GitHub lo atrasa.
+            timeout 30 gh api -X POST "repos/${{ github.repository }}/actions/workflows/fase-nubes.yml/dispatches" -f ref=main -f inputs[horas]=1 || echo "fase-nubes: no se pudo pedir"
             # 13 nov (Luis): sincronizado con el GOES. La imagen que empieza a las :X0 termina ~:X9:30 y aparece en AWS ~:X0:30–:X1;
             # la vuelta arranca a las :X2 (UTC) para tomarla apenas sale (antes podía llegar justo antes y publicar la anterior:
             # retraso de 20–30 min; ahora ~12–15 min). Si una vuelta se alarga, espera al siguiente :X2.
