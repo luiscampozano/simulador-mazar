@@ -2667,6 +2667,24 @@ _cand_3nov("temporada_nino_coca_dic", c_temporada_nino_coca_dic, "El Niño coste
            origen="Claude 2026-11-27 (Luis: reactivar en sombra el ajuste del Coca)")
 
 
+def c_temporada_nino_ambos(P, ctx, mod):
+    """Luis 27 nov 2026 (en sombra): los dos ajustes de El Niño juntos. Paute ×0,8 desde el día 1 hasta el 28 feb 2027
+    (temporada_nino_paute) y Coca ×0,85 en los días de dic 2026–feb 2027 (temporada_nino_coca). CONGELADO 2026-11-27."""
+    out = {}
+    r = c_temporada_nino_paute(P, ctx, mod)
+    if r: P, ctx, o = r; out.update(o)
+    r = c_temporada_nino_coca(P, ctx, mod)
+    if r: P, ctx, o = r; out["serieCoca"] = o["serieCoca"]; out["dias_coca"] = o["dias_temporada"]
+    return (P, ctx, out) if out else None
+
+
+_cand_3nov("temporada_nino_ambos", c_temporada_nino_ambos, "El Niño costero: Paute ×0,8 y Coca ×0,85 juntos",
+           "Combina temporada_nino_paute (caudal de Mazar ×0,8 desde mañana hasta feb; en noviembre el titular exagera el caudal "
+           "de Mazar 1,2–1,35×) y temporada_nino_coca (Coca ×0,85 en dic–feb; historia ERA5 de años con Niño 1+2 cálido). Mide "
+           "si secar las dos cuencas a la vez mejora la cota de Mazar a 3–14 días más que cada ajuste por separado. "
+           "CONGELADO 2026-11-27.", origen="Claude 2026-11-27 (Luis: un candidato con el ajuste en ambos ríos)")
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
