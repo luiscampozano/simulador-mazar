@@ -795,6 +795,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     except Exception as e: log(f"Laboratorio: piso_censurado no se guardó: {e}")
     try: _registrar_fecha_critica(ts, completa)   # cerebro 17 nov: días a 2.116/2.115 m por candidato del Coca (solo registro)
     except Exception as e: log(f"Laboratorio: fecha_critica no se guardó: {e}")
+    try: _registrar_escenarios_bloque(ts, P, ctx, par, log)   # cerebro 27 nov: fecha de 2.116/2.115 con 8,5/12,5/18 h de bloque (solo registro)
+    except Exception as e: log(f"Laboratorio: escenarios_bloque no se guardó: {e}")
     reg = _leer(F_PRED, {"corridas": []})
     reg["corridas"] = [x for x in reg["corridas"] if x["ts"] != ts] + [
         {"ts": ts, "cota": datos["cota"], "tray": tray, "rasgos": _rasgos(P, ctx, mod, datos)}]
@@ -3955,7 +3957,8 @@ def _registrar_fecha_critica(ts, completa):
     coca_subida_medida, coca_mitad, coca_rio_real y subidas_cero (cerebro 18 nov). Se guarda la primera corrida del día desde las 06:00 ('manana') y la última."""
     reg = _leer(F_FECHA_CRITICA, {}) or {}
     fila = {"ts": ts}
-    for cid in ("titular", "coca_subida_medida", "coca_mitad", "coca_rio_real", "subidas_cero"):   # subidas_cero: cerebro 18 nov
+    for cid in ("titular", "coca_subida_medida", "coca_mitad", "coca_rio_real", "subidas_cero",   # subidas_cero: cerebro 18 nov
+                "sin_piso_2115", "sin_piso_paute_observado", "sin_piso_paute_entero"):   # freno del Paute sin piso (cerebro 27 nov)
         t = completa.get(cid)
         if t:
             fila[cid] = {"d2116": _dias_a(t, 2116.0), "d2115": _dias_a(t, 2115.0), "cota_14d": t[14] if len(t) > 14 else None}
@@ -5092,7 +5095,7 @@ def _registrar_piso_censurado(ts, tray, log=print):
     f = os.path.join("laboratorio", "piso_censurado.json")
     reg = _leer(f, {"corridas": {}})
     tit = tray.get("titular") or []
-    _NO_CUENTA = ("titular", "anterior", "sin_piso_2115")
+    _NO_CUENTA = ("titular", "anterior", "sin_piso_2115", "sin_piso_paute_observado", "sin_piso_paute_entero")   # sin piso (cerebro 27 nov)
     en_piso = lambda t, i: i < len(t) and isinstance(t[i], (int, float)) and abs(t[i] - 2115.0) <= 0.0005
     fila = {"titular_en_piso": [h for i, h in enumerate(HORIZ) if en_piso(tit, i)]}
     fila["candidatos_en_piso"] = {str(h): sum(1 for k, t in tray.items() if k not in _NO_CUENTA and en_piso(t, i))
@@ -5105,3 +5108,105 @@ def _registrar_piso_censurado(ts, tray, log=print):
                    "también: esas verificaciones están censuradas (empatan por construcción). Solo registro (cerebro 26 nov): el "
                    "marcador NO las excluye.")
     _escribir(f, reg, compacto=True)
+
+
+# ───────────── Ideas de los cerebros del 27 nov (auditor 27 nov; aprobación permanente de Luis, 7 nov) ─────────────
+_OR_C27 = "cerebro 2026-11-27"
+CONGELADO_C27 = "2026-11-27"
+
+
+def _paute_f_sin_piso(P, ctx, mod, f_fijo=None):
+    """Encargo de Luis (freno del Paute), pedido por el líder de Mazar el 27 nov: el titular SIN piso (cota virtual, como
+    sin_piso_2115) con otro factor de la subida prometida del Paute. f_fijo = None → el observado del robot
+    (ajuste_paute.observado, hoy 0,022) recortado a [0, 1]; f_fijo = 1,0 → la subida entera. Solo donde la serie bruta sube
+    (> 1), igual que el robot; lo demás, como el titular. sin_piso_2115 es el punto del 40 % (factor que aplica el titular)."""
+    bruta, info = mod.get("serieMazarBruta"), mod.get("ajuste_paute") or {}
+    f = f_fijo if f_fijo is not None else info.get("observado")
+    if not bruta or not isinstance(f, (int, float)):
+        return None
+    f = max(0.0, min(1.0, float(f)))
+    actual = ctx.get("serieMazar") or bruta
+    serie = [round(1 + (b - 1) * f, 4) if b > 1 else a for a, b in zip(actual, bruta)]
+    ctx["serieMazar"] = serie
+    ctx["_usar_cotaV"] = True
+    return P, ctx, {"serieMazar": serie, "paute_f": round(f, 3), "piso_m": 2106.66}
+
+
+def c_sin_piso_paute_observado(P, ctx, mod): return _paute_f_sin_piso(P, ctx, mod, None)
+def c_sin_piso_paute_entero(P, ctx, mod): return _paute_f_sin_piso(P, ctx, mod, 1.0)
+
+
+_cand_3nov("sin_piso_paute_observado", c_sin_piso_paute_observado, "Sin piso + subida del Paute con lo que de verdad llegó",
+           "Líder de Mazar 27 nov (encargo de Luis: medir el freno del Paute). Con el piso de 2.115 m el titular censura los plazos "
+           "de 3–14 días y paute_sin_ajuste / paute_ajuste_completo ya están retirados (reparo del retador y de Gemini Neon). Aquí, "
+           "sobre la cota virtual (como sin_piso_2115 = el 40 % que aplica el titular), la subida prometida por la lluvia del Paute "
+           "con el factor observado del robot recortado a [0, 1] (hoy 0,022). Junto con sin_piso_paute_entero da los tres puntos "
+           "(≈0 %, 40 %, 100 %). NO PROMOVIBLE: solo mide.", origen=_OR_C27)
+CANDIDATOS["sin_piso_paute_observado"]["promocion"] = "solo medición"
+_cand_3nov("sin_piso_paute_entero", c_sin_piso_paute_entero, "Sin piso + subida del Paute entera (100 %)",
+           "Líder de Mazar 27 nov (encargo de Luis: freno del Paute): el extremo opuesto, toda la subida que promete la lluvia del "
+           "Paute llega (factor 1,0), sobre la cota virtual. Si el freno del titular (40 %) está bien, este debe perder a 3–7 días "
+           "en semanas secas. NO PROMOVIBLE: solo mide.", origen=_OR_C27)
+CANDIDATOS["sin_piso_paute_entero"]["promocion"] = "solo medición"
+
+
+F_ESC_BLOQUE = os.path.join(DIR, "escenarios_bloque.json")
+_ESC_Q_BLOQUE = 111.0                 # m³/s de Mazar en bloque (líder 27 nov). CONGELADO 2026-11-27
+_ESC_HORAS = (8.5, 12.5, 18.0)        # horas de bloque por día laborable. CONGELADO 2026-11-27
+_ESC_SABADO, _ESC_DOMINGO_H = 0.77, 6.0
+
+
+def _registrar_escenarios_bloque(ts, P, ctx, par, log=print):
+    """Registro 'escenarios_bloque' (líder de Mazar 27 nov; solo registro, no es candidato ni cambia lo publicado): una vez al
+    día, en la primera corrida desde las 06:00, fecha de 2.116 y 2.115 m si Mazar turbina 111 m³/s durante 8,5, 12,5 o 18 h
+    cada laborable (sábado ×0,77; domingo y feriado 6 h), con la entrada plana en el caudal de Celec de la corrida (P.qMazar)
+    y la curva del titular (sin piso: sigue bajando hasta 2.106,66 m). Del día 0 solo cuenta lo que le queda (desde la hora
+    de la corrida, ventana 06–24 h). Sin vertido ni Amaluza: es un balance simple para dar el rango honesto junto al número
+    grande. Reparo de Gemini Neon: las horas reales se leen del Cenace (plantas por día), no de mazar_horas (m³/s)."""
+    if str(ts)[11:13] < "06":
+        return
+    reg = _leer(F_ESC_BLOQUE, {"dias": {}}) or {"dias": {}}
+    dia = str(ts)[:10]
+    if dia in reg.get("dias", {}):
+        return
+    a, b = par["curva_mazar"]["a"], par["curva_mazar"]["b"]
+    vol = lambda x: a * x + b * x * x / 2
+    cota_de = lambda v: 2115 + ((-a + math.sqrt(a * a + 2 * b * v)) / b if v > 0 else v / a)
+    q_in = float(P.get("qMazar") or 0)
+    if q_in <= 0:
+        return
+    hora = int(str(ts)[11:13]) + int(str(ts)[14:16]) / 60.0
+    hora = min(hora, 24.0)
+    resto0 = max(0.0, min(1.0, (24.0 - hora) / 18.0))      # fracción del bloque diurno (06–24 h) que queda en el día 0
+    fer = ctx.get("feriados") or []
+    dsem0 = ctx.get("diaSemana0", 1) % 7                     # 0 = domingo
+    fila = {"ts": ts, "cota": round(float(ctx["cota"]), 2), "q_entrada": round(q_in, 1), "hora": round(hora, 2)}
+    for h in _ESC_HORAS:
+        V = vol(float(ctx["cota"]) - 2115); tray = [round(float(ctx["cota"]), 2)]
+        for k in range(30):
+            dsem = (dsem0 + k) % 7
+            horas = _ESC_DOMINGO_H if (dsem == 0 or (k < len(fer) and fer[k])) else (h * _ESC_SABADO if dsem == 6 else h)
+            frac = resto0 if k == 0 else 1.0
+            entra = q_in * (24.0 - hora) * 3600 if k == 0 else q_in * 86400   # revisor 27 nov: el día 0 solo las horas que quedan
+            V += (entra - _ESC_Q_BLOQUE * horas * 3600 * frac) / 1e6
+            V = max(V, (2106.66 - 2115) * a)                 # revisor 27 nov: piso en la rama lineal (como cotaV del robot)
+            tray.append(round(cota_de(V), 2))
+        fila[f"{h:g}h"] = {"d2116": _dias_a(tray, 2116.0), "d2115": _dias_a(tray, 2115.0), "cota_1d": tray[1],
+                          "cota_3d": tray[3], "cota_7d": tray[7]}
+    reg.setdefault("dias", {})[dia] = fila
+    reg["dias"] = dict(sorted(reg["dias"].items())[-90:])
+    reg["nota"] = ("Líder de Mazar 27 nov, CONGELADO 2026-11-27: días a 2.116/2.115 m si Mazar turbina 111 m³/s 8,5, 12,5 o "
+                   "18 h por laborable (sábado ×0,77, domingo/feriado 6 h), entrada plana = caudal Celec de la corrida, curva del "
+                   "titular, sin piso. Primera corrida del día desde las 06:00. Solo registro.")
+    _escribir(F_ESC_BLOQUE, reg)
+
+
+# ───────────── Segundo auditor (Gemini) 26 nov, revisado por el Claude independiente el 27 nov ─────────────
+CANDIDATOS["coca_real_desde_dia2"] = {
+    "f": _coca_real_desde_dia2, "promocion": "auto", "origen": "Gemini 2026-11-26 (revisado por Claude 27 nov)",
+    "nombre": "Río Coca real desde el día 2",
+    "hipotesis": ("Gemini 26 nov: usar el pronóstico del río Coca real solo desde el día 2 (días 0–1 del titular, día 2 promedio, "
+                  "3+ río real) conserva el día 1 y toma la mejora de coca_rio_real a 5–14 días. Revisor 27 nov: es la pieza sola "
+                  "que hoy solo corre combinada (patron_hist_coca_dia2, tend_mitad_coca_dia2); con los días 0–1 iguales al titular "
+                  "no puede cumplir el +10 % a 1 día: sirve para medir. Las cifras de Gemini no coinciden con el marcador actual "
+                  "(coca_rio_real a 5 días 0,591 vs 1,235 m del titular; a 1 día 0,491 vs 0,411); la dirección sí.")}
