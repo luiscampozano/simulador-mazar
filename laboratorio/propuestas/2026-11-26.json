@@ -1,0 +1,96 @@
+{
+ "fecha": "2026-11-26",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.908,
+ "lote": {
+  "nombre": "batches/ac6l9x0bewda47jkjzp00advbq7ncozzxmjr",
+  "enviado": "2026-11-26T18:53-05:00",
+  "recogido": "2026-11-26T20:04-05:00",
+  "estado_lote": "BATCH_STATE_SUCCEEDED"
+ },
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "coca_real_desde_dia2",
+    "nombre": "Río Coca real desde el día 2",
+    "hipotesis": "Usar el pronóstico de caudal real del río Coca (serieCocaRio) únicamente a partir del día 2 mantiene idéntico el día 1 del titular y reduce el sesgo y error medio a 5, 7 y 14 días.",
+    "promocion": "auto",
+    "por_que": "coca_rio_real reduce notablemente el error medio a 5 días (de 1,084 a 0,600 m, -45 %) y a 14 días (de 4,034 a 3,344 m), pero degrada el día 1 (0,569 vs 0,466 m) por discrepancias inmediatas entre GloFAS y la operación de Coca Codo. Manteniendo los días 0 y 1 idénticos al titular y empalmando con la serie del río real a partir del día 2, se protege totalmente el corto plazo mientras se capturan las ganancias de mediano y largo plazo. Esta variante limpia fue sugerida expresamente por el revisor independiente el 25 de noviembre.",
+    "codigo": "def c_coca_real_desde_dia2(P, ctx, mod):\n    s_tit = ctx.get(\"serieCoca\")\n    s_rio = mod.get(\"serieCocaRio\")\n    if not s_tit or not s_rio or len(s_tit) < 3 or len(s_rio) < 3:\n        return None\n    nueva = list(s_tit)\n    n = min(len(s_tit), len(s_rio))\n    for i in range(2, n):\n        if i == 2:\n            nueva[i] = round(0.5 * float(s_tit[i]) + 0.5 * float(s_rio[i]), 4)\n        else:\n            nueva[i] = round(float(s_rio[i]), 4)\n    ctx[\"serieCoca\"] = nueva\n    return P, ctx, {\"serieCoca\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.03,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.03,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_dia0_suave",
+    "nombre": "Memoria atenuada en día 0",
+    "hipotesis": "Reducir a la mitad el caudal positivo de la memoria de 48 h en el día 0 elimina el rezago optimista a 1 día hacia los 5 cm sin desestabilizar el mediano plazo.",
+    "promocion": "luis",
+    "por_que": "El titular sobrestima sistemáticamente la cota a 1 día (+0,20 a +0,32 m en las 8 verificaciones recientes) debido al rezago de promediar cotas más altas de las 48 h anteriores, inyectando un caudal positivo artificial en mem[0] (+17 m³/s). En el marcador, sin_memoria triplica los aciertos ≤ 5 cm frente al titular (20 casos frente a 6), pero pierde estabilidad a 2–3 días al descartar toda la memoria. Atenuar al 50 % la memoria positiva en el día 0 (y al 75 % en el día 1) recorta ~15–18 cm de sobreestimación inmediata manteniendo intacta la memoria desde el día 2.",
+    "codigo": "def c_memoria_dia0_suave(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    if not isinstance(mem, list) or not mem:\n        return None\n    nueva = list(mem)\n    if len(nueva) > 0 and isinstance(nueva[0], (int, float)) and nueva[0] > 0:\n        nueva[0] = round(nueva[0] * 0.5, 2)\n    if len(nueva) > 1 and isinstance(nueva[1], (int, float)) and nueva[1] > 0:\n        nueva[1] = round(nueva[1] * 0.75, 2)\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.03,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.03,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "corrige_sesgo_persistente_1d",
+    "nombre": "Corrección suave de sesgo persistente a 1 día",
+    "hipotesis": "Corregir el 50 % del sesgo reciente a 1 día solo cuando las últimas 4 verificaciones coinciden en signo acerca el error típico a 5 cm sin perturbar el horizonte de 7 a 14 días.",
+    "promocion": "luis",
+    "por_que": "Las 8 verificaciones recientes a 1 día muestran un sesgo positivo ininterrumpido (+0,20 a +0,32 m, mediana +0,25 m), indicando que el modelo subestima el vaciado actual de Mazar. A diferencia de corrige_error_3 que sobrecorregía al 100 % con una cola exponencial en todo el horizonte, este modelo solo dispara ante persistencia unívoca (4 corridas con |err| > 0,10 m del mismo signo) y aplica solo el 50 % del caudal equivalente concentrado en los días 0 y 1. Esto descuenta ~12 cm de error a 1 día con un impacto volumétrico acumulado menor a 15 cm en los días 7 a 14.",
+    "codigo": "def c_corrige_sesgo_persistente_1d(P, ctx, mod):\n    ac = mod.get(\"aciertos\") or {}\n    rec = [x for x in (ac.get(\"recientes_1d\") or []) if isinstance(x.get(\"err\"), (int, float))]\n    if len(rec) < 4:\n        return None\n    ult = rec[-4:]\n    errs = [x[\"err\"] for x in ult]\n    if not (all(e > 0.10 for e in errs) or all(e < -0.10 for e in errs)):\n        return None\n    e_medio = sum(errs) / 4.0\n    c = mod.get(\"curva_mazar\") or {\"a\": 3.6595, \"b\": 0.12497}\n    dvdz = c[\"a\"] + c[\"b\"] * max(0.0, float(ctx.get(\"cota\", 2116.0)) - 2115.0)\n    q0 = -0.5 * e_medio * dvdz / 0.0864\n    q0 = max(-25.0, min(25.0, q0))\n    base = list(ctx.get(\"memoria\") or [])\n    n = max(len(base), 2)\n    nueva = [float(base[i] if i < len(base) else 0.0) for i in range(n)]\n    nueva[0] = round(nueva[0] + q0, 2)\n    nueva[1] = round(nueva[1] + q0 * 0.5, 2)\n    ctx[\"memoria\"] = nueva\n    return P, ctx, {\"memoria\": nueva}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.03,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2115.92,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "memoria"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-26-coca_real_desde_dia2"
+}
