@@ -2651,6 +2651,22 @@ _cand_3nov("temporada_nino_paute", c_temporada_nino_paute, "El Niño costero: ca
            origen="Claude 2026-11-27 (Luis: probar en sombra el ajuste de El Niño para el Paute)")
 
 
+def c_temporada_nino_coca_dic(P, ctx, mod):
+    """Luis 27 nov 2026 (en sombra): reactivación de temporada_nino_coca, que la regla de permanencia retiró el 25–26 nov
+    antes de que empezara su temporada. Ahora solo corre desde el 1 dic (día de la corrida), así su edad para la regla de
+    14 días empieza cuando de verdad actúa. Mismo factor ×0,85 del Coca dic 2026–feb 2027. CONGELADO 2026-11-27."""
+    if _dias_futuros(1)[0] < "2026-12-01": return None
+    return c_temporada_nino_coca(P, ctx, mod)
+
+
+_cand_3nov("temporada_nino_coca_dic", c_temporada_nino_coca_dic, "El Niño costero: río Coca ×0,85 en dic–feb (desde el 1 dic)",
+           "Igual que temporada_nino_coca (ERA5 1981–2025: con Niño 1+2 cálido en oct–nov la lluvia dic–feb del Coca baja de 11,0 "
+           "a 9,1 mm/día, r −0,42), que se retiró sin medirse. Verificación 27 nov: en noviembre el titular acierta el Coca a 1–7 "
+           "días (predicho/real 1,00–1,03) y exagera ~7 % a 14 días; el ×0,85 solo se justifica si en diciembre aparece la sequía "
+           "de los años de El Niño. Corre desde el 1 dic. CONGELADO 2026-11-27.",
+           origen="Claude 2026-11-27 (Luis: reactivar en sombra el ajuste del Coca)")
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
