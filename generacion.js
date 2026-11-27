@@ -152,7 +152,7 @@
   function grafico(id, o) {
     const svg = $(id); if (!svg) return;
     const W = Math.max(280, Math.round(svg.parentNode.clientWidth || 600));
-    const H = o.h || (W < 520 ? 200 : 240), L = W < 520 ? 38 : 46, R = o.y2 ? (W < 520 ? 34 : 42) : 10, T = 12, B = 24;
+    const H = o.h || (W < 520 ? 200 : 240), L = (W < 520 ? 38 : 46) + (o.L || 0), R = o.y2 ? (W < 520 ? 34 : 42) : 10, T = 12, B = 24;
     const X = x => L + (x - o.x0) / ((o.x1 - o.x0) || 1) * (W - L - R);
     const Y = y => T + (1 - (y - o.y0) / ((o.y1 - o.y0) || 1)) * (H - T - B);
     const F = `font-family="var(--g-mono,ui-monospace,monospace)" font-size="10" style="fill:var(--g-muted)"`;
@@ -444,11 +444,11 @@
       const y0 = Math.floor((lo - 0.15) / st) * st, y1 = Math.max(y0 + 2 * st, Math.ceil((hi + 0.15) / st) * st), yt = [];
       for (let v = y0; v <= y1 + 1e-9; v += st) yt.push(Math.round(v * 10) / 10);
       const xt = marcasHora(AM.map(x => x[0]), tOf);
-      grafico("g-am", { h: 170, x0, x1, y0, y1, yt, yd: st < 1 ? 1 : 0, xt, series: [{ d: AM.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-col)", w: 2.4, puntos: true, r: 2 }] });
+      grafico("g-am", { h: 170, x0, x1, y0, y1, yt, yd: st < 1 ? 1 : 0, L: st < 1 ? 14 : 0, xt, series: [{ d: AM.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-col)", w: 2.4, puntos: true, r: 2 }] });
       const BLm = bloquesN(Math.ceil(RANGO / 24) + 1).filter(b => b.tb > x0 && b.ta < x1);
       const barras = BLm.map(b => [Math.max(b.ta, x0) + 3e5, Math.min(b.tb, x1) - 3e5, 0, b.mw["Paute"] || 0, "var(--g-real)"]);
       const topm = techo(barras.map(b => b[3]), 200);
-      grafico("g-am-mw", { h: 130, x0, x1, y0: 0, y1: topm, yt: marcasY(topm), xt, series: [{ tipo: "barras", d: barras }] });
+      grafico("g-am-mw", { h: 130, L: st < 1 ? 14 : 0, x0, x1, y0: 0, y1: topm, yt: marcasY(topm), xt, series: [{ tipo: "barras", d: barras }] });
       const u = AM[AM.length - 1], a24 = (MH.amaluza || []).find(x => x[0] === new Date(tOf(u[0]) - 864e5 - 5 * 36e5).toISOString().slice(0, 13));
       const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null, ub = BLm[BLm.length - 1];
       const hh = t => { const q = new Date(t - 5 * 36e5); return String(q.getUTCHours()).padStart(2, "0") + ":" + String(q.getUTCMinutes()).padStart(2, "0"); };
