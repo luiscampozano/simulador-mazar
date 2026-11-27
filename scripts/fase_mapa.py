@@ -1,7 +1,8 @@
 """Mapa de la fase de las nubes sobre Guayaquil y alrededores (GOES-19) para la pestaña Tormentas — EN PRUEBA (Luis 27 nov 2026).
 
 Toma la última imagen de 10 min que ya tenga fase (ACTP), altura (ACHA) y espesor (COD) y dibuja 6 clases:
-despejado · agua líquida baja · agua líquida con cima ≥ 4 km · sobreenfriada/mixta · hielo fino · hielo grueso (espesor ≥ 20).
+despejado · agua líquida baja · agua líquida con cima ≥ 4 km · sobreenfriada/mixta · hielo fino · hielo grueso (espesor ≥ 20);
+de noche (sol con ángulo cenital > 85°, o crepúsculo con espesor tope ≤ 16,5) el espesor no sirve y todo el hielo va a una sola clase "hielo_noche".
 Los nombres "núcleo"/"yunque" y el umbral de 20 son hipótesis hasta cruzarlos con el Inamhi (registro en sombra fase_nubes).
 Salida (carpeta dada, en GitHub la rama fase-nubes): fase_gye.png y fase_gye.json (hora y lectura por zona)."""
 import datetime as D, json, os, re, sys, urllib.request
@@ -10,8 +11,9 @@ import numpy as np
 S3 = "https://noaa-goes19.s3.amazonaws.com/"
 N, S, O, E = -1.45, -3.05, -80.75, -79.25
 UMBRAL_COD = 20
-CLASES = ["despejado", "liquida_baja", "liquida_alta", "mixta", "hielo_fino", "hielo_grueso"]
-COLORES = ["#1b2229", "#6fb7c9", "#29e0d0", "#7a7cff", "#c9cfd6", "#ff4d3d"]
+CLASES = ["despejado", "liquida_baja", "liquida_alta", "mixta", "hielo_fino", "hielo_grueso", "hielo_noche"]
+COLORES = ["#1b2229", "#6fb7c9", "#29e0d0", "#7a7cff", "#c9cfd6", "#ff4d3d", "#e9a8ff"]
+ZENIT_NOCHE = 85   # de noche el espesor de NOAA no pasa de ~16 (revisor, 27 nov): no se separa núcleo de yunque. A 76° todavía llega a 158
 # zonas públicas (radio ~8 km) para la lectura en palabras
 ZONAS = [("Guayaquil", -2.17, -79.92, 0.09), ("Durán", -2.15, -79.81, 0.05), ("Samborondón", -2.03, -79.86, 0.06),
          ("Daule", -1.87, -79.98, 0.07), ("Chongón y Cerecita", -2.27, -80.17, 0.10), ("Milagro", -2.13, -79.59, 0.07),
@@ -51,6 +53,17 @@ def leer(k, var):
         return A, lat, lon
 
 
+def zenit(t, lat, lon):
+    """Ángulo cenital del sol (grados), fórmula aproximada de la NOAA."""
+    n = t.timetuple().tm_yday; h = t.hour + t.minute / 60
+    g = 2 * np.pi / 365 * (n - 1 + (h - 12) / 24)
+    dec = 0.006918 - 0.399912 * np.cos(g) + 0.070257 * np.sin(g) - 0.006758 * np.cos(2 * g) + 0.000907 * np.sin(2 * g)
+    eq = 229.18 * (0.000075 + 0.001868 * np.cos(g) - 0.032077 * np.sin(g) - 0.014615 * np.cos(2 * g) - 0.040849 * np.sin(2 * g))
+    ha = np.radians((h * 60 + eq + 4 * lon) / 4 - 180)
+    la = np.radians(lat)
+    return float(np.degrees(np.arccos(np.sin(la) * np.sin(dec) + np.cos(la) * np.cos(dec) * np.cos(ha))))
+
+
 def cercano(la_o, lo_o, v, la, lo):
     """Valor de la malla gruesa (ACHA/COD) en cada píxel de la malla fina (fase), por vecino más cercano."""
     from scipy.spatial import cKDTree
@@ -74,13 +87,16 @@ def main():
     htp, codp = cercano(la2, lo2, ht, la, lo), cercano(la3, lo3, cod, la, lo)
     C = np.full(ph.shape, np.nan)
     C[ph == 0] = 0; C[ph == 1] = 1; C[(ph == 1) & (htp >= 4000)] = 2; C[(ph == 2) | (ph == 3)] = 3
-    C[ph == 4] = 4; C[(ph == 4) & (codp >= UMBRAL_COD)] = 5
+    zz = zenit(t, -2.2, -79.9)
+    noche = zz > ZENIT_NOCHE or (zz > 70 and np.nanmax(cod) <= 16.5)   # 2.º caso: el producto ya pasó a su algoritmo nocturno
+    if noche: C[ph == 4] = 6
+    else: C[ph == 4] = 4; C[(ph == 4) & (codp >= UMBRAL_COD)] = 5
 
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt, matplotlib.patheffects as pe
     from matplotlib.colors import ListedColormap
     fig = plt.figure(figsize=(8, 8.5), dpi=110); ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off(); fig.patch.set_facecolor("#0d1217")
-    ax.pcolormesh(lo, la, C, cmap=ListedColormap(COLORES), vmin=-.5, vmax=5.5, shading="nearest")
+    ax.pcolormesh(lo, la, C, cmap=ListedColormap(COLORES), vmin=-.5, vmax=6.5, shading="nearest")
     B = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fase_mapa_base.json"), encoding="utf-8"))
     for seg in B["costa"]:
         seg = np.array(seg); ax.plot(seg[:, 0], seg[:, 1], color="#ffd36b", lw=1.2, alpha=.9)
@@ -92,7 +108,7 @@ def main():
         ax.plot(x, y, "o", ms=5, color="#ffd36b", mec="k"); ax.text(x + .02, y + dy, n, color="w", fontsize=12, weight="bold", path_effects=borde)
     ax.set_xlim(O, E); ax.set_ylim(S, N); ax.set_aspect(1 / np.cos(np.radians(2.2)))
     loc = t - D.timedelta(hours=5)
-    ax.text(.015, .985, f"{loc:%d/%m %H:%M}", transform=ax.transAxes, va="top", color="w", fontsize=15, weight="bold", path_effects=borde)
+    ax.text(.015, .985, f"{loc:%d/%m %H:%M} (Ecuador)", transform=ax.transAxes, va="top", color="w", fontsize=15, weight="bold", path_effects=borde)
     ax.text(.985, .012, "@DataLabEc · GOES-19 (NOAA)", transform=ax.transAxes, ha="right", color="#cfe0e6", fontsize=10, path_effects=borde)
     os.makedirs(sal, exist_ok=True)
     plt.savefig(os.path.join(sal, "fase_gye.tmp.png"), facecolor=fig.get_facecolor()); os.replace(os.path.join(sal, "fase_gye.tmp.png"), os.path.join(sal, "fase_gye.png"))
@@ -101,12 +117,12 @@ def main():
     for n, y, x, r in ZONAS:
         m = ((la - y) ** 2 + (lo - x) ** 2 <= r * r) & np.isfinite(C)
         if not m.any(): continue
-        cnt = np.bincount(C[m].astype(int), minlength=6) / m.sum()
-        h = htp[m]; h = h[np.isfinite(h)]
+        cnt = np.bincount(C[m].astype(int), minlength=len(CLASES)) / m.sum()
+        dom = int(np.argmax(cnt)); h = htp[m & (C == dom)]; h = h[np.isfinite(h)]   # cima de la clase que se muestra
         zonas.append({"zona": n, "fracciones": {c: round(float(f), 2) for c, f in zip(CLASES, cnt)},
                       "cima_km": round(float(np.percentile(h, 90)) / 1000, 1) if h.size else None})
     J = {"imagen_utc": t.isoformat(), "hora_local": loc.strftime("%Y-%m-%d %H:%M"), "umbral_espesor": UMBRAL_COD,
-         "clases": CLASES, "colores": COLORES, "zonas": zonas, "estado": "en prueba"}
+         "clases": CLASES, "colores": COLORES, "noche": bool(noche), "zonas": zonas, "estado": "en prueba"}
     with open(os.path.join(sal, "fase_gye.tmp.json"), "w", encoding="utf-8") as g: json.dump(J, g, ensure_ascii=False)
     os.replace(os.path.join(sal, "fase_gye.tmp.json"), os.path.join(sal, "fase_gye.json"))
     print("mapa", J["hora_local"], [(z["zona"], max(z["fracciones"], key=z["fracciones"].get)) for z in zonas])
