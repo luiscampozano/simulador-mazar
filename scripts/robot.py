@@ -349,6 +349,7 @@ F_VER = os.path.join("registro", "verificacion.json")
 F_COCA_PRED = os.path.join("registro", "coca_predicciones.json")   # pronóstico GloFAS del río Coca en cada corrida
 F_TRAY = os.path.join("registro", "trayectorias.json")             # trayectoria sin memoria de cada corrida (para la memoria de 48 h)
 F_COTA_H = os.path.join("registro", "mazar_cota_horas.json")        # cota de Mazar hora a hora (Celec 30031; Luis 25 nov)
+F_AMAL_H = os.path.join("registro", "amaluza_cota_horas.json")      # cota de Amaluza hora a hora (Celec 24019; Luis 27 nov)
 F_PAUTE_QH = os.path.join("registro", "paute_cuenca_horas.json")    # caudal de la cuenca del Paute hora a hora (Celec 24812; Luis 19 nov)
 MRID_CUENCA_PAUTE = 24812
 F_MAZAR_QH = os.path.join("registro", "mazar_q_horas.json")         # caudal de entrada a Mazar hora a hora (Celec 30538; Luis 19 nov)
@@ -2023,6 +2024,16 @@ def main():
     # Luis 25 nov: el sitio azul mostraba "cortes 300 MW" (el valor de referencia "cut"); el corte REAL de hoy sale del
     # registro/plan día por día (hoy, 24–26 nov: desconexión AV1 = 140 MW; los días sin plan, 0)
     hoy["cut_hoy"] = int(round(corte_del_dia(manual, hoy["cut"], ahora.date())))
+
+    try:   # Luis 27 nov: Amaluza hora a hora (el embalse de Molino) para la página; aparte de la cota de Mazar
+        ah = _leer_json(F_AMAL_H, {})
+        for tt, v in celec_serie(24019, ahora):
+            if 1950 < v < 2000: ah[tt.strftime("%Y-%m-%dT%H")] = round(v, 2)
+        lim_a = (ahora - timedelta(days=30)).strftime("%Y-%m-%dT%H")
+        with open(F_AMAL_H, "w", encoding="utf-8") as fo:
+            json.dump({k: ah[k] for k in sorted(ah) if k >= lim_a}, fo, separators=(",", ":"))
+    except Exception as e:
+        log(f"Amaluza hora a hora: {e}")
 
     # --- Celec: cota y caudal de entrada
     cota_t = cota_24 = q24 = t_cota = None

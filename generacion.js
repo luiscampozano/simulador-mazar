@@ -104,6 +104,10 @@
       <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Cota de Mazar hora a hora</h3><div class="g-sub">Nivel del embalse (Celec Sur). El mínimo operativo es <b>2.115 m</b>: ahí Mazar tiene que parar. La franja de 2.116 a 2.115 m es la zona crítica (2.116 m es nuestro margen de alerta).</div></div>${selRango("rios")}</div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-real);border-radius:50%;width:8px;height:8px"></i>cota de cada hora</span><span><i class="s" style="background:var(--g-crit);opacity:.3"></i>zona crítica (2.116–2.115 m)</span><span><i style="background:var(--g-crit);height:3px"></i><b>2.115 m, mínimo operativo</b></span></div>
       <div class="g-lbl" id="g-cota-t"></div><div class="g-chart"><svg id="g-cota" role="img" aria-label="Cota de Mazar hora a hora"></svg></div></div>
+      <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Amaluza y Molino hora a hora</h3><div class="g-sub">Amaluza es el embalse del que toma agua Molino (Paute), la central más grande del complejo. Se llena con lo que suelta Mazar y con los ríos que llegan entre las dos presas. Arriba, su nivel (Celec Sur); abajo, lo que genera Molino (Cenace).</div></div>${selRango("am")}</div>
+      <div class="g-legend"><span><i class="s" style="background:var(--g-col);border-radius:50%;width:8px;height:8px"></i>cota de Amaluza cada hora</span><span><i class="s" style="background:var(--g-real)"></i>MW generados por Molino</span></div>
+      <div class="g-lbl" id="g-am-t"></div><div class="g-chart"><svg id="g-am" role="img" aria-label="Cota de Amaluza hora a hora"></svg></div>
+      <div class="g-chart"><svg id="g-am-mw" role="img" aria-label="Molino: generación hora a hora"></svg></div></div>
       <div class="g-box g-col"><div class="g-head"><div><h3 class="g-h3">Coca Codo Sinclair: lo que genera hora a hora</h3><div class="g-sub">Barras: MW generados. Rojo: horas en paro (genera menos de 100 MW teniendo río). El caudal del río está en "Río Coca hora a hora".</div></div>${selRango("cc")}</div>
       <div id="g-cc-alerta"></div>
       <div class="g-legend"><span><i class="s" style="background:var(--g-ok)"></i>MW generados</span><span><i class="s" style="background:var(--g-crit)"></i>hora en paro</span></div>
@@ -153,7 +157,7 @@
     const Y = y => T + (1 - (y - o.y0) / ((o.y1 - o.y0) || 1)) * (H - T - B);
     const F = `font-family="var(--g-mono,ui-monospace,monospace)" font-size="10" style="fill:var(--g-muted)"`;
     let s = "";
-    (o.yt || []).forEach(v => { s += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--g-line)"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end" ${F}>${f(v)}</text>`; });
+    (o.yt || []).forEach(v => { s += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--g-line)"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end" ${F}>${f(v, o.yd || 0)}</text>`; });
     if (o.y2) o.yt.forEach(v => { s += `<text x="${W - R + 5}" y="${Y(v) + 3}" ${F}>${f(v * o.y2 / o.y1)}</text>`; });
     let ultX = -99;
     (o.xt || []).forEach(([x, t]) => { const px = X(x); if (px - ultX < 44) return; ultX = px; const an = px > W - R - 18 ? "end" : "middle"; s += `<text x="${an === "end" ? W - R : px}" y="${H - 6}" text-anchor="${an}" ${F}>${esc(t)}</text>`; });
@@ -428,6 +432,28 @@
       const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null;
       $("g-cota-t").textContent = `Ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "") + (u[1] >= 2116 ? ` · ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m (${f((u[1] - 2116) * 100)} cm antes de entrar a la zona crítica)`
         : u[1] >= 2115 ? ` · EN ZONA CRÍTICA: ${f((u[1] - 2115) * 100)} cm sobre el mínimo operativo de 2.115 m` : ` · ${f((2115 - u[1]) * 100)} cm BAJO el mínimo operativo de 2.115 m`);
+    }
+    // Luis 27 nov: Amaluza (cota) y Molino (MW) hora a hora
+    const AM = (MH.amaluza || []).filter(x => x[1] != null).slice(-RANGO);
+    if (AM.length < 4) { $("g-am-t").textContent = "Se está juntando la cota de Amaluza hora a hora (empezó el 27 nov)."; $("g-am").style.display = "none"; $("g-am-mw").style.display = "none"; }
+    else {
+      $("g-am").style.display = ""; $("g-am-mw").style.display = "";
+      const tOf = k => local(k.slice(0, 13) + ":00").getTime(), x0 = tOf(AM[0][0]), x1 = tOf(AM[AM.length - 1][0]) + 36e5;
+      const vs = AM.map(x => x[1]), lo = Math.min(...vs), hi = Math.max(...vs);
+      const st = [0.5, 1, 2, 5].find(p => (hi - lo + 0.3) / p <= 6) || 5;
+      const y0 = Math.floor((lo - 0.15) / st) * st, y1 = Math.max(y0 + 2 * st, Math.ceil((hi + 0.15) / st) * st), yt = [];
+      for (let v = y0; v <= y1 + 1e-9; v += st) yt.push(Math.round(v * 10) / 10);
+      const xt = marcasHora(AM.map(x => x[0]), tOf);
+      grafico("g-am", { h: 170, x0, x1, y0, y1, yt, yd: st < 1 ? 1 : 0, xt, series: [{ d: AM.map(x => [tOf(x[0]) + 18e5, x[1]]), c: "var(--g-col)", w: 2.4, puntos: true, r: 2 }] });
+      const BLm = bloquesN(Math.ceil(RANGO / 24) + 1).filter(b => b.tb > x0 && b.ta < x1);
+      const barras = BLm.map(b => [Math.max(b.ta, x0) + 3e5, Math.min(b.tb, x1) - 3e5, 0, b.mw["Paute"] || 0, "var(--g-real)"]);
+      const topm = techo(barras.map(b => b[3]), 200);
+      grafico("g-am-mw", { h: 130, x0, x1, y0: 0, y1: topm, yt: marcasY(topm), xt, series: [{ tipo: "barras", d: barras }] });
+      const u = AM[AM.length - 1], a24 = (MH.amaluza || []).find(x => x[0] === new Date(tOf(u[0]) - 864e5 - 5 * 36e5).toISOString().slice(0, 13));
+      const dc = a24 ? Math.round((u[1] - a24[1]) * 100) : null, ub = BLm[BLm.length - 1];
+      const hh = t => { const q = new Date(t - 5 * 36e5); return String(q.getUTCHours()).padStart(2, "0") + ":" + String(q.getUTCMinutes()).padStart(2, "0"); };
+      $("g-am-t").textContent = `Amaluza ahora ${f(u[1], 2)} m (${u[0].slice(11, 13)}:00)` + (dc != null ? ` · ${dc >= 0 ? "subió" : "bajó"} ${Math.abs(dc)} cm en 24 h` : "")
+        + (ub ? ` · Molino generó ~${f(ub.mw["Paute"] || 0)} MW entre ${hh(ub.ta)} y ${hh(ub.tb)}` : "");
     }
     horaria("mq", MH.serie, MH.normal_mes, "2010–hoy", "var(--g-real)");
     horaria("mc", MH.cuenca, MH.normal_cuenca, MH.anios_cuenca ? `${MH.anios_cuenca} años` : "", "var(--g-col)");

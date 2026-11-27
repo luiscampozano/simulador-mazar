@@ -334,7 +334,8 @@ def mazar_horas(horas=72):
     co = [v for k, v in rio.items() if int(k[5:7]) == mes and isinstance(v, (int, float))]
     prom = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
     ch = _leer(os.path.join("registro", "mazar_cota_horas.json"), {})       # Luis 25 nov: cota hora a hora
-    return {"cota": [[k, ch[k]] for k in sorted(ch)[-horas:]], "serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]], "coca": [[k, rio[k]] for k in sorted(rio)[-horas:]],
+    am = _leer(os.path.join("registro", "amaluza_cota_horas.json"), {})     # Luis 27 nov: Amaluza hora a hora
+    return {"cota": [[k, ch[k]] for k in sorted(ch)[-horas:]], "amaluza": [[k, am[k]] for k in sorted(am)[-horas:]], "serie": serie, "cuenca": [[k, cu[k]] for k in sorted(cu)[-horas:]], "coca": [[k, rio[k]] for k in sorted(rio)[-horas:]],
             "normal_mes": prom(qs), "normal_cuenca": prom(qc), "anios_cuenca": len({d[:4] for d, v in hc.items() if int(d[5:7]) == mes}),
             "normal_coca": prom(co), "anios_coca": sorted({k[:4] for k in rio if int(k[5:7]) == mes}), "mes": mes}
 
