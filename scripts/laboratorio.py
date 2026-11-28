@@ -797,6 +797,8 @@ def correr(P, ctx, par, mod, datos, simular, log=print, base=None):
     except Exception as e: log(f"Laboratorio: fecha_critica no se guardó: {e}")
     try: _registrar_escenarios_bloque(ts, P, ctx, par, log)   # cerebro 27 nov: fecha de 2.116/2.115 con 8,5/12,5/18 h de bloque (solo registro)
     except Exception as e: log(f"Laboratorio: escenarios_bloque no se guardó: {e}")
+    try: _registrar_escenarios_bloque(ts, P, ctx, par, log, archivo=F_ESC_BLOQUE_V2, horas_esc=_ESC_HORAS_V2, v2=True)   # cerebro 28 nov: + 0 y 5 h
+    except Exception as e: log(f"Laboratorio: escenarios_bloque_v2 no se guardó: {e}")
     reg = _leer(F_PRED, {"corridas": []})
     reg["corridas"] = [x for x in reg["corridas"] if x["ts"] != ts] + [
         {"ts": ts, "cota": datos["cota"], "tray": tray, "rasgos": _rasgos(P, ctx, mod, datos)}]
@@ -5204,7 +5206,7 @@ _ESC_HORAS = (8.5, 12.5, 18.0)        # horas de bloque por día laborable. CONG
 _ESC_SABADO, _ESC_DOMINGO_H = 0.77, 6.0
 
 
-def _registrar_escenarios_bloque(ts, P, ctx, par, log=print):
+def _registrar_escenarios_bloque(ts, P, ctx, par, log=print, archivo=None, horas_esc=None, v2=False):
     """Registro 'escenarios_bloque' (líder de Mazar 27 nov; solo registro, no es candidato ni cambia lo publicado): una vez al
     día, en la primera corrida desde las 06:00, fecha de 2.116 y 2.115 m si Mazar turbina 111 m³/s durante 8,5, 12,5 o 18 h
     cada laborable (sábado ×0,77; domingo y feriado 6 h), con la entrada plana en el caudal de Celec de la corrida (P.qMazar)
@@ -5213,7 +5215,8 @@ def _registrar_escenarios_bloque(ts, P, ctx, par, log=print):
     grande. Reparo de Gemini Neon: las horas reales se leen del Cenace (plantas por día), no de mazar_horas (m³/s)."""
     if str(ts)[11:13] < "06":
         return
-    reg = _leer(F_ESC_BLOQUE, {"dias": {}}) or {"dias": {}}
+    archivo = archivo or F_ESC_BLOQUE
+    reg = _leer(archivo, {"dias": {}}) or {"dias": {}}
     dia = str(ts)[:10]
     if dia in reg.get("dias", {}):
         return
@@ -5229,11 +5232,12 @@ def _registrar_escenarios_bloque(ts, P, ctx, par, log=print):
     fer = ctx.get("feriados") or []
     dsem0 = ctx.get("diaSemana0", 1) % 7                     # 0 = domingo
     fila = {"ts": ts, "cota": round(float(ctx["cota"]), 2), "q_entrada": round(q_in, 1), "hora": round(hora, 2)}
-    for h in _ESC_HORAS:
+    for h in (horas_esc or _ESC_HORAS):
         V = vol(float(ctx["cota"]) - 2115); tray = [round(float(ctx["cota"]), 2)]
         for k in range(30):
             dsem = (dsem0 + k) % 7
-            horas = _ESC_DOMINGO_H if (dsem == 0 or (k < len(fer) and fer[k])) else (h * _ESC_SABADO if dsem == 6 else h)
+            h_dom = min(_ESC_DOMINGO_H, h) if v2 else _ESC_DOMINGO_H   # v2 (cerebro 28 nov): con 0 h tampoco turbina el domingo
+            horas = h_dom if (dsem == 0 or (k < len(fer) and fer[k])) else (h * _ESC_SABADO if dsem == 6 else h)
             frac = resto0 if k == 0 else 1.0
             entra = q_in * (24.0 - hora) * 3600 if k == 0 else q_in * 86400   # revisor 27 nov: el día 0 solo las horas que quedan
             V += (entra - _ESC_Q_BLOQUE * horas * 3600 * frac) / 1e6
@@ -5246,7 +5250,9 @@ def _registrar_escenarios_bloque(ts, P, ctx, par, log=print):
     reg["nota"] = ("Líder de Mazar 27 nov, CONGELADO 2026-11-27: días a 2.116/2.115 m si Mazar turbina 111 m³/s 8,5, 12,5 o "
                    "18 h por laborable (sábado ×0,77, domingo/feriado 6 h), entrada plana = caudal Celec de la corrida, curva del "
                    "titular, sin piso. Primera corrida del día desde las 06:00. Solo registro.")
-    _escribir(F_ESC_BLOQUE, reg)
+    if v2:
+        reg["nota"] = _NOTA_ESC_V2
+    _escribir(archivo, reg)
 
 
 # ───────────── Segundo auditor (Gemini) 26 nov, revisado por el Claude independiente el 27 nov ─────────────
@@ -5258,3 +5264,110 @@ CANDIDATOS["coca_real_desde_dia2"] = {
                   "que hoy solo corre combinada (patron_hist_coca_dia2, tend_mitad_coca_dia2); con los días 0–1 iguales al titular "
                   "no puede cumplir el +10 % a 1 día: sirve para medir. Las cifras de Gemini no coinciden con el marcador actual "
                   "(coca_rio_real a 5 días 0,591 vs 1,235 m del titular; a 1 día 0,491 vs 0,411); la dirección sí.")}
+
+
+# ───────────── Segundo auditor (Gemini) 27 nov, revisado por el Claude independiente el 28 nov ─────────────
+# El revisor pidió armarlos con las piezas existentes (_combinar): el código de Gemini daba lo mismo pero podía fallar con
+# IndexError si serieCocaRio era más larga que serieCoca. intermedia_base_estiaje: RECHAZADO (fija 16 m³/s todo el horizonte,
+# no es un piso; variante de intermedia_fija, retirada).
+def c_sin_autoajuste_coca_desde_dia2(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_sin_autoajuste, _coca_real_desde_dia2)
+
+
+def c_memoria_mitad_coca_dia2(P, ctx, mod):
+    return _combinar(P, ctx, mod, c_memoria_mitad, _coca_real_desde_dia2)
+
+
+CANDIDATOS["sin_autoajuste_coca_desde_dia2"] = {
+    "f": c_sin_autoajuste_coca_desde_dia2, "promocion": "luis", "origen": "Gemini 2026-11-27 (revisado por Claude 28 nov)",
+    "nombre": "Sin autoajuste + río Coca real desde el día 2",
+    "hipotesis": ("Gemini 27 nov: sin_autoajuste mejora a 7 días y coca_rio_real a 5–14 días; con el río real solo desde el día 2 "
+                  "se evitaría la pérdida de coca_rio_real a 1 día y la de sin_autoajuste a 14 días. Revisor 28 nov: a 1 día es "
+                  "exactamente sin_autoajuste (0,440 vs 0,437 m del titular, −0,7 %): no puede cumplir el +10 % a 1 día; sirve para "
+                  "medir 3–14 días; promoción 'luis' (revisor 28 nov: que no llegue a titular por arrastre de sin_autoajuste). Cifras del marcador al 28 nov: sin_autoajuste a 7 días +10,8 % y a 14 días −16,6 %; coca_rio_real "
+                  "a 5 días +43,7 % y a 14 días +11,8 % (Gemini decía +49 %).")}
+CANDIDATOS["memoria_mitad_coca_dia2"] = {
+    "f": c_memoria_mitad_coca_dia2, "promocion": "luis", "origen": "Gemini 2026-11-27 (revisado por Claude 28 nov)",
+    "nombre": "Media memoria + río Coca real desde el día 2",
+    "hipotesis": ("Gemini 27 nov: memoria_mitad baja el rezago a 1 día (0,404 vs 0,437 m, +7,6 %, 162 casos) y el río Coca real "
+                  "desde el día 2 toma la mejora de 5–14 días sin la pérdida a 1 día de memoria_mitad_coca_real (retirado, −11 % a "
+                  "1 día). Revisor 28 nov: a 1 día es exactamente memoria_mitad; riesgo a 3 días (memoria_mitad −13,6 %) y "
+                  "combinado_coca_real se retiró con −47 % a 7 días. Cambia la memoria: espera a Luis.")}
+
+
+# ───────────── Ideas de los cerebros del 28 nov (auditor 28 nov; aprobación permanente de Luis, 7 nov) ─────────────
+_OR_C28 = "cerebro 2026-11-28"
+CONGELADO_C28 = "2026-11-28"
+# mazar_cerca_critica (investigador 28 nov). Medianas de Mazar (MWh/día) en 2023–2024 (Celec, historial/celec_diario.json) en
+# días cuyo cierre del día anterior estuvo en 2.116,0–2.117,5 m: laborable 633,1 (23 días), sábado 573,1 (4), domingo 558,2 (5).
+# CONGELADO 2026-11-28 (no se recalculan).
+_CERCA_UMBRAL = 2117.5
+_CERCA_MWH = {"laboral": 633.1, "sabado": 573.1, "descanso": 558.2}
+
+
+def _mazar_cenace_24h(ts):
+    """MWh de Mazar en las últimas 24 h (Cenace acumulado: hoy hasta la última hora medida + ayer desde esa hora)."""
+    ahora = _ts_dt(ts); hoy = ahora.date(); ayer = hoy - timedelta(days=1)
+    pl = (_leer_json_lab(F_GEN_HIST) or {}).get("plantas") or {}
+    sh, sa = pl.get(hoy.isoformat()) or [], pl.get(ayer.isoformat()) or []
+    h0 = ahora.hour + ahora.minute / 60.0
+    pts = [float(x) for x, y in sh if isinstance(x, (int, float)) and float(x) <= h0 + 1e-9
+           and isinstance(y, dict) and isinstance(y.get("Mazar"), (int, float))]
+    hu = max(pts) if pts else 0.0
+    if hu < h0 - 2.0:      # revisor 28 nov: sin Cenace reciente de hoy (o sin ningún dato pasadas las 02 h) no se mide
+        return None
+    e_hoy = _acum_mazar([p for p in sh if float(p[0]) <= hu + 1e-9], hu) if hu > 0 else 0.0
+    e24, eh = _acum_mazar(sa, 24.0), (_acum_mazar(sa, hu) if hu > 0 else 0.0)
+    if None in (e_hoy, e24, eh):
+        return None
+    return max(0.0, e_hoy + (e24 - eh))
+
+
+def c_mazar_cerca_critica(P, ctx, mod):
+    """Investigador (Fable) 28 nov. Si la cota de la corrida está bajo 2.117,5 m, el MWh diario de Mazar de los días 0–14 no pasa
+    de la mediana 2023–2024 del tramo por tipo de día (_CERCA_MWH) y, en los días 0–1, tampoco de lo que Mazar generó en las
+    últimas 24 h (Cenace; revisor 28 nov: un solo día flojo no arrastra los 15 días). Aplicado como tope (solo baja el turbinado del titular, vía memoria con _fijar_mazar); fuera del tramo = titular.
+    Lo activa la cota de Mazar, no el filo de agua del Paute (diferencia con cenace_filo_*)."""
+    sin_cambio = (P, ctx, {"memoria": list(ctx.get("memoria") or [])})
+    ts = mod.get("_ts"); qt = mod.get("_tit_qt15_media"); k_mw = _kmz(ctx, mod)
+    if not ts or not qt or not k_mw:
+        return None
+    if float(ctx["cota"]) >= _CERCA_UMBRAL:
+        return sin_cambio
+    e24 = _mazar_cenace_24h(ts)
+    if e24 is None:
+        return None
+    man = (_leer_json_lab("datos.json") or {}).get("manual") or {}
+    fer = set((man.get("feriados") or {}).keys()) | FERIADOS_LAB
+    d0 = _ts_dt(ts).date()
+    obj = {}
+    for k in range(min(15, len(qt))):
+        tope = _CERCA_MWH[_tipo_dia(d0 + timedelta(days=k), fer)]
+        if k <= 1: tope = min(tope, e24)      # revisor 28 nov: lo de las últimas 24 h solo topa los días 0–1
+        if float(qt[k]) * 24.0 * k_mw > tope:
+            obj[k] = tope
+    if not obj:
+        return sin_cambio
+    r = _fijar_mazar(ctx, mod, obj)
+    if not r:
+        return None
+    m, det = r
+    return P, ctx, {"memoria": m, "mazar_24h_mwh": round(e24, 1), "topes": det}
+
+
+_cand_3nov("mazar_cerca_critica", c_mazar_cerca_critica, "Cerca de la zona crítica el despacho recorta Mazar",
+           "Investigador 28 nov: el 27 nov el titular cargó un laborable normal (1.675 MWh) y Mazar dio 591,7 con la cota a 0,9 m "
+           "de 2.116 (error −0,96 m a 1 día). Celec 2023–2024: en días tras cierre en 2.116,0–2.117,5 m Mazar dio mediana 633 MWh "
+           "(laborable, 23 días), 573 (sábado) y 558 (domingo). Aquí, con la cota de la corrida bajo 2.117,5 m, el MWh de Mazar de los "
+           "días 0–14 queda topado en esa mediana y, en los días 0–1, también en lo que Mazar generó en las últimas 24 h (Cenace). Pocos casos (sábado 4, domingo 5) y umbral fijado tras el fallo del 27 nov: el 27–28 nov no cuentan como evidencia. Se diferencia de "
+           "cenace_filo_* porque lo activa la cota. Umbral y medianas CONGELADOS 2026-11-28.", origen=_OR_C28)
+
+
+# Registro escenarios_bloque_v2 (líder de Mazar 28 nov): el abanico 8,5–18 h no contuvo al viernes 27 (4 h a 115 MW + 2 h a 60).
+# Mismo cálculo que escenarios_bloque (que queda congelado) con 0 y 5 h más; domingo/feriado = mín(6 h, horas del escenario).
+# La variante 'entrada = caudal de 00–05 h' no se hace (retador: duplica entrada_noche_mazar0 y laboratorio/noche_mazar.json).
+F_ESC_BLOQUE_V2 = os.path.join(DIR, "escenarios_bloque_v2.json")
+_ESC_HORAS_V2 = (0.0, 5.0, 8.5, 12.5, 18.0)   # CONGELADO 2026-11-28
+_NOTA_ESC_V2 = ("Líder de Mazar 28 nov, CONGELADO 2026-11-28: como escenarios_bloque (111 m³/s, sábado ×0,77, entrada plana = caudal "
+                "Celec de la corrida, curva del titular, sin piso) con 0, 5, 8,5, 12,5 y 18 h de bloque por laborable; domingo/feriado "
+                "= mín(6 h, horas del escenario). Primera corrida del día desde las 06:00. Solo registro.")
