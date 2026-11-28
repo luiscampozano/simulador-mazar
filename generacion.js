@@ -362,8 +362,10 @@
     const RR = {}; (G.rios || []).forEach(r => RR[r.clave] = r);
     const RE = G.rios_reales || {}, BL = bloquesN(4), hoy = hoyEc();
     const ult12 = BL.slice(-6), mwDe = (c, bs) => bs.length ? bs.reduce((a, b) => a + c.pl.reduce((x, p) => x + (b.mw[p] || 0), 0), 0) / bs.length : null;
-    const CH = (G.coca_horas || []).filter(x => x[2] != null);
-    const paro24 = CH.slice(-24).filter(x => x[2] < 100 && x[1] > 150).length;
+    const CH = (G.coca_horas || []).filter(x => x[1] != null);
+    const rio24 = t => { const k = new Date(t - 5 * 36e5).toISOString().slice(0, 13), x = CH.find(y => y[0] === k); return x ? x[1] : null; };
+    const paro24 = BL.filter(b => b.tb > Date.now() - 864e5 && b.mw["Coca Codo"] != null && b.mw["Coca Codo"] < 100 && (rio24(b.ta) || 0) > 150)
+      .reduce((a, b) => a + Math.round((b.tb - Math.max(b.ta, Date.now() - 864e5)) / 36e5), 0);   // horas en paro con lo REAL de Cenace (27 nov)
     if ($("g-sem")) $("g-sem").innerHTML = CENTRALES.map(c => {
       const r = RR[c.k] || {}, me = RE[c.k] || [], ih = (r.dias || []).indexOf(hoy);
       const ultMed = me.length && me[me.length - 1][0] >= new Date(Date.now() - 2 * 864e5 - 5 * 36e5).toISOString().slice(0, 10) ? me[me.length - 1] : null;
@@ -384,11 +386,18 @@
     if (CC.length > 3) {
       const tOf = k => local(k.slice(0, 13) + ":00").getTime();
       const x0 = tOf(CC[0][0]), x1 = tOf(CC[CC.length - 1][0]) + 36e5;
-      const barras = CC.filter(x => x[2] != null).map(x => [tOf(x[0]) + 3e5, tOf(x[0]) + 33e5, 0, x[2], x[2] < 100 && x[1] > 150 ? "var(--g-crit)" : "var(--g-ok)"]);
-      const zonas = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150).map(x => [tOf(x[0]), tOf(x[0]) + 36e5, "var(--g-crit)"]);
+      // Luis 27 nov ("está mal el gráfico de barras"): las barras son lo que generó DE VERDAD (Cenace, los mismos bloques
+      // que la línea de "Generación hidroeléctrica"); antes salían del caudal turbinado de Celec × 5,25, que llega escalonado.
+      const rioEn = t => { const k = new Date(t - 5 * 36e5).toISOString().slice(0, 13), x = CC.find(y => y[0] === k); return x ? x[1] : null; };
+      const BLc = bloquesN(Math.ceil(RANGO / 24) + 1).filter(b => b.tb > x0 && b.ta < x1 && b.mw["Coca Codo"] != null);
+      const enParo = b => (b.mw["Coca Codo"] || 0) < 100 && (rioEn(Math.max(b.ta, x0)) || 0) > 150;
+      const barras = BLc.map(b => [Math.max(b.ta, x0) + 3e5, Math.min(b.tb, x1) - 3e5, 0, b.mw["Coca Codo"] || 0, enParo(b) ? "var(--g-crit)" : "var(--g-ok)"]);
+      const zonas = BLc.filter(enParo).map(b => [Math.max(b.ta, x0), Math.min(b.tb, x1), "var(--g-crit)"]);
       const xt = marcasHora(CC.map(x => x[0]), tOf);
-      grafico("g-cc", { x0, x1, y0: 0, y1: 1300, yt: [0, 260, 520, 780, 1040, 1300], xt, zonas, series: [{ tipo: "barras", d: barras }] });
-      const par = CC.filter(x => x[2] != null && x[2] < 100 && x[1] > 150);
+      grafico("g-cc", { x0, x1, y0: 0, y1: 1500, yt: [0, 300, 600, 900, 1200, 1500], xt, zonas, series: [{ tipo: "barras", d: barras }] });
+      const par = [];   // horas en paro según lo real (una entrada por hora de cada bloque en paro)
+      BLc.filter(enParo).forEach(b => { const a = Math.max(b.ta, x0), z = Math.min(b.tb, x1), n = Math.max(1, Math.round((z - a) / 36e5));   // horas reales del bloque
+        for (let i = 0; i < n; i++) par.push([new Date(a + i * 36e5 - 5 * 36e5).toISOString().slice(0, 13), rioEn(a) || 0, b.mw["Coca Codo"] || 0]); });
       if (par.length >= 2) {
         let sub = null; CC.forEach((x, i) => { if (i >= 2 && !sub && x[1] >= CC[i - 2][1] * 1.5 && x[1] - CC[i - 2][1] >= 100) sub = [CC[i - 2], x]; });
         const perd = par.reduce((a, x) => a + Math.max(0, Math.min(1200, 5.25 * (x[1] - 21)) - x[2]), 0);
