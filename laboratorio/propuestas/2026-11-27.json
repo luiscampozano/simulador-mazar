@@ -1,0 +1,98 @@
+{
+ "fecha": "2026-11-27",
+ "modelo": "gemini-3.8-flash",
+ "gasto_mes_usd": 6.983,
+ "lote": {
+  "nombre": "batches/2pjeoay1186j2v60yjqqfyq3g3mvoiqbu48l",
+  "enviado": "2026-11-27T18:30-05:00",
+  "recogido": "2026-11-27T19:36-05:00",
+  "estado_lote": "BATCH_STATE_SUCCEEDED"
+ },
+ "propuestas": [
+  {
+   "propuesta": {
+    "id": "sin_autoajuste_coca_desde_dia2",
+    "nombre": "Sin autoajuste + Coca real desde día 2",
+    "hipotesis": "Eliminar el autoajuste (fijándolo en 1,0) quita el pesimismo artificial a 1–3 días, mientras que usar el pronóstico real del río Coca desde el día 2 evita el ruido inmediato y corrige el sesgo a 5–14 días.",
+    "promocion": "auto",
+    "por_que": "En el marcador actual, sin_autoajuste mejora al titular a 1–3 y 7 días (a 7 días 1,799 vs 1,990 m, +9,6 %), pero empeora a 14 días (4,240 vs 3,617 m). Por su parte, coca_rio_real es muy superior a mediano y largo plazo (a 5 días 0,635 vs 1,250 m, +49 %; a 14 días 3,236 vs 3,617 m, +10,5 %), pero pierde a 1 día por ruido de GloFAS en el día 0. Empalmar el río real desde el día 2 protege el corto plazo y elimina la degradación a 14 días.",
+    "codigo": "def c_sin_autoajuste_coca_desde_dia2(P, ctx, mod):\n    s = mod.get(\"serieCocaRio\")\n    actual = ctx.get(\"serieCoca\")\n    if not s or not actual or len(s) < 3 or len(actual) < 3:\n        return None\n    ctx[\"ajuste\"] = 1.0\n    nueva_coca = list(actual)\n    for i in range(2, len(s)):\n        if i == 2:\n            nueva_coca[i] = round((actual[i] + s[i]) / 2.0, 4)\n        else:\n            nueva_coca[i] = round(float(s[i]), 4)\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"ajuste\": 1.0, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.1,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.08,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "ajuste",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "memoria_mitad_coca_dia2",
+    "nombre": "Media memoria + Coca real desde día 2",
+    "hipotesis": "Reducir la memoria de 48 h al 50 % disminuye el rezago que produce el sesgo negativo reciente a 1 día, y aplicar el río Coca real solo desde el día 2 mejora a 5–14 días sin introducir el error de corto plazo de GloFAS.",
+    "promocion": "luis",
+    "por_que": "El titular acumula 8 verificaciones recientes seguidas con fuerte error negativo (−0,45 a −0,91 m a 1 día), arrastrado en parte por la inercia de la memoria de 48 h. memoria_mitad demostró reducir este rezago a 1 día, pero al combinarse con coca_rio_real entero perdía por la dispersión del caudal en las primeras 24 h. Retrasar el pronóstico del río real al día 2 aísla el día 1 y captura la ganancia de largo plazo de GloFAS (+49 % a 5 días).",
+    "codigo": "def c_memoria_mitad_coca_dia2(P, ctx, mod):\n    mem = ctx.get(\"memoria\")\n    s = mod.get(\"serieCocaRio\")\n    actual = ctx.get(\"serieCoca\")\n    if not mem or not s or not actual or len(s) < 3 or len(actual) < 3:\n        return None\n    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]\n    nueva_coca = list(actual)\n    for i in range(2, len(s)):\n        if i == 2:\n            nueva_coca[i] = round((actual[i] + s[i]) / 2.0, 4)\n        else:\n            nueva_coca[i] = round(float(s[i]), 4)\n    ctx[\"memoria\"] = nueva_mem\n    ctx[\"serieCoca\"] = nueva_coca\n    return P, ctx, {\"memoria\": nueva_mem, \"serieCoca\": nueva_coca}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.1,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.1,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "memoria",
+     "serieCoca"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  },
+  {
+   "propuesta": {
+    "id": "intermedia_base_estiaje",
+    "nombre": "Piso de estiaje en cuenca intermedia",
+    "hipotesis": "Fijar un piso físico de 16 m³/s para los aportes de la cuenca intermedia entre Mazar y Amaluza evita que el modelo sobreestime el turbinado de Mazar durante caudales bajos de entrada.",
+    "promocion": "luis",
+    "por_que": "El balance de Celec Sur demuestra que la cuenca intermedia no baja de ~16 m³/s debido al caudal base de los ríos Santa Bárbara y Cuenca. Con caudales en Mazar de ~20 m³/s, la regla del titular (0,47 × caudal Mazar = 9,4 m³/s) subestima el aporte en más de 6 m³/s, forzando a Mazar a turbinar ~35 MW extras y generando un sesgo pesimista de cota de 10 a 15 cm por día.",
+    "codigo": "def c_intermedia_base_estiaje(P, ctx, mod):\n    beta = float(mod.get(\"beta_cuenca_intermedia\") or 0.47)\n    qin0 = float(P.get(\"qMazar\") or 0.0)\n    piso = 16.0\n    calculado = beta * qin0\n    if calculado >= piso:\n        return None\n    ctx[\"interFijo\"] = piso\n    return P, ctx, {\"interFijo\": piso}"
+   },
+   "prueba": {
+    "ok": true,
+    "titular_1_7_14": [
+     2116.1,
+     2115.0,
+     2115.0
+    ],
+    "candidato_1_7_14": [
+     2116.18,
+     2115.0,
+     2115.0
+    ],
+    "cambios_mod": [
+     "interFijo"
+    ]
+   },
+   "estado": "lista para revisión de Claude"
+  }
+ ],
+ "estado": "3 de 3 listas para revisión",
+ "rama": "candidato/gemini-2026-11-27-sin_autoajuste_coca_desde_dia2"
+}

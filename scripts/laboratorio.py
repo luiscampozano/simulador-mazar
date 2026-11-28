@@ -673,6 +673,60 @@ def c_memoria_mitad_y_sesgo50_largo(P, ctx, mod):
 CANDIDATOS["memoria_mitad_y_sesgo50_largo"] = {"f": c_memoria_mitad_y_sesgo50_largo, "promocion": "luis", "origen": "Gemini 2026-11-04", "nombre": "Media memoria + mitad de sesgo desde día 2", "hipotesis": "Reducir la memoria a la mitad en todos los plazos y quitar la mitad del sesgo por plazo únicamente desde el día 2 disminuye el rezago a 1 día sin sobrecorregir mañana y corrige el pesimismo de 3 a 14 días."}
 
 
+def c_sin_autoajuste_coca_desde_dia2(P, ctx, mod):
+    s = mod.get("serieCocaRio")
+    actual = ctx.get("serieCoca")
+    if not s or not actual or len(s) < 3 or len(actual) < 3:
+        return None
+    ctx["ajuste"] = 1.0
+    nueva_coca = list(actual)
+    for i in range(2, len(s)):
+        if i == 2:
+            nueva_coca[i] = round((actual[i] + s[i]) / 2.0, 4)
+        else:
+            nueva_coca[i] = round(float(s[i]), 4)
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"ajuste": 1.0, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["sin_autoajuste_coca_desde_dia2"] = {"f": c_sin_autoajuste_coca_desde_dia2, "promocion": "auto", "origen": "Gemini 2026-11-27", "nombre": "Sin autoajuste + Coca real desde día 2", "hipotesis": "Eliminar el autoajuste (fijándolo en 1,0) quita el pesimismo artificial a 1–3 días, mientras que usar el pronóstico real del río Coca desde el día 2 evita el ruido inmediato y corrige el sesgo a 5–14 días."}
+
+
+def c_memoria_mitad_coca_dia2(P, ctx, mod):
+    mem = ctx.get("memoria")
+    s = mod.get("serieCocaRio")
+    actual = ctx.get("serieCoca")
+    if not mem or not s or not actual or len(s) < 3 or len(actual) < 3:
+        return None
+    nueva_mem = [round(float(x) * 0.5, 2) for x in mem]
+    nueva_coca = list(actual)
+    for i in range(2, len(s)):
+        if i == 2:
+            nueva_coca[i] = round((actual[i] + s[i]) / 2.0, 4)
+        else:
+            nueva_coca[i] = round(float(s[i]), 4)
+    ctx["memoria"] = nueva_mem
+    ctx["serieCoca"] = nueva_coca
+    return P, ctx, {"memoria": nueva_mem, "serieCoca": nueva_coca}
+
+
+CANDIDATOS["memoria_mitad_coca_dia2"] = {"f": c_memoria_mitad_coca_dia2, "promocion": "luis", "origen": "Gemini 2026-11-27", "nombre": "Media memoria + Coca real desde día 2", "hipotesis": "Reducir la memoria de 48 h al 50 % disminuye el rezago que produce el sesgo negativo reciente a 1 día, y aplicar el río Coca real solo desde el día 2 mejora a 5–14 días sin introducir el error de corto plazo de GloFAS."}
+
+
+def c_intermedia_base_estiaje(P, ctx, mod):
+    beta = float(mod.get("beta_cuenca_intermedia") or 0.47)
+    qin0 = float(P.get("qMazar") or 0.0)
+    piso = 16.0
+    calculado = beta * qin0
+    if calculado >= piso:
+        return None
+    ctx["interFijo"] = piso
+    return P, ctx, {"interFijo": piso}
+
+
+CANDIDATOS["intermedia_base_estiaje"] = {"f": c_intermedia_base_estiaje, "promocion": "luis", "origen": "Gemini 2026-11-27", "nombre": "Piso de estiaje en cuenca intermedia", "hipotesis": "Fijar un piso físico de 16 m³/s para los aportes de la cuenca intermedia entre Mazar y Amaluza evita que el modelo sobreestime el turbinado de Mazar durante caudales bajos de entrada."}
+
+
 def aplicar_titular(P, ctx, mod, log=print):
     """Aplica los candidatos que ya pasaron a titular (laboratorio/titular.json). Sin promovidos no hace nada."""
     tit = _leer(F_TIT, {"promovidos": []})
