@@ -500,6 +500,9 @@ def simular_py(P, ctx, par, horizonte=60, pasos=False):
     inter_fijo = ctx.get("interFijo")
     peso_rf_otras = ctx.get("otrasPesoRf")   # solo laboratorio (cerebro 23 nov): None = como el titular
     dom = ctx.get("domingoParado") or None
+    # Solo laboratorio (Luis, 27 nov; el titular no usa esta clave): el Cenace opera el Paute como un múltiplo de lo que
+    # permite el agua que entra ("a filo de agua"): Paute = min(lo que pide la demanda, veces × filo de agua).
+    tope_filo = ctx.get("pauteFilo")
     deuda = float((dom or {}).get("deuda0") or 0.0); pago_ritmo = deuda
 
     def fac_at(t):   # paro de Coca Codo: fracción de lo que permite el río (igual que modelo.js)
@@ -543,6 +546,8 @@ def simular_py(P, ctx, par, horizonte=60, pasos=False):
         saque = min(am_ritmo * dt, am_rest); am_rest -= saque
         inter = (inter_fijo if inter_fijo is not None else beta * qin) + saque / dt / 0.0864
         pv = min(max(req, 0), 1757)
+        if tope_filo:
+            pv = min(pv, tope_filo * (qin * (0.00981 * eta * max(20.0, 2115 + (xo(Vv) if Vv > 0 else Vv / a) - amC) + kms) + kms * (inter - saque / dt / 0.0864)))
         kmzv = 0.00981 * eta * max(20.0, 2115 + (xo(Vv) if Vv > 0 else Vv / a) - amC)
         dqv = qin - max(0.0, (pv - kms * inter) / (kmzv + kms))
         if dqv < 0:
@@ -551,6 +556,8 @@ def simular_py(P, ctx, par, horizonte=60, pasos=False):
         Vv = min(VMAX, Vv + dqv * 86400 * dt / 1e6)
         if V > 0:
             paute = min(max(req, 0), 1757)
+            if tope_filo:
+                paute = min(paute, tope_filo * (qin * (kmz + kms) + kms * (inter - saque / dt / 0.0864)))   # sin lo que se saca de Amaluza: así se midió
             qt = max(0.0, (paute - kms * inter) / (kmz + kms))
             if dom is not None and dd == 0:           # domingo/feriado: Molino usa primero Amaluza, Mazar solo lo que falte
                 pide = max(0.0, paute / kms - inter)

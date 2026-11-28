@@ -2687,6 +2687,54 @@ _cand_3nov("temporada_nino_ambos", c_temporada_nino_ambos, "El Niño costero: Pa
            "CONGELADO 2026-11-27.", origen="Claude 2026-11-27 (Luis: un candidato con el ajuste en ambos ríos)")
 
 
+# ---------- Luis 27 nov: "armalo en base a como ha operado el Cenace esta semana" ----------
+def _veces_filo(par, n):
+    """Paute real (Celec, MW medio del día) ÷ lo que daría a filo de agua ese día (caudal de entrada de Mazar + cuenca
+    intermedia, con las mismas constantes del titular). Últimos n días completos de Celec."""
+    kms, b, eta = par["k_molino_sopladora"], par["beta_cuenca_intermedia"], par["eficiencia_mazar"]
+    out = []
+    for _, v in _celec_dias(n):
+        try:
+            real = (v["maz"] + v["mol"] + v["sop"]) / 24
+            filo = v["q"] * (0.00981 * eta * max(20.0, v["c"] - v["am"]) + kms) + kms * b * v["q"]
+            if filo > 50 and real > 0: out.append(real / filo)
+        except Exception:
+            continue
+    return out
+
+
+def _con_filo(P, ctx, mod, n):
+    par = mod.get("_par")
+    if not par: return None
+    dias = _celec_dias(1)
+    try:   # revisor 27 nov: si calibrar dejó de completar Celec, no se mide con días viejos
+        if not dias or (datetime.fromisoformat(str(mod.get("_ts"))[:10]).date() - datetime.fromisoformat(dias[-1][0]).date()).days > 2: return None
+    except Exception:
+        return None
+    xs = _veces_filo(par, n)
+    if len(xs) < max(1, n - 1): return None
+    v = sorted(xs)[len(xs) // 2]
+    v = round(max(0.8, min(3.0, v)), 3)
+    ctx["pauteFilo"] = v
+    return P, ctx, {"pauteFilo": v, "veces_dias": [round(x, 2) for x in xs]}
+
+
+def c_cenace_filo_semana(P, ctx, mod): return _con_filo(P, ctx, mod, 5)
+def c_cenace_filo_ultimo(P, ctx, mod): return _con_filo(P, ctx, mod, 1)
+
+
+_OR27 = "Claude 2026-11-27 (Luis: 'armalo en base a como ha operado el Cenace esta semana')"
+_cand_3nov("cenace_filo_semana", c_cenace_filo_semana, "Paute como lo opera el Cenace: mediana de la semana × filo de agua",
+           "Desde el 23 nov el Cenace no da al Paute lo que pide la demanda: lo tiene parado de madrugada y lo prende en la tarde y la "
+           "noche. Medido con Celec, el Paute generó 2,05 / 1,70 / 1,53 / 1,63 veces lo que permitía el agua que entra (23–26 nov) y "
+           "~1,0 el 27. El titular supuso 782 MW el 26 (real 593) y 737 el 27 (real ~370), y a 1 día dijo −85 cm cuando Mazar subió 7. "
+           "Aquí el Paute queda topado en (mediana de los últimos 5 días de Celec) × filo de agua. Método CONGELADO 2026-11-27 "
+           "(el múltiplo se mide cada día, la regla no cambia).", origen=_OR27)
+_cand_3nov("cenace_filo_ultimo", c_cenace_filo_ultimo, "Paute como lo opera el Cenace: el múltiplo del último día × filo de agua",
+           "Igual que cenace_filo_semana pero con el múltiplo del último día completo de Celec (más rápido para seguir un cambio de "
+           "operación, como el paso de ~1,6 a ~1,0 del 27 nov; más ruidoso). CONGELADO 2026-11-27.", origen=_OR27)
+
+
 _OR9B = "Claude 2026-11-09 (escala grande: ZCIT y humedad; Luis: aplicar al laboratorio de Mazar)"
 _cand_3nov("zcit_sur_lluvia_paute", c_zcit_sur_lluvia_paute, "Ramal sur de la ZCIT activo: lluvia del Paute sin descuento",
            "El 9 nov hubo tormentas que ningún modelo anticipó, con el ramal sur de la ZCIT activo frente a la costa. Si el "
